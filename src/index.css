@@ -1,0 +1,102 @@
+/* Default (Light Theme) */
+:root {
+  /* Light theme variables as default */
+  --background-color: #ffffff;
+  --text-color: #213547;
+  --link-color: #646cff;
+  --button-bg-color: #f9f9f9;
+  --button-text-color: #000000;
+}
+
+/* Dark Theme (if user's system prefers dark mode) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Override with dark theme variables */
+    --background-color: #242424;
+    --text-color: rgba(255, 255, 255, 0.87);
+    --link-color: #535bf2;
+    --button-bg-color: #1B5E20;
+    --button-text-color: #ffffff;
+  }
+}
+
+/* Apply theme variables throughout your app */
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+a {
+  font-weight: 500;
+  color: var(--link-color);
+  text-decoration: inherit;
+}
+
+a:hover {
+  color: #747bff;
+}
+
+
+
+
+
+button {
+  border-style: solid;
+  border-color: transparent;
+  border-width: 1px 50px 1px 50px; /* Top, Right, Bottom, Left */
+  border-radius: 8px;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: var(--button-bg-color);
+  color: var(--button-text-color);
+  cursor: pointer;
+  transition: border-color 0.25s, background-color 0.3s, color 0.3s;
+}
+
+button:hover {
+  background-color: #24bb0d; /* Darken button color slightly for hover */
+}
+
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+/* Optional: Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+/* Light theme specific styles in case user changes preference without reloading */
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+}
