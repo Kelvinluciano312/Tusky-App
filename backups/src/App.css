@@ -1,0 +1,103 @@
+/* Default (Light Theme) */
+:root {
+  --background-color: #ffffff;
+  --text-color: #213547;
+  --link-color: #646cff;
+  --button-bg-color: #007bff;
+  --button-hover-bg-color: #0056b3;
+  --button-text-color: #ffffff;
+  --nav-container-bg-color: #00000038; /* Navigation bar background color for light mode */
+}
+
+/* Dark Theme (if user's system prefers dark mode) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background-color: #242424;
+    --text-color: rgba(255, 255, 255, 0.87);
+    --link-color: #535bf2;
+    --button-bg-color: #1B5E20;
+    --button-hover-bg-color: #145A14;
+    --button-text-color: #ffffff;
+    --nav-container-bg-color: #1f1f1f5f; /* Navigation bar background color for dark mode */
+  }
+}
+
+/* Root Styles */
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+/* Logo */
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+/* Logo Animation */
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+/* Card Styling */
+.card {
+  padding: 2em;
+}
+
+/* Documentation Link Styling */
+.read-the-docs {
+  color: #888;
+}
+
+/* Navigation Container */
+.navigation-container {
+  position: fixed; /* Make the container fixed to the viewport */
+  bottom: 0; /* Align it to the bottom of the page */
+  left: 0; /* Align it to the left side */
+  width: 100%; /* Make it span across the full width */
+  display: flex;
+  justify-content: center;
+  gap: 55px;
+  background-color: var(--nav-container-bg-color); /* Use the navigation background color variable */
+  box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.321); /* Add a subtle shadow for separation */
+}
+
+/* Navigation Button */
+.nav-button {
+  padding: 30px 30px;
+  border-radius: 8px;
+  color: var(--button-text-color); /* Use button text color variable */
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 500;
+  transition: background-color 0.3s,
+}
+
+.nav-button:hover {
+  background-color: var(--button-hover-bg-color); /* Use button hover background color variable */
+  transform: translateY(-2px);
+}
+
+.nav-button:active {
+  transform: translateY(1px);
+}
