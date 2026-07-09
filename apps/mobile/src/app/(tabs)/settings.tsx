@@ -1,11 +1,13 @@
 import { Landmark } from 'lucide-react-native';
-import { Alert, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useConnectBank } from '@/lib/plaid';
+import { usePlaidItems } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { supabase } from '@/lib/supabase';
 
@@ -13,6 +15,8 @@ export default function SettingsScreen() {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
   const { session } = useSession();
+  const { data: items = [] } = usePlaidItems();
+  const { connectBank, isConnecting, error } = useConnectBank();
 
   const card = {
     backgroundColor: colors.surface,
@@ -33,14 +37,41 @@ export default function SettingsScreen() {
         <AppText variant="section" tone="dim">
           Connections
         </AppText>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
-          <Landmark size={20} color={colors.textDim} strokeWidth={1.75} />
-          <AppText tone="dim">No banks connected</AppText>
-        </View>
+
+        {items.length === 0 ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+            <Landmark size={20} color={colors.textDim} strokeWidth={1.75} />
+            <AppText tone="dim">No banks connected</AppText>
+          </View>
+        ) : (
+          items.map((item) => (
+            <View
+              key={item.id}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.xs }}>
+              <Landmark size={20} color={colors.brand} strokeWidth={1.75} />
+              <View style={{ flex: 1 }}>
+                <AppText variant="label">{item.institution_name ?? 'Bank'}</AppText>
+                {item.status !== 'active' && (
+                  <AppText variant="caption" tone="negative">
+                    Needs attention
+                  </AppText>
+                )}
+              </View>
+            </View>
+          ))
+        )}
+
+        {error && (
+          <AppText variant="caption" tone="negative">
+            {error}
+          </AppText>
+        )}
+
         <Button
-          title="Connect a bank"
+          title={items.length === 0 ? 'Connect a bank' : 'Connect another bank'}
           variant="secondary"
-          onPress={() => Alert.alert('Not yet wired up', 'Bank connections land in the next phase, via Plaid.')}
+          onPress={connectBank}
+          loading={isConnecting}
         />
       </View>
 
