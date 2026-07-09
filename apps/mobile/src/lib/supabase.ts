@@ -9,9 +9,10 @@ const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 /** False until EXPO_PUBLIC_SUPABASE_URL / _ANON_KEY are set in apps/mobile/.env */
 export const isSupabaseConfigured = Boolean(url && anonKey);
 
+// `||` not `??`: unset EXPO_PUBLIC_ vars arrive as empty strings, not undefined.
 export const supabase = createClient(
-  url ?? 'http://localhost:54321',
-  anonKey ?? 'unconfigured',
+  url || 'http://localhost:54321',
+  anonKey || 'unconfigured',
   {
     auth: {
       storage: AsyncStorage,
