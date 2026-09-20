@@ -27,6 +27,11 @@ npx supabase secrets set --env-file supabase/functions/.env
 - `expo run:android` builds ONLY the target device's ABI — an arm64 build crashes the x86_64 emulator with "Cannot find native module". Build per device.
 - Unset `EXPO_PUBLIC_*` env vars arrive as `''`, not `undefined` — use `||` fallbacks, never `??`.
 - Env vars bake into the JS bundle at Metro start — restart Metro after editing `.env`.
+- **`options.transactions_url_taxonomy` does not work with `plaid@30`.** Plaid's current docs list it
+  on `/transactions/sync`, but the API rejects it with `UNKNOWN_FIELDS` — the SDK pins an older
+  `Plaid-Version`. The account's default PFC taxonomy applies instead; the `uncategorized` fallback in
+  `_shared/categorize.ts` is what absorbs any primary we don't map. General lesson: Plaid docs describe
+  the current API, not the version your SDK pins.
 - **Supabase Free Plan pauses the project after ~7 days of inactivity.** Symptom: every request to
   `*.supabase.co` returns Cloudflare **521 web server is down** while `supabase.com` itself is fine —
   looks like a dead key or bad network, is neither. Fix: dashboard → **Resume project**. Data and config
