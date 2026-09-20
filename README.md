@@ -22,9 +22,11 @@ legacy/          The previous Vite web demo + Plaid quickstart (reference only)
 
 ## Getting started
 
-Prereqs: Node 20+, Android Studio (emulator or a physical Android phone), a [Supabase project](https://supabase.com), and a [Plaid](https://dashboard.plaid.com) account (Sandbox keys).
+Prereqs: Node 20+, JDK 17, Android SDK (Android Studio, or `cmdline-tools` alone) with an emulator or a physical Android phone, a [Supabase project](https://supabase.com), and a [Plaid](https://dashboard.plaid.com) account (Sandbox keys).
 
-> ⚠️ **Clone to a short path without spaces, outside OneDrive** (e.g. `C:\dev\Tusky-App`). Native Android builds fail inside synced folders and long/spaced paths (ninja/CMake limits).
+> ⚠️ **On Windows, clone to a short path without spaces, outside OneDrive** (e.g. `C:\dev\Tusky-App`). Native Android builds fail inside synced folders and long/spaced paths (ninja/CMake limits). No such restriction on Linux or macOS.
+
+**On Linux**, also export `ANDROID_HOME=$HOME/Android/Sdk` with `$ANDROID_HOME/platform-tools` on your `PATH`, accept the SDK licenses (`sdkmanager --licenses`), and make sure `/dev/kvm` is accessible for the emulator (`sudo usermod -aG kvm $USER`, then re-login). See `CLAUDE.md` → Platform notes for the full list.
 
 ```sh
 cd apps/mobile

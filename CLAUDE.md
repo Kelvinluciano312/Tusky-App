@@ -15,7 +15,7 @@ Approved plan/phases: see README Status; the full plan lives in the user's plan 
 # app (run inside apps/mobile)
 npm run typecheck && npx expo lint      # run both before committing
 npx expo run:android --device Pixel_7   # emulator (x86_64); omit --device for default target
-# backend (repo root; CLI is logged in + linked to project ifibrsgqdibcomzxencf)
+# backend (repo root; per machine, run `supabase login` + `link` once — see "First run")
 npx supabase db push
 npx supabase functions deploy <name> --use-api
 npx supabase secrets set --env-file supabase/functions/.env
@@ -25,10 +25,41 @@ npx supabase secrets set --env-file supabase/functions/.env
 
 - **Expo Go cannot run this app** (native Plaid SDK). Dev builds only.
 - `expo run:android` builds ONLY the target device's ABI — an arm64 build crashes the x86_64 emulator with "Cannot find native module". Build per device.
-- Repo must live at a short, space-free, non-OneDrive path (currently `C:\dev\Tusky-App`), or ninja/CMake fails with "build.ninja still dirty".
 - Unset `EXPO_PUBLIC_*` env vars arrive as `''`, not `undefined` — use `||` fallbacks, never `??`.
-- PowerShell 5.1 here: no `&&`; embedded `"` in `git commit -m` here-strings breaks arg passing (avoid double quotes in messages); binary output needs `adb pull`, never `>` redirection.
 - Env vars bake into the JS bundle at Metro start — restart Metro after editing `.env`.
+- `android/` and `ios/` are gitignored; `expo run:android` regenerates them via prebuild. Never hand-edit them — native config belongs in `app.json` under `expo-build-properties` (that is where `minSdkVersion: 26`, required by Plaid SDK 6.0, lives), or it is wiped on the next prebuild.
+
+## First run on a fresh clone
+
+```sh
+cd apps/mobile
+npm install
+cp .env.example .env     # EXPO_PUBLIC_SUPABASE_URL + EXPO_PUBLIC_SUPABASE_ANON_KEY
+npx expo run:android     # prebuild generates android/, then builds
+```
+
+Both `apps/mobile/.env` and `supabase/functions/.env` are gitignored and never travel with the repo — recreate them per machine (Supabase dashboard → Project Settings → API; Plaid dashboard → Keys). The backend CLI also needs, once per machine:
+
+```sh
+npx supabase login
+npx supabase link --project-ref ifibrsgqdibcomzxencf
+```
+
+## Platform notes
+
+### Linux
+
+- Prereqs: Node 20+, JDK 17, Android SDK. Export `ANDROID_HOME=$HOME/Android/Sdk`, put `$ANDROID_HOME/platform-tools` on `PATH`, and accept licenses (`sdkmanager --licenses`) or Gradle aborts.
+- Emulator needs KVM: `ls /dev/kvm` must succeed. If it does not, `sudo usermod -aG kvm $USER` then log out and back in.
+- Physical device: `adb devices` printing nothing or `unauthorized` is usually missing udev rules — install `android-udev-rules` (or add a rule for your vendor ID), then `adb kill-server && adb start-server`.
+- Metro dying with `ENOSPC: System limit for number of file watchers reached` → raise the inotify limit:
+  `echo fs.inotify.max_user_watches=524288 | sudo tee /etc/sysctl.d/99-inotify.conf && sudo sysctl --system`
+- Normal POSIX shell — the Windows caveats below do not apply.
+
+### Windows
+
+- Repo must live at a short, space-free, non-OneDrive path (e.g. `C:\dev\Tusky-App`), or ninja/CMake fails with "build.ninja still dirty".
+- PowerShell 5.1: no `&&`; embedded `"` in `git commit -m` here-strings breaks arg passing (avoid double quotes in messages); binary output needs `adb pull`, never `>` redirection.
 
 ## Conventions
 
