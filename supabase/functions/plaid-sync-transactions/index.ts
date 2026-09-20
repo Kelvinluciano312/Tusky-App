@@ -59,11 +59,14 @@ Deno.serve(async (req) => {
   }
   const fallbackId: string = fallback.id;
 
+  // Include login_required: after Link update mode repairs an Item, a successful
+  // sync is what returns it to active. Filtering to active only would strand a
+  // repaired Item as permanently un-syncable.
   const { data: items, error: itemsError } = await admin
     .from('plaid_items')
     .select('id, plaid_item_id, status')
     .eq('user_id', user.id)
-    .eq('status', 'active');
+    .in('status', ['active', 'login_required']);
   if (itemsError) {
     console.error('failed to load items', itemsError);
     return jsonResponse({ error: 'Could not load connected banks' }, 500);
@@ -207,8 +210,12 @@ Deno.serve(async (req) => {
       }
 
       // Cursor last: a crash before here means the next run re-applies the same
-      // window idempotently rather than skipping it.
-      await admin.from('plaid_items').update({ sync_cursor: finalCursor }).eq('id', item.id);
+      // window idempotently rather than skipping it. A successful sync also
+      // clears a stale login_required — proof the credentials work again.
+      await admin
+        .from('plaid_items')
+        .update({ sync_cursor: finalCursor, status: 'active' })
+        .eq('id', item.id);
 
       results.push({ ...base, added: added.length, modified: modified.length, removed: removed.length });
     } catch (err) {

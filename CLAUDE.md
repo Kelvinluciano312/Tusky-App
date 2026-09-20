@@ -76,4 +76,13 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
 - New tables: enable RLS, add `(select auth.uid()) = user_id` policies, and explicit `grant` to `authenticated` (new-cloud default does not auto-expose).
 - Every monetary amount renders via `src/components/ui/amount.tsx` (mono "ledger voice"); text via `AppText` variants; colors/spacing only from `src/constants/theme.ts`.
 - Plaid PFC category → our `category_id` mapping must never overwrite a user's manual category override (seed of the future community feature).
+- Reconnecting a stale bank uses **Link update mode**: `plaid-create-link-token` takes an optional
+  `item_id`, passes that Item's `access_token`, and OMITS `products` (Plaid rejects both together).
+  There is no `/item/public_token/exchange` afterwards — the token does not change. A successful sync
+  is what returns the Item to `active`, which is why `plaid-sync-transactions` selects
+  `status in ('active','login_required')` rather than just active.
+- `plaid-sandbox-reset-login` is **dev/test only**: it forces a real `ITEM_LOGIN_REQUIRED` so the
+  reconnect path can be tested on demand. Two guards — the function 403s unless `PLAID_ENV=sandbox`,
+  and the Settings button that calls it is behind `__DEV__` so it is stripped from release builds.
+  Never expose it in production.
 - Sandbox login inside Plaid Link: `user_good` / `pass_good`. Test app user: `ph.leao2099+tuskytest@gmail.com` (email confirmation is ON for new signups; confirm via admin API or dashboard).

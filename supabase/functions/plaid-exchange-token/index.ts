@@ -36,22 +36,29 @@ Deno.serve(async (req) => {
     });
 
     // 2. Record the item
+    // Upsert, not insert: a reconnect can legitimately return an item_id we
+    // already hold, and a plain insert would hard-fail on the unique constraint.
     const { data: item, error: itemError } = await admin
       .from('plaid_items')
-      .insert({
-        user_id: user.id,
-        plaid_item_id: exchange.item_id,
-        institution_id: body.institution_id ?? null,
-        institution_name: body.institution_name ?? null,
-      })
+      .upsert(
+        {
+          user_id: user.id,
+          plaid_item_id: exchange.item_id,
+          institution_id: body.institution_id ?? null,
+          institution_name: body.institution_name ?? null,
+          status: 'active',
+        },
+        { onConflict: 'plaid_item_id' },
+      )
       .select('id')
       .single();
     if (itemError) throw itemError;
 
     // 3. Store the access token (service-role-only table)
+    // Same reasoning: re-linking an existing Item replaces its token.
     const { error: tokenError } = await admin
       .from('plaid_tokens')
-      .insert({ item_id: item.id, access_token: exchange.access_token });
+      .upsert({ item_id: item.id, access_token: exchange.access_token }, { onConflict: 'item_id' });
     if (tokenError) throw tokenError;
 
     // 4. Pull accounts for the new item

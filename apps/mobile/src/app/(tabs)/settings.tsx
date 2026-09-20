@@ -6,7 +6,7 @@ import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useConnectBank } from '@/lib/plaid';
+import { useConnectBank, useSandboxResetLogin } from '@/lib/plaid';
 import { usePlaidItems } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { supabase } from '@/lib/supabase';
@@ -17,6 +17,7 @@ export default function SettingsScreen() {
   const { session } = useSession();
   const { data: items = [] } = usePlaidItems();
   const { connectBank, isConnecting, error } = useConnectBank();
+  const { resetLogin, isResetting } = useSandboxResetLogin();
 
   const card = {
     backgroundColor: colors.surface,
@@ -48,15 +49,40 @@ export default function SettingsScreen() {
             <View
               key={item.id}
               style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.xs }}>
-              <Landmark size={20} color={colors.brand} strokeWidth={1.75} />
+              <Landmark
+                size={20}
+                color={item.status === 'active' ? colors.brand : colors.negative}
+                strokeWidth={1.75}
+              />
               <View style={{ flex: 1 }}>
                 <AppText variant="label">{item.institution_name ?? 'Bank'}</AppText>
                 {item.status !== 'active' && (
                   <AppText variant="caption" tone="negative">
-                    Needs attention
+                    Sign-in expired
                   </AppText>
                 )}
               </View>
+              {item.status !== 'active' ? (
+                /* Update mode: repairs this Item in place rather than creating a
+                   duplicate connection. */
+                <Button
+                  title="Reconnect"
+                  variant="secondary"
+                  loading={isConnecting}
+                  onPress={() => connectBank(item.id)}
+                  style={{ paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md }}
+                />
+              ) : __DEV__ ? (
+                /* Dev builds only — never ships. Forces a real
+                   ITEM_LOGIN_REQUIRED so the reconnect path is testable. */
+                <Button
+                  title="Break (dev)"
+                  variant="ghost"
+                  loading={isResetting}
+                  onPress={() => resetLogin(item.id)}
+                  style={{ paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md }}
+                />
+              ) : null}
             </View>
           ))
         )}
@@ -70,7 +96,7 @@ export default function SettingsScreen() {
         <Button
           title={items.length === 0 ? 'Connect a bank' : 'Connect another bank'}
           variant="secondary"
-          onPress={connectBank}
+          onPress={() => connectBank()}
           loading={isConnecting}
         />
       </View>
