@@ -27,6 +27,10 @@ npx supabase secrets set --env-file supabase/functions/.env
 - `expo run:android` builds ONLY the target device's ABI — an arm64 build crashes the x86_64 emulator with "Cannot find native module". Build per device.
 - Unset `EXPO_PUBLIC_*` env vars arrive as `''`, not `undefined` — use `||` fallbacks, never `??`.
 - Env vars bake into the JS bundle at Metro start — restart Metro after editing `.env`.
+- **Supabase Free Plan pauses the project after ~7 days of inactivity.** Symptom: every request to
+  `*.supabase.co` returns Cloudflare **521 web server is down** while `supabase.com` itself is fine —
+  looks like a dead key or bad network, is neither. Fix: dashboard → **Resume project**. Data and config
+  survive, restorable for up to 1 year.
 - `android/` and `ios/` are gitignored; `expo run:android` regenerates them via prebuild. Never hand-edit them — native config belongs in `app.json` under `expo-build-properties` (that is where `minSdkVersion: 26`, required by Plaid SDK 6.0, lives), or it is wiped on the next prebuild.
 
 ## First run on a fresh clone
@@ -38,7 +42,7 @@ cp .env.example .env     # EXPO_PUBLIC_SUPABASE_URL + EXPO_PUBLIC_SUPABASE_ANON_
 npx expo run:android     # prebuild generates android/, then builds
 ```
 
-Both `apps/mobile/.env` and `supabase/functions/.env` are gitignored and never travel with the repo — recreate them per machine (Supabase dashboard → Project Settings → API; Plaid dashboard → Keys). The backend CLI also needs, once per machine:
+Both `apps/mobile/.env` and `supabase/functions/.env` are gitignored and never travel with the repo — recreate them per machine (Supabase dashboard → Settings → API Keys; Plaid dashboard → Keys). The backend CLI also needs, once per machine:
 
 ```sh
 npx supabase login
