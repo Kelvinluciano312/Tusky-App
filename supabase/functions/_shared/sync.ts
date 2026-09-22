@@ -1,6 +1,7 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import type { PlaidApi } from 'npm:plaid@30';
 
+import { buildSnapshotRows, syncAccounts } from './accounts.ts';
 import { type CategoryMap, pickCategoryId, resolveCategoryId, toSignedAmount } from './categorize.ts';
 
 const PAGE_SIZE = 500;
@@ -91,6 +92,24 @@ export async function syncItem(
 
     const accessToken: string = tokenRow.access_token;
     const startCursor: string | null = claimed.sync_cursor;
+
+    // BEFORE the account map below, deliberately. The map is what decides which
+    // transactions we keep, and the cursor advances whether or not one was
+    // dropped — so without this, a newly-opened account's first transactions are
+    // lost for good. Refreshing balances is the secondary benefit.
+    //
+    // Swallowed on purpose. transactionsSync throws the same ITEM_LOGIN_REQUIRED
+    // a few lines down, where the one classifier handles it exactly once; if this
+    // threw instead, the item would be recorded as `error` and never marked
+    // login_required, so Settings would never offer Reconnect. A
+    // RATE_LIMIT_EXCEEDED or INSTITUTION_DOWN here would likewise fail a sync
+    // that was about to succeed. It must never write plaid_items.status —
+    // transactionsSync stays the sole authority on that.
+    try {
+      await syncAccounts(admin, plaid, accessToken, item.user_id, item.id);
+    } catch (err) {
+      console.warn(`account refresh failed for item ${item.id}: ${describeError(err)}`);
+    }
 
     const { data: accountRows } = await admin
       .from('accounts').select('id, plaid_account_id').eq('item_id', item.id);
@@ -210,6 +229,30 @@ export async function syncItem(
       .eq('id', item.id);
 
     result = { ...base, added: added.length, modified: modified.length, removed: removed.length };
+
+    // Last, and after `result` is latched: a failed chart row must not turn a
+    // good sync into `status: 'error'`, nor cost a full re-pagination by landing
+    // before the cursor advance. Not in `finally` either — that runs on the
+    // login_required and error paths too, and a throw there would escape
+    // syncItem, breaking the never-throws contract the webhook relies on.
+    //
+    // Every account of the USER, not just this Item's: otherwise a day where one
+    // Item synced and another did not would sum to a partial net worth and the
+    // chart would sawtooth. An Item stuck on login_required keeps contributing
+    // its last known balance, which is a deliberate carry-forward — stale, but
+    // the alternative is the sawtooth. Settings' Reconnect prompt is the fix.
+    try {
+      const { data: allAccounts } = await admin
+        .from('accounts').select('id, current_balance').eq('user_id', item.user_id);
+      const snapshots = buildSnapshotRows(allAccounts ?? [], item.user_id);
+      if (snapshots.length > 0) {
+        const { error } = await admin
+          .from('balance_snapshots').upsert(snapshots, { onConflict: 'account_id,date' });
+        if (error) throw error;
+      }
+    } catch (err) {
+      console.warn(`balance snapshot failed for item ${item.id}: ${describeError(err)}`);
+    }
   } catch (err) {
     if ((err as Error).message !== HANDLED) {
       const message = describeError(err);

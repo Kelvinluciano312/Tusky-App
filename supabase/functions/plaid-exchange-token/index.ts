@@ -1,3 +1,4 @@
+import { syncAccounts } from '../_shared/accounts.ts';
 import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, jsonResponse } from '../_shared/lib.ts';
 
 type ExchangeBody = {
@@ -61,31 +62,11 @@ Deno.serve(async (req) => {
       .upsert({ item_id: item.id, access_token: exchange.access_token }, { onConflict: 'item_id' });
     if (tokenError) throw tokenError;
 
-    // 4. Pull accounts for the new item
-    const { data: accountsData } = await plaid.accountsGet({
-      access_token: exchange.access_token,
-    });
+    // 4. Pull accounts for the new item. Shared with syncItem, which runs the
+    //    same refresh on every sync so balances stop being frozen at link time.
+    await syncAccounts(admin, plaid, exchange.access_token, user.id, item.id);
 
-    const rows = accountsData.accounts.map((a) => ({
-      user_id: user.id,
-      item_id: item.id,
-      plaid_account_id: a.account_id,
-      name: a.name,
-      official_name: a.official_name,
-      mask: a.mask,
-      type: a.type,
-      subtype: a.subtype,
-      current_balance: a.balances.current,
-      available_balance: a.balances.available,
-      iso_currency_code: a.balances.iso_currency_code ?? 'USD',
-    }));
-
-    const { error: accountsError } = await admin
-      .from('accounts')
-      .upsert(rows, { onConflict: 'plaid_account_id' });
-    if (accountsError) throw accountsError;
-
-    return jsonResponse({ item_id: item.id, accounts: rows.length });
+    return jsonResponse({ item_id: item.id });
   } catch (err) {
     console.error('exchange-token failed', err);
     return jsonResponse({ error: 'Failed to connect bank' }, 500);

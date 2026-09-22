@@ -53,6 +53,7 @@ export function useConnectBank() {
             await queryClient.invalidateQueries({ queryKey: ['transactions'] });
             await queryClient.invalidateQueries({ queryKey: ['plaid_items'] });
             await queryClient.invalidateQueries({ queryKey: ['reports'] });
+            await queryClient.invalidateQueries({ queryKey: ['net_worth'] });
           } catch (e) {
             setError(e instanceof Error ? e.message : 'Something went wrong saving the connection.');
           } finally {
@@ -80,9 +81,10 @@ export function useConnectBank() {
 /**
  * Runs a transaction sync for every connected bank.
  *
- * A sync does NOT refresh balances — only plaid-exchange-token ever writes them.
- * Accounts are invalidated anyway because a sync can add one, and reports are
- * invalidated because their view reads the rows a sync just wrote.
+ * A sync now refreshes account balances too, and records a net worth snapshot
+ * for the day — hence the accounts and net_worth invalidations. What comes back
+ * is Plaid's CACHED balance, refreshed on their cadence (roughly daily), so
+ * syncing repeatedly will not move the number.
  */
 export function useSyncTransactions() {
   const queryClient = useQueryClient();
@@ -123,6 +125,7 @@ export function useSyncTransactions() {
       // Settings must re-read it — otherwise the Reconnect prompt never appears.
       await queryClient.invalidateQueries({ queryKey: ['plaid_items'] });
       await queryClient.invalidateQueries({ queryKey: ['reports'] });
+      await queryClient.invalidateQueries({ queryKey: ['net_worth'] });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not refresh transactions.');
     } finally {

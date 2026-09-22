@@ -275,3 +275,37 @@ export function useDeleteBudget() {
     },
   });
 }
+
+export type NetWorthPoint = {
+  /** 'YYYY-MM-DD'. */
+  date: string;
+  /** Already signed and filtered by the view: credit and loan count against you. */
+  net_worth: number;
+};
+
+/**
+ * Net worth per day, from the `daily_net_worth` view. Only days a sync ran have
+ * a row — gaps are real, not interpolated.
+ *
+ * The order is not optional. The view has no ORDER BY, its group-by yields an
+ * arbitrary aggregate order, and PostgREST adds no default; a polyline fed
+ * unordered rows draws a scribble. The limit is not optional either: PostgREST's
+ * max_rows truncates SILENTLY, and under ascending order it is the newest points
+ * that vanish — a chart frozen weeks in the past with no error anywhere.
+ */
+export function useNetWorthHistory(from: string, to: string) {
+  return useQuery({
+    queryKey: ['net_worth', from, to],
+    queryFn: async (): Promise<NetWorthPoint[]> => {
+      const { data, error } = await supabase
+        .from('daily_net_worth')
+        .select('date, net_worth')
+        .gte('date', from)
+        .lte('date', to)
+        .order('date', { ascending: true })
+        .limit(400);
+      if (error) throw error;
+      return data;
+    },
+  });
+}
