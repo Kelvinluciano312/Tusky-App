@@ -52,6 +52,7 @@ export function useConnectBank() {
             await queryClient.invalidateQueries({ queryKey: ['accounts'] });
             await queryClient.invalidateQueries({ queryKey: ['transactions'] });
             await queryClient.invalidateQueries({ queryKey: ['plaid_items'] });
+            await queryClient.invalidateQueries({ queryKey: ['reports'] });
           } catch (e) {
             setError(e instanceof Error ? e.message : 'Something went wrong saving the connection.');
           } finally {
@@ -77,8 +78,11 @@ export function useConnectBank() {
 }
 
 /**
- * Runs a transaction sync for every connected bank. Invalidates accounts too,
- * because a sync refreshes balances as well as transactions.
+ * Runs a transaction sync for every connected bank.
+ *
+ * A sync does NOT refresh balances — only plaid-exchange-token ever writes them.
+ * Accounts are invalidated anyway because a sync can add one, and reports are
+ * invalidated because their view reads the rows a sync just wrote.
  */
 export function useSyncTransactions() {
   const queryClient = useQueryClient();
@@ -118,6 +122,7 @@ export function useSyncTransactions() {
       // A sync can flip an Item to login_required (or back to active), so
       // Settings must re-read it — otherwise the Reconnect prompt never appears.
       await queryClient.invalidateQueries({ queryKey: ['plaid_items'] });
+      await queryClient.invalidateQueries({ queryKey: ['reports'] });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not refresh transactions.');
     } finally {

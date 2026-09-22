@@ -175,6 +175,103 @@ export function useSetTransactionCategory() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      // Budgets and reports read the same rows through a view; without this a
+      // recategorized transaction moves the feed and leaves the budget bar stale.
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+    },
+  });
+}
+
+export type MonthlyTotal = {
+  /** 'YYYY-MM-01' — the view truncates every date to the first of its month. */
+  month: string;
+  category_id: string | null;
+  iso_currency_code: string;
+  /** Ledger sign, so expenses are NEGATIVE. Read it through `spentFor`. */
+  total: number;
+  transaction_count: number;
+};
+
+/**
+ * Monthly spend per category, from the `monthly_category_totals` view. Hidden
+ * accounts are excluded in SQL, matching the feed and net worth.
+ *
+ * The key is the repo's first parameterized one. Its `'reports'` prefix is load
+ * bearing: `invalidateQueries({ queryKey: ['reports'] })` then covers every range
+ * any screen has cached, which is what keeps budgets in step with the feed.
+ */
+export function useMonthlyTotals(from: string, to: string) {
+  return useQuery({
+    queryKey: ['reports', from, to],
+    queryFn: async (): Promise<MonthlyTotal[]> => {
+      const { data, error } = await supabase
+        .from('monthly_category_totals')
+        .select('month, category_id, iso_currency_code, total, transaction_count')
+        .gte('month', from)
+        .lte('month', to);
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export type Budget = {
+  id: string;
+  category_id: string;
+  /** Always positive: what you intend to spend, not a signed ledger entry. */
+  amount: number;
+};
+
+export function useBudgets() {
+  return useQuery({
+    queryKey: ['budgets'],
+    queryFn: async (): Promise<Budget[]> => {
+      const { data, error } = await supabase
+        .from('budgets')
+        .select('id, category_id, amount')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+/**
+ * Create or change the budget for a category — one amount per category, applied
+ * to every month.
+ *
+ * `user_id` is deliberately absent from the payload. PostgREST builds the insert
+ * column list from the payload's keys, so an omitted column takes its default
+ * (`auth.uid()`) rather than null, and Postgres resolves defaults before ON
+ * CONFLICT arbitration. That keeps the repo's rule that no client query ever
+ * names a user id, with the RLS with-check doing the actual enforcing.
+ */
+export function useSetBudget() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ categoryId, amount }: { categoryId: string; amount: number }) => {
+      const { error } = await supabase
+        .from('budgets')
+        .upsert({ category_id: categoryId, amount }, { onConflict: 'user_id,category_id' });
+      if (error) throw error;
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['budgets'] });
+    },
+  });
+}
+
+export function useDeleteBudget() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (budgetId: string) => {
+      const { error } = await supabase.from('budgets').delete().eq('id', budgetId);
+      if (error) throw error;
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['budgets'] });
     },
   });
 }

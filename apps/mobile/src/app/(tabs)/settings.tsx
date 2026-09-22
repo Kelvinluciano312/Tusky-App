@@ -4,7 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
-import { Radius, Spacing } from '@/constants/theme';
+import { Card } from '@/components/ui/card';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useConnectBank, useSandboxTools } from '@/lib/plaid';
 import { usePlaidItems } from '@/lib/queries';
@@ -19,22 +20,13 @@ export default function SettingsScreen() {
   const { connectBank, isConnecting, error } = useConnectBank();
   const { resetLogin, fireWebhook, isBusy } = useSandboxTools();
 
-  const card = {
-    backgroundColor: colors.surface,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: Spacing.lg,
-    gap: Spacing.sm,
-  } as const;
-
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: Spacing.md, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}>
       <AppText variant="display">Settings</AppText>
 
-      <View style={card}>
+      <Card style={{ gap: Spacing.sm }}>
         <AppText variant="section" tone="dim">
           Connections
         </AppText>
@@ -109,9 +101,9 @@ export default function SettingsScreen() {
           onPress={() => connectBank()}
           loading={isConnecting}
         />
-      </View>
+      </Card>
 
-      <View style={card}>
+      <Card style={{ gap: Spacing.sm }}>
         <AppText variant="section" tone="dim">
           Account
         </AppText>
@@ -123,7 +115,7 @@ export default function SettingsScreen() {
             await supabase.auth.signOut();
           }}
         />
-      </View>
+      </Card>
 
       <AppText variant="caption" tone="dim" style={{ textAlign: 'center' }}>
         Tusky v0.1.0 · Plaid Sandbox

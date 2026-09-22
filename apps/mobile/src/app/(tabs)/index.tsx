@@ -7,7 +7,8 @@ import { AccountRow, signedBalance } from '@/components/account-row';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
-import { Radius, Spacing } from '@/constants/theme';
+import { Card } from '@/components/ui/card';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAccounts } from '@/lib/queries';
 import { useSession } from '@/lib/session';
@@ -30,14 +31,6 @@ export default function HomeScreen() {
   const netWorth = visibleAccounts.reduce((sum, a) => sum + signedBalance(a), 0);
   const hasAccounts = visibleAccounts.length > 0;
 
-  const card = {
-    backgroundColor: colors.surface,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: Spacing.lg,
-  } as const;
-
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
@@ -53,7 +46,7 @@ export default function HomeScreen() {
       </View>
 
       {/* Net worth hero — the ledger voice, oversized */}
-      <View style={[card, { gap: Spacing.xs }]}>
+      <Card style={{ gap: Spacing.xs }}>
         <AppText variant="caption" tone="dim" style={{ textTransform: 'uppercase', letterSpacing: 1.2 }}>
           Net worth
         </AppText>
@@ -63,19 +56,19 @@ export default function HomeScreen() {
             ? `Across ${visibleAccounts.length} account${visibleAccounts.length === 1 ? '' : 's'}`
             : 'Nothing tracked yet — your trend line starts at your first connection.'}
         </AppText>
-      </View>
+      </Card>
 
       {hasAccounts ? (
-        <View style={card}>
+        <Card>
           <AppText variant="section" tone="dim" style={{ marginBottom: Spacing.xs }}>
             Accounts
           </AppText>
           {visibleAccounts.map((account) => (
             <AccountRow key={account.id} account={account} />
           ))}
-        </View>
+        </Card>
       ) : (
-        <View style={[card, { alignItems: 'center', gap: Spacing.sm }]}>
+        <Card style={{ alignItems: 'center', gap: Spacing.sm }}>
           <Landmark size={26} color={colors.brand} strokeWidth={1.75} />
           <AppText variant="title">Connect your first bank</AppText>
           <AppText tone="dim" style={{ textAlign: 'center' }}>
@@ -86,7 +79,7 @@ export default function HomeScreen() {
             onPress={() => router.push('/settings')}
             style={{ alignSelf: 'stretch', marginTop: Spacing.sm }}
           />
-        </View>
+        </Card>
       )}
     </ScrollView>
   );
