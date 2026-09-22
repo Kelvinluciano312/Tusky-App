@@ -104,4 +104,11 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   `SYNC_UPDATES_AVAILABLE`. Two guards — the function 403s unless `PLAID_ENV=sandbox`, and the
   Settings buttons that call it are behind `__DEV__` so they are stripped from release builds.
   Never expose it in production.
+- **Monetization is planned but unbuilt** — free tier plus two subscriptions (Tusklet, Tusk) via
+  Stripe; see `docs/product/monetization.md` before designing anything that touches limits or cost.
+  Two facts that change designs: Plaid bills **per connected Item per month, not per pull** (syncing
+  is free; `/transactions/refresh`, which we do not use, is the per-request exception), and **only
+  `/item/remove` stops that billing** — disconnecting does not. Credits are therefore metered against
+  AI usage, never transaction pulls. Any tier limit is enforced in an Edge Function, never the client,
+  for the same reason `plaid_tokens` is server-only.
 - Sandbox login inside Plaid Link: `user_good` / `pass_good`. Test app user: `ph.leao2099+tuskytest@gmail.com` (email confirmation is ON for new signups; confirm via admin API or dashboard).
