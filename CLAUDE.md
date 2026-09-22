@@ -84,6 +84,14 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
 
 - All Plaid calls go through Edge Functions; the app never sees access tokens (`plaid_tokens` has zero client grants/policies).
 - New tables: enable RLS, add `(select auth.uid()) = user_id` policies, and explicit `grant` to `authenticated` (new-cloud default does not auto-expose).
+- **Aggregate views carry their own security.** Views cannot have RLS, so a view over user data needs
+  `with (security_invoker = on)` — without it the view runs as its owner, `postgres`, who owns the base
+  tables and is therefore exempt from their RLS, leaking every user's rows with no error. Always add a
+  redundant `where user_id = (select auth.uid())` inside as well: it is free (the planner folds it into
+  the same index condition) and a later `create or replace view` that drops the flag then fails closed.
+  `monthly_category_totals` is the reference. Also: there is no `date_trunc(text, date)` overload, so
+  `date_trunc('month', t.date::timestamp)` — a bare `date` picks the `timestamptz` overload, which is
+  `STABLE`, not `IMMUTABLE`, and can never be indexed.
 - Every monetary amount renders via `src/components/ui/amount.tsx` (mono "ledger voice"); text via `AppText` variants; colors/spacing only from `src/constants/theme.ts`.
 - Plaid PFC category → our `category_id` mapping must never overwrite a user's manual category override (seed of the future community feature).
 - Reconnecting a stale bank uses **Link update mode**: `plaid-create-link-token` takes an optional

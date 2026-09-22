@@ -14,7 +14,7 @@
 
 - Read `apps/mobile/AGENTS.md` before writing Expo code — SDK 57 APIs differ from training data. Versioned docs: https://docs.gradle.org → use https://docs.expo.dev/versions/v57.0.0/
 - All Plaid calls go through Edge Functions. The app never sees an access token.
-- New tables: enable RLS, add `(select auth.uid()) = user_id` policies, and **explicit** `grant` to `authenticated`. The cloud default does auto-expose via default privileges — grant deliberately and revoke what should not be reachable.
+- New tables: enable RLS, add `(select auth.uid()) = user_id` policies, and **explicit** `grant` to `authenticated`. The cloud default does NOT auto-expose (see `config.toml`, `auto_expose_new_tables`) — grant deliberately and revoke what should not be reachable.
 - Every monetary amount renders via `Amount` (`@/components/ui/amount`); text via `AppText` variants; colors/spacing only from `@/constants/theme`.
 - Plaid PFC category → our `category_id` must never overwrite a user's manual override.
 - `transactions.amount` is **sign-inverted from Plaid**: positive = money in, negative = money out.
