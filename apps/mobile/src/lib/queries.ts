@@ -103,6 +103,9 @@ const TRANSACTION_COLUMNS =
  * Keyset pagination on (date, id), NOT offset. Sync inserts rows while the user
  * scrolls; with OFFSET every insertion shifts later pages, duplicating and
  * skipping rows. The (user_id, date desc, id desc) index serves this directly.
+ *
+ * Hidden accounts leave the feed as well as net worth, as in Monarch. `!inner`
+ * makes the embedded filter drop the transaction rather than null the embed.
  */
 export function useTransactions() {
   return useInfiniteQuery({
@@ -111,7 +114,8 @@ export function useTransactions() {
     queryFn: async ({ pageParam }): Promise<Transaction[]> => {
       let query = supabase
         .from('transactions')
-        .select(TRANSACTION_COLUMNS)
+        .select(`${TRANSACTION_COLUMNS}, accounts!inner(hidden)`)
+        .eq('accounts.hidden', false)
         .order('date', { ascending: false })
         .order('id', { ascending: false })
         .limit(PAGE_SIZE);
