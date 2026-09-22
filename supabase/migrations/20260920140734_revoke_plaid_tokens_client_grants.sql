@@ -1,0 +1,21 @@
+-- Harden plaid_tokens: remove client-role grants.
+--
+-- The Phase 1 migration intended this table to have "no policies, no grants" so that
+-- only Edge Functions (service role) could reach Plaid access tokens. RLS was enabled
+-- with zero policies, but the grants were never revoked — Supabase's default privileges
+-- on `public` had already handed select/insert to anon and authenticated.
+--
+-- Nothing was leaking: RLS with zero policies denies every client row. But that left a
+-- single layer of defence, where the design called for two. One accidental permissive
+-- policy, or one `disable row level security`, would have exposed access tokens.
+--
+-- Verified from the client with a publishable key before this migration:
+--   GET /rest/v1/plaid_tokens?select=access_token  -> 200 []
+--     (no grant would instead give 42501 "permission denied for table")
+--   POST /rest/v1/plaid_tokens                     -> 42501 "new row violates row-level
+--     security policy" — an RLS rejection, which only occurs once insert IS granted.
+-- After this migration both should return 42501 "permission denied for table".
+--
+-- The service role bypasses both grants and RLS, so Edge Functions are unaffected.
+
+revoke all on public.plaid_tokens from anon, authenticated;
