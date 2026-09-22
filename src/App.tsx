@@ -1,6 +1,5 @@
 import React from 'react';
 import './App.css';
-import { SignedIn } from '@clerk/clerk-react';
 import Header from './components/Header';
 import AppRoutes from './components/AppRoutes';
 import Navigation from './components/Navigation';
@@ -10,14 +9,12 @@ const App: React.FC = () => (
   <>
     <Header />
     <main>
-      <SignedIn>
-        <Router>
-          <div className="main-container">
-            <AppRoutes />
-            <Navigation />
-          </div>
-        </Router>
-      </SignedIn>
+      <Router>
+        <div className="main-container">
+          <AppRoutes />
+          <Navigation />
+        </div>
+      </Router>
     </main>
   </>
 );

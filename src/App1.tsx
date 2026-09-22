@@ -1,6 +1,6 @@
 import React, { useEffect, useContext, useCallback } from "react";
 
-import Header from "../src/components/Headers";
+import Header from "./components/Headers";
 import Products from "../src/components/ProductTypes/Products";
 import Items from "../src/components/ProductTypes/Items";
 import Context from "./Context";
@@ -98,9 +98,15 @@ const App = () => {
 
   useEffect(() => {
     const init = async () => {
-      const { paymentInitiation, isUserTokenFlow } = await getInfo(); // used to determine which path to take when generating token
-      // do not generate a new token for OAuth redirect; instead
-      // setLinkToken from localStorage
+      let paymentInitiation = false;
+      let isUserTokenFlow = false;
+      try {
+        ({ paymentInitiation, isUserTokenFlow } = await getInfo());
+      } catch {
+        dispatch({ type: "SET_STATE", state: { backend: false } });
+        return;
+      }
+
       if (window.location.href.includes("?oauth_state_id=")) {
         dispatch({
           type: "SET_STATE",
