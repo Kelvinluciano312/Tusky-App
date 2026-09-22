@@ -1,3 +1,0 @@
-[{"name":"Plaid Checking","current_balance":110.00}, 
- {"name":"Plaid Saving","current_balance":210.00}, 
- {"name":"Plaid CD","current_balance":1000.00}]
