@@ -129,25 +129,31 @@ export function useSyncTransactions() {
 }
 
 /**
- * DEV ONLY. Forces Plaid to mark an Item ITEM_LOGIN_REQUIRED so the reconnect
- * path can be tested on demand. The Edge Function refuses outside Sandbox, and
- * callers should gate the UI on __DEV__.
+ * DEV ONLY. Drives Plaid Sandbox so the webhook paths can be tested on demand.
+ * The Edge Function refuses outside Sandbox, and callers should gate the UI on
+ * __DEV__.
+ *
+ * Neither action syncs afterwards: the webhook is what should react, and a sync
+ * from here would hide whether it did. Its effect shows up when the app next
+ * refetches — background and reopen it.
  */
-export function useSandboxResetLogin() {
-  const queryClient = useQueryClient();
-  const [isResetting, setIsResetting] = useState(false);
+export function useSandboxTools() {
+  const [isBusy, setIsBusy] = useState(false);
 
-  const resetLogin = async (itemId: string) => {
-    setIsResetting(true);
+  const run = async (itemId: string, action: 'reset_login' | 'fire_webhook') => {
+    setIsBusy(true);
     try {
-      await supabase.functions.invoke('plaid-sandbox-reset-login', { body: { item_id: itemId } });
-      // The next sync is what should discover the broken state.
-      await supabase.functions.invoke('plaid-sync-transactions');
-      await queryClient.invalidateQueries({ queryKey: ['plaid_items'] });
+      await supabase.functions.invoke('plaid-sandbox', { body: { item_id: itemId, action } });
     } finally {
-      setIsResetting(false);
+      setIsBusy(false);
     }
   };
 
-  return { resetLogin, isResetting };
+  return {
+    /** Forces ITEM_LOGIN_REQUIRED; Plaid then fires an ITEM ERROR webhook. */
+    resetLogin: (itemId: string) => run(itemId, 'reset_login'),
+    /** Asks Plaid to fire SYNC_UPDATES_AVAILABLE at plaid-webhook. */
+    fireWebhook: (itemId: string) => run(itemId, 'fire_webhook'),
+    isBusy,
+  };
 }
