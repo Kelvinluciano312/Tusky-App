@@ -1,8 +1,42 @@
 # Handoff — Phase 4 done (2026-09-22)
 
-Branch: `pedro`. Supersedes `2026-09-22-phase-3-handoff.md`.
+Branch: `pedro`, pushed to `origin` through `7b57afa`. Supersedes `2026-09-22-phase-3-handoff.md`.
 
 Spec: `docs/superpowers/specs/2026-09-22-phase-4-net-worth-history-design.md`.
+
+## START HERE NEXT SESSION
+
+The session ended on a usage limit, not at a natural stopping point. Phase 4 is **written, deployed
+and partly verified** — the backend is proven, the chart is not. Do these in order before starting
+anything new.
+
+**1. Watch the sparkline actually render.** This is the only Phase 4 deliverable never seen working.
+It needs two distinct dates in `balance_snapshots` and on 2026-09-22 only one existed, so the
+component correctly hid itself — which looks identical to it being broken. Either sync again on a
+later day, or insert a synthetic row for an earlier date as the service role. Three things to confirm
+once it draws: that the line is in chronological order (the `.order('date')` in `useNetWorthHistory`
+is what prevents a scribble — verify it rather than assume it); that the 90-day change figure beside
+it reads correctly and carries its sign; and that the `max === min` flat-line guard in
+`charts/sparkline.tsx` draws a mid-height line rather than nothing, which needs two equal balances on
+two dates to force.
+
+**2. Verify the `login_required` path.** Settings → `Break (dev)`, then sync. The swallowed
+`accountsGet` error must **not** steal the classification: the Item must still end up
+`login_required` and Settings must still offer Reconnect. If that regressed, the swallow in
+`_shared/sync.ts` is the place to look. This is the highest-risk untested path in the phase, because
+it is the one where two error handlers could fight.
+
+**3. Confirm a snapshot is still written on that broken-Item sync** — from last-known balances, one
+row per account. That is the deliberate carry-forward; if it is missing, the chart will gap.
+
+Only after those: Phase 5 is recurring transactions and bills radar. Brainstorm before building.
+
+### Verify before trusting anything here
+
+`adb shell input swipe` at 900ms did **not** trigger pull-to-refresh on this emulator; 1200ms starting
+at y=900 did. A sync that never ran produced an empty table that looked exactly like a broken feature
+for several minutes. **Screenshot the refresh spinner and confirm `plaid_items.updated_at` moved
+before concluding anything about sync-driven behaviour.**
 
 ## What shipped
 
