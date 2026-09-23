@@ -12,7 +12,9 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useAccounts, useNetWorthHistory } from '@/lib/queries';
+import { UpcomingCard } from '@/components/upcoming-card';
+import { useAccounts, useCategories, useNetWorthHistory, useRecurringStreams } from '@/lib/queries';
+import { todayLocal } from '@/lib/recurring';
 import { useSession } from '@/lib/session';
 
 /** Days of history under the hero. Also keeps the row count far under max_rows. */
@@ -36,16 +38,21 @@ export default function HomeScreen() {
   const netWorth = visibleAccounts.reduce((sum, a) => sum + signedBalance(a), 0);
   const hasAccounts = visibleAccounts.length > 0;
 
-  // Memoized: computing these inline would hand the query a new key every render.
-  const [from, to] = useMemo(() => {
-    const today = new Date();
-    const start = new Date(today);
-    start.setDate(today.getDate() - HISTORY_DAYS);
-    const iso = (d: Date) => d.toISOString().slice(0, 10);
-    return [iso(start), iso(today)];
-  }, []);
+  // Derived per render, NOT memoized with []: a memo froze the window at mount,
+  // so an app left open across midnight never asked for the new day's point.
+  // The strings only change when the date does, so the query key is stable
+  // within a day. UTC on purpose: snapshot dates are UTC (current_date).
+  const now = new Date();
+  const start = new Date(now);
+  start.setDate(now.getDate() - HISTORY_DAYS);
+  const from = start.toISOString().slice(0, 10);
+  const to = now.toISOString().slice(0, 10);
 
-  const { data: history = [] } = useNetWorthHistory(from, to);
+  const { data: history = [], refetch: refetchHistory } = useNetWorthHistory(from, to);
+  const { data: streams = [], refetch: refetchStreams } = useRecurringStreams();
+  const { data: categories = [] } = useCategories();
+  const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+  const today = todayLocal();
   const trend = history.map((point) => point.net_worth);
   const change = trend.length >= 2 ? trend[trend.length - 1] - trend[0] : 0;
 
@@ -54,7 +61,15 @@ export default function HomeScreen() {
       style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: Spacing.md, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}
       refreshControl={
-        <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.textDim} />
+        <RefreshControl
+          refreshing={isRefetching}
+          onRefresh={() => {
+            refetch();
+            refetchHistory();
+            refetchStreams();
+          }}
+          tintColor={colors.textDim}
+        />
       }>
       <View>
         <AppText tone="dim" variant="caption">
@@ -90,6 +105,8 @@ export default function HomeScreen() {
             : 'Nothing tracked yet — your trend line starts at your first connection.'}
         </AppText>
       </Card>
+
+      <UpcomingCard streams={streams} categoriesById={categoriesById} today={today} />
 
       {hasAccounts ? (
         <Card>
