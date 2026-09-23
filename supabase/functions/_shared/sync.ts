@@ -3,6 +3,7 @@ import type { PlaidApi } from 'npm:plaid@30';
 
 import { buildSnapshotRows, syncAccounts } from './accounts.ts';
 import { type CategoryMap, pickCategoryId, resolveCategoryId, toSignedAmount } from './categorize.ts';
+import { refreshRecurring } from './recurring.ts';
 
 const PAGE_SIZE = 500;
 const FIRST_SYNC_DAYS = 90;
@@ -28,6 +29,8 @@ export type SyncContext = {
   plaid: PlaidApi;
   categoryMap: CategoryMap;
   fallbackId: string;
+  /** Categories of kind 'transfer' — recurring detection ignores them. */
+  transferCategoryIds: string[];
 };
 
 /** Plaid SDK errors carry the useful detail on response.data. */
@@ -57,7 +60,17 @@ export async function loadSyncContext(admin: SupabaseClient, plaid: PlaidApi): P
     throw new Error(`uncategorized category missing: ${fallbackError?.message ?? 'no row'}`);
   }
 
-  return { admin, plaid, categoryMap, fallbackId: fallback.id };
+  const { data: transferRows, error: transferError } = await admin
+    .from('categories').select('id').eq('kind', 'transfer');
+  if (transferError) throw new Error(`failed to load transfer categories: ${transferError.message}`);
+
+  return {
+    admin,
+    plaid,
+    categoryMap,
+    fallbackId: fallback.id,
+    transferCategoryIds: (transferRows ?? []).map((r) => r.id),
+  };
 }
 
 /**
@@ -69,7 +82,7 @@ export async function syncItem(
   ctx: SyncContext,
   item: { id: string; user_id: string },
 ): Promise<ItemResult> {
-  const { admin, plaid, categoryMap, fallbackId } = ctx;
+  const { admin, plaid, categoryMap, fallbackId, transferCategoryIds } = ctx;
   const base: ItemResult = { item_id: item.id, status: 'synced', added: 0, modified: 0, removed: 0 };
   let result: ItemResult = base;
 
@@ -252,6 +265,16 @@ export async function syncItem(
       }
     } catch (err) {
       console.warn(`balance snapshot failed for item ${item.id}: ${describeError(err)}`);
+    }
+
+    // After the snapshot, for the same reasons: success is already latched and
+    // the cursor has advanced, so a failed radar costs nothing but a log line.
+    // Never in `finally` — the login_required and error paths have no new data,
+    // and a throw there would escape syncItem.
+    try {
+      await refreshRecurring(admin, item, transferCategoryIds);
+    } catch (err) {
+      console.warn(`recurring refresh failed for item ${item.id}: ${describeError(err)}`);
     }
   } catch (err) {
     if ((err as Error).message !== HANDLED) {

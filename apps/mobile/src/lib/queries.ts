@@ -309,3 +309,63 @@ export function useNetWorthHistory(from: string, to: string) {
     },
   });
 }
+
+export type RecurringStream = {
+  id: string;
+  account_id: string;
+  name: string;
+  category_id: string | null;
+  direction: 'outflow' | 'inflow';
+  frequency: 'weekly' | 'biweekly' | 'monthly';
+  /** Ledger sign, like Transaction.amount: bills are negative. */
+  average_amount: number;
+  last_amount: number;
+  previous_amount: number;
+  /** |last| − |previous|, only when a fixed price moved; positive = costs (or pays) more. */
+  amount_change: number | null;
+  last_date: string;
+  /** 'YYYY-MM-DD' — predicted; may be in the past if a charge is late. */
+  next_date: string;
+  dismissed: boolean;
+};
+
+const STREAM_COLUMNS =
+  'id, account_id, name, category_id, direction, frequency, average_amount, last_amount, previous_amount, amount_change, last_date, next_date, dismissed';
+
+/**
+ * Recurring streams, written by detection at the end of each sync. Hidden
+ * accounts drop out exactly as they do from the feed — `!inner` makes the
+ * embedded filter drop the row rather than null the embed.
+ */
+export function useRecurringStreams() {
+  return useQuery({
+    queryKey: ['recurring'],
+    queryFn: async (): Promise<RecurringStream[]> => {
+      const { data, error } = await supabase
+        .from('recurring_streams')
+        .select(`${STREAM_COLUMNS}, accounts!inner(hidden)`)
+        .eq('accounts.hidden', false)
+        .order('next_date', { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+/**
+ * "Not recurring" and its undo. The column grant makes `dismissed` the only
+ * thing a client can write, and detection never touches it, so it sticks.
+ */
+export function useSetStreamDismissed() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, dismissed }: { id: string; dismissed: boolean }) => {
+      const { error } = await supabase.from('recurring_streams').update({ dismissed }).eq('id', id);
+      if (error) throw error;
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['recurring'] });
+    },
+  });
+}

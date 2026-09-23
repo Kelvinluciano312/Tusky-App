@@ -10,7 +10,8 @@ A personal finance app — connect your banks, see your net worth, track spendin
 - ✅ **Phase 2.5** — Plaid webhooks: verified public endpoint, background sync on new data, broken logins flagged without a manual sync
 - ✅ **Phase 3** — budgets per category, spending-by-category donut and cash-flow reports
 - ✅ **Phase 4** — net worth history: balances refresh on every sync, daily snapshots, trend line on Home
-- 🚧 **Phase 5 (next)** — recurring transactions and bills radar
+- ✅ **Phase 5** — recurring transactions and bills radar: detected bills, subscriptions and paychecks, Upcoming on Home, price-change flags
+- 🚧 **Phase 6 (next)** — to be brainstormed
 - Planned: category groups, hide/unhide toggle in the app
 
 ## Architecture

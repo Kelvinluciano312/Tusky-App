@@ -54,6 +54,8 @@ export function useConnectBank() {
             await queryClient.invalidateQueries({ queryKey: ['plaid_items'] });
             await queryClient.invalidateQueries({ queryKey: ['reports'] });
             await queryClient.invalidateQueries({ queryKey: ['net_worth'] });
+            // Detection runs at the end of every sync.
+            await queryClient.invalidateQueries({ queryKey: ['recurring'] });
           } catch (e) {
             setError(e instanceof Error ? e.message : 'Something went wrong saving the connection.');
           } finally {
@@ -126,6 +128,8 @@ export function useSyncTransactions() {
       await queryClient.invalidateQueries({ queryKey: ['plaid_items'] });
       await queryClient.invalidateQueries({ queryKey: ['reports'] });
       await queryClient.invalidateQueries({ queryKey: ['net_worth'] });
+      // Detection runs at the end of every sync.
+      await queryClient.invalidateQueries({ queryKey: ['recurring'] });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not refresh transactions.');
     } finally {

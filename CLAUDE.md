@@ -1,7 +1,7 @@
 # Tusky — agent notes
 
 Monarch-Money-style personal finance mobile app. Expo (React Native) + Supabase + Plaid Sandbox.
-Approved plan/phases: see README Status (Phases 0–2.5 done, Phase 3 = budgets and reports next).
+Approved plan/phases: see README Status (Phases 0–5 done; Phase 6 not yet chosen).
 Latest handoff: `docs/superpowers/plans/*-next-session-handoff.md`; specs in `docs/superpowers/specs/`.
 
 ## Layout
@@ -83,7 +83,16 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
 ## Conventions
 
 - All Plaid calls go through Edge Functions; the app never sees access tokens (`plaid_tokens` has zero client grants/policies).
-- New tables: enable RLS, add `(select auth.uid()) = user_id` policies, and explicit `grant` to `authenticated` (new-cloud default does not auto-expose).
+- New tables: enable RLS, add `(select auth.uid()) = user_id` policies, then **`revoke all ... from anon,
+  authenticated`** before granting exactly what the app uses. This project's default privileges give anon
+  and authenticated EVERY privilege on each new public table, so a column-scoped `grant update (col)`
+  alone restricts nothing — found in Phase 5; `20260923181000_recurring_streams_revoke_defaults.sql` is
+  the reference. Older tables (transactions, accounts, budgets, …) still carry the defaults: RLS confines
+  users to their own rows, but their column-grant comments overstate the protection. Check with
+  `has_column_privilege('authenticated', '<table>', '<col>', 'UPDATE')`.
+- Recurring streams are derived: detection (`_shared/recurring.ts`) runs at the end of every sync and
+  owns every column except `dismissed`, which only the user writes. Never add `dismissed` to its
+  upsert payload.
 - **Aggregate views carry their own security.** Views cannot have RLS, so a view over user data needs
   `with (security_invoker = on)` — without it the view runs as its owner, `postgres`, who owns the base
   tables and is therefore exempt from their RLS, leaking every user's rows with no error. Always add a
