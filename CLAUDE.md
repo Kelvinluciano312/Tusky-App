@@ -1,8 +1,9 @@
 # Tusky — agent notes
 
 Monarch-Money-style personal finance mobile app. Expo (React Native) + Supabase + Plaid Sandbox.
-Approved plan/phases: see README Status (Phases 0–5 done; Phase 6 not yet chosen).
-Latest handoff: `docs/superpowers/plans/*-next-session-handoff.md`; specs in `docs/superpowers/specs/`.
+Approved plan/phases: see README Status (Phases 0–5 done; Phase 6 — connections & control — specced, not
+started: `docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md`).
+Latest handoff: `docs/superpowers/plans/2026-09-23-phase-5-handoff.md`; specs in `docs/superpowers/specs/`.
 
 ## Layout
 
