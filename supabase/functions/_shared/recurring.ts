@@ -8,6 +8,8 @@
  * Phase 5 spec.
  */
 
+import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
+
 export type Cadence = 'weekly' | 'biweekly' | 'monthly';
 export type Direction = 'outflow' | 'inflow';
 
@@ -242,4 +244,71 @@ export function staleStreamIds(
 ): string[] {
   const keep = new Set(fresh.map(streamKey));
   return existing.filter((s) => !s.dismissed && !keep.has(streamKey(s))).map((s) => s.id);
+}
+
+/** How far back detection looks. Enough for six monthly occurrences. */
+const LOOKBACK_DAYS = 180;
+/** PostgREST's max_rows. A longer page would be truncated SILENTLY. */
+const PAGE_SIZE = 1000;
+
+/**
+ * Detect and store one Item's streams. Throws on any database error — the
+ * caller (syncItem) swallows it so a failed radar never fails a sync.
+ *
+ * Runs under syncItem's per-Item claim, and streams are per account, so no
+ * other invocation can be writing these rows.
+ */
+export async function refreshRecurring(
+  admin: SupabaseClient,
+  item: { id: string; user_id: string },
+  transferCategoryIds: string[],
+): Promise<void> {
+  const since = isoFromDay(Math.floor(Date.now() / DAY_MS) - LOOKBACK_DAYS);
+
+  const rows: DetectInput[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await admin
+      .from('transactions')
+      .select('account_id, date, amount, name, merchant_name, category_id')
+      .eq('item_id', item.id)
+      .eq('pending', false)
+      .gte('date', since)
+      .order('date', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = data ?? [];
+    rows.push(...page.map((r) => ({ ...r, amount: Number(r.amount) })));
+    if (page.length < PAGE_SIZE) break;
+  }
+
+  const streams = detectStreams(rows, { transferCategoryIds });
+
+  if (streams.length > 0) {
+    // `dismissed` is deliberately absent: DO UPDATE SET covers only the keys
+    // present, so the user's verdict survives. Every other key is always
+    // present, amount_change: null included — ragged keys are PGRST102.
+    const { error } = await admin
+      .from('recurring_streams')
+      .upsert(streams.map((s) => ({ ...s, user_id: item.user_id })), {
+        onConflict: 'account_id,direction,merchant_key',
+      });
+    if (error) throw error;
+  }
+
+  const { data: accounts, error: accountsError } = await admin
+    .from('accounts').select('id').eq('item_id', item.id);
+  if (accountsError) throw accountsError;
+
+  const { data: existing, error: existingError } = await admin
+    .from('recurring_streams')
+    .select('id, account_id, direction, merchant_key, dismissed')
+    .in('account_id', (accounts ?? []).map((a) => a.id));
+  if (existingError) throw existingError;
+
+  const stale = staleStreamIds(existing ?? [], streams);
+  if (stale.length > 0) {
+    const { error } = await admin.from('recurring_streams').delete().in('id', stale);
+    if (error) throw error;
+  }
 }
