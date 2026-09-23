@@ -1379,8 +1379,13 @@ Pull-to-refresh on Home. Expected: streams on that account are gone from the car
 
 `README.md` Status: change the Phase 5 line to `- ✅ **Phase 5** — recurring transactions and bills radar: detected bills, subscriptions and paychecks, Upcoming on Home, price-change flags`, and add `- 🚧 **Phase 6 (next)** — to be brainstormed` below it.
 
-`CLAUDE.md`: status line → `(Phases 0–5 done; Phase 6 not yet chosen)`; in Conventions, add one bullet:
-`- Recurring streams are derived: detection (`_shared/recurring.ts`) runs at the end of every sync and owns every column except `dismissed`, which only the user writes. Never add `dismissed` to its upsert payload.`
+`CLAUDE.md`: status line → `(Phases 0–5 done; Phase 6 not yet chosen)`; in Conventions, add this bullet verbatim:
+
+```markdown
+- Recurring streams are derived: detection (`_shared/recurring.ts`) runs at the end of every sync and
+  owns every column except `dismissed`, which only the user writes. Never add `dismissed` to its
+  upsert payload.
+```
 
 - [ ] **Step 7: Commit and push**
 
