@@ -23,6 +23,11 @@ npx supabase secrets set --env-file supabase/functions/.env
 npx -y deno test supabase/functions/_shared/    # Edge Function unit tests; Deno need not be installed
 ```
 
+**Driving the emulator (agents):** use `node scripts/emu.mjs` — `ui` prints visible labels with tap
+centers as text, `tap "<label>"` taps by text, `logs` shows JS errors/crashes since the last call.
+Prefer `ui` over `shot`; a screenshot costs ~1.5k tokens, only take one when visual layout is the
+question. JS edits hot-reload via Metro — never rebuild for them.
+
 ## Hard-won gotchas
 
 - **Expo Go cannot run this app** (native Plaid SDK). Dev builds only.
