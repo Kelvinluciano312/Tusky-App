@@ -53,6 +53,10 @@ export function relativeDay(iso: string, today: string): string {
   const diff = Math.round((parse(iso).getTime() - parse(today).getTime()) / 86_400_000);
   if (diff === 0) return 'Today';
   if (diff === 1) return 'Tomorrow';
-  if (diff > 1 && diff < 7) return parse(iso).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
+  // Composed by hand: Android's Intl orders { weekday, day } as '25 Fri'.
+  if (diff > 1 && diff < 7) {
+    const d = parse(iso);
+    return `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${d.getDate()}`;
+  }
   return parse(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
