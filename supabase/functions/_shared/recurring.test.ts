@@ -159,3 +159,24 @@ Deno.test('staleStreamIds drops vanished streams but never dismissed ones', () =
   const fresh = [{ account_id: 'a', direction: 'outflow' as const, merchant_key: 'netflix' }];
   assertEquals(staleStreamIds(existing, fresh), ['gone']);
 });
+
+Deno.test('a bill due on the 1st, sometimes paid a few days early, keeps its anchor', () => {
+  const [s] = detect([
+    tx('2026-05-30', -1850, 'Rent'),
+    tx('2026-07-01', -1850, 'Rent'),
+    tx('2026-07-31', -1850, 'Rent'),
+    tx('2026-09-01', -1850, 'Rent'),
+  ]);
+  assertEquals(s.frequency, 'monthly');
+  assertEquals(s.next_date, '2026-10-01');
+});
+
+Deno.test('early payments split evenly across a month boundary still predict the 1st', () => {
+  const [s] = detect([
+    tx('2026-05-28', -1850, 'Rent'),
+    tx('2026-07-01', -1850, 'Rent'),
+    tx('2026-07-29', -1850, 'Rent'),
+    tx('2026-09-02', -1850, 'Rent'),
+  ]);
+  assertEquals(s.next_date, '2026-10-01');
+});

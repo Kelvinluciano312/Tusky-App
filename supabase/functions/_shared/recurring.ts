@@ -105,18 +105,41 @@ function cadenceFor(gapDays: number): Cadence | null {
   return null;
 }
 
+/** Distance between two days of the month on a 31-day circle: the 30th and the 1st are 2 apart. */
+function circularDayDistance(a: number, b: number): number {
+  const d = Math.abs(a - b);
+  return Math.min(d, 31 - d);
+}
+
+/**
+ * The run's anchor day: the day it actually paid on that sits closest to all
+ * the others, measured around the month. A plain median breaks when payments
+ * straddle a month boundary — [30, 1, 31, 1] has median 15.5. Ties go to the
+ * day paid most often, then to the one nearest the latest payment.
+ */
+function anchorDay(days: number[]): number {
+  const latest = days[days.length - 1];
+  const score = (c: number) => days.reduce((sum, d) => sum + circularDayDistance(c, d), 0);
+  const count = (c: number) => days.filter((d) => d === c).length;
+  return [...new Set(days)].sort((a, b) =>
+    score(a) - score(b) ||
+    count(b) - count(a) ||
+    circularDayDistance(a, latest) - circularDayDistance(b, latest)
+  )[0];
+}
+
 function withinTolerance(amount: number, center: number, tolerance: number): boolean {
   return Math.abs(Math.abs(amount) - Math.abs(center)) <= tolerance * Math.abs(center);
 }
 
 /** The anchor day in the first month on or after last + MONTHLY_MIN_GAP_DAYS, clamped to month end. */
-function nextMonthlyDate(lastDate: string, anchorDay: number): string {
+function nextMonthlyDate(lastDate: string, anchor: number): string {
   const earliest = dayNumber(lastDate) + MONTHLY_MIN_GAP_DAYS;
   const start = new Date(earliest * DAY_MS);
   let year = start.getUTCFullYear();
   let month0 = start.getUTCMonth();
   for (;;) {
-    const candidate = Date.UTC(year, month0, Math.min(anchorDay, daysInMonth(year, month0))) / DAY_MS;
+    const candidate = Date.UTC(year, month0, Math.min(anchor, daysInMonth(year, month0))) / DAY_MS;
     if (candidate >= earliest) return isoFromDay(candidate);
     month0 += 1;
     if (month0 === 12) {
@@ -169,7 +192,7 @@ function detectGroup(occ: Occurrence[]): Detected | null {
   const moved = Math.abs(delta) >= Math.max(PRICE_CHANGE_MIN, PRICE_CHANGE_PCT * Math.abs(previous.amount));
 
   const next_date = cadence === 'monthly'
-    ? nextMonthlyDate(last.date, Math.round(median(run.map((o) => Number(o.date.slice(8, 10))))))
+    ? nextMonthlyDate(last.date, anchorDay(run.map((o) => Number(o.date.slice(8, 10)))))
     : isoFromDay(last.day + (cadence === 'weekly' ? 7 : 14));
 
   return {
@@ -308,7 +331,9 @@ export async function refreshRecurring(
 
   const stale = staleStreamIds(existing ?? [], streams);
   if (stale.length > 0) {
-    const { error } = await admin.from('recurring_streams').delete().in('id', stale);
+    // Re-checked in the delete itself: a user can dismiss between the read above
+    // and this statement, and their verdict must survive.
+    const { error } = await admin.from('recurring_streams').delete().in('id', stale).eq('dismissed', false);
     if (error) throw error;
   }
 }
