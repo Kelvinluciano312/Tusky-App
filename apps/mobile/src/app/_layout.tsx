@@ -92,6 +92,8 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Protected guard={session !== null}>
         <Stack.Screen name="(tabs)" />
+        {/* Pushed from Home's Upcoming card; the native header supplies Back. */}
+        <Stack.Screen name="recurring" options={{ headerShown: true, title: 'Recurring' }} />
       </Stack.Protected>
       <Stack.Protected guard={session === null}>
         <Stack.Screen name="(auth)" />
