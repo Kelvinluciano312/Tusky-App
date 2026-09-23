@@ -16,7 +16,7 @@ Plan: `docs/superpowers/plans/2026-09-23-phase-5-recurring-bills.md`.
 ## Verified live (Pixel_7 emulator, test user)
 
 - Phase 4 close-out: see the spec's first section (sparkline, `login_required`, multi-Item carry-forward).
-- 52 Deno tests pass (32 existing + 20 detector).
+- 54 Deno tests pass (32 existing + 22 detector, two added after the final review for the month-boundary anchor).
 - A sync detected 18 streams across both Items — Netflix, Spotify, OpenAI, card payments, and Chase's
   sandbox fixtures, which genuinely repeat monthly.
 - Home card: Uber (Fri 25) and United (Mon 28), total -$505.40 — matched the table.
