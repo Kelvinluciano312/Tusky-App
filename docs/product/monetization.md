@@ -11,7 +11,38 @@ money. Three tiers:
 | Premium | **Tusklet** | Every feature, with limits (banks, history depth, AI allowance). |
 | Pro | **Tusk** | The same features with the limits raised or removed. |
 
-Names are provisional. Billing would go through **Stripe**; there is no Stripe account yet.
+Names are provisional. Billing would go through **Stripe**.
+
+## Stripe account setup (2026-09-23)
+
+The account exists (Ouroboros Studios), not yet activated. Build against a Stripe **sandbox**; activation
+(bank, identity, tax ID) is only needed for live money. Onboarding answers:
+
+- What we sell: **SaaS — personal use** (sets the default product tax code; changeable per product).
+- Pricing model: **Flat rate**: Tusklet and Tusk are fixed monthly prices. Credits, if built, are
+  added separately as one-off purchases or metered usage, not seats.
+- Integration: **Prebuilt Checkout**. An Edge Function creates the Checkout Session with the Supabase
+  user id attached, and a Stripe webhook updates the subscription. Payment Links cannot reliably
+  tie a payment to a signed-in user.
+- Tax: **Managed Payments** (Stripe is merchant of record and files our taxes). Build details and sandbox ids:
+  `docs/superpowers/specs/2026-09-23-stripe-subscriptions-design.md`. Brazil is not covered.
+- Prices (sandbox): Tusklet $3.99/mo or $45/yr; Tusk $6.99/mo or $75/yr.
+- Superseded note on plain Stripe Tax: It calculates and collects tax, and reports where we cross registration
+  thresholds, but it does not register for us. It charges a per-transaction fee (check the current
+  rate). Initial markets are the US and possibly Brazil. Brazil needs a separate check: Stripe Tax
+  coverage there and invoice (NF-e/NFS-e) requirements are unverified.
+
+**Plaid account switch (pending):** we may move to a teammate's (Kelvyn's) Plaid account. New keys
+invalidate every existing Item and access token, so every bank has to be relinked. Plan: switch
+after Phase 5 by updating `PLAID_CLIENT_ID`/`PLAID_SECRET` in `supabase/functions/.env`, then
+`npx supabase secrets set --env-file supabase/functions/.env`, then relink the test banks.
+As of 2026-09-23 the new sandbox keys are in the local `.env` only, not pushed. The new account's
+trial includes **limited Production (up to 10 Items)**, so we can test with real banks. That needs
+`PLAID_ENV=production` plus the production secret, and removing an Item (`/item/remove`) frees its slot.
+
+Before designing the paywall, check the **app store billing rules**. Apple and Google normally require
+in-app purchase for digital subscriptions. US rulings now allow linking out to a web checkout (Stripe),
+but the rules vary by store and country.
 
 The tiers differ by *how much*, not by *what*. Both paid tiers open every feature — the ceilings are
 what separate them.
