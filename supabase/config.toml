@@ -385,6 +385,12 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# Plaid calls this, not a signed-in user, so the gateway must not demand a
+# Supabase JWT. The function authenticates Plaid's own signed JWT instead.
+# Every other function keeps the default (verify_jwt = true).
+[functions.plaid-webhook]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

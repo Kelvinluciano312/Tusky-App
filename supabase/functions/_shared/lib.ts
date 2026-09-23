@@ -30,6 +30,11 @@ export async function getAuthedUser(req: Request, admin: SupabaseClient): Promis
   return data.user;
 }
 
+/** Where Plaid delivers webhooks. Derived, so there is no secret to keep in sync. */
+export function getWebhookUrl(): string {
+  return `${Deno.env.get('SUPABASE_URL')}/functions/v1/plaid-webhook`;
+}
+
 export function getPlaidClient(): PlaidApi {
   const env = Deno.env.get('PLAID_ENV') ?? 'sandbox';
   return new PlaidApi(

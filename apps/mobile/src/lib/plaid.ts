@@ -52,6 +52,8 @@ export function useConnectBank() {
             await queryClient.invalidateQueries({ queryKey: ['accounts'] });
             await queryClient.invalidateQueries({ queryKey: ['transactions'] });
             await queryClient.invalidateQueries({ queryKey: ['plaid_items'] });
+            await queryClient.invalidateQueries({ queryKey: ['reports'] });
+            await queryClient.invalidateQueries({ queryKey: ['net_worth'] });
           } catch (e) {
             setError(e instanceof Error ? e.message : 'Something went wrong saving the connection.');
           } finally {
@@ -77,8 +79,12 @@ export function useConnectBank() {
 }
 
 /**
- * Runs a transaction sync for every connected bank. Invalidates accounts too,
- * because a sync refreshes balances as well as transactions.
+ * Runs a transaction sync for every connected bank.
+ *
+ * A sync now refreshes account balances too, and records a net worth snapshot
+ * for the day — hence the accounts and net_worth invalidations. What comes back
+ * is Plaid's CACHED balance, refreshed on their cadence (roughly daily), so
+ * syncing repeatedly will not move the number.
  */
 export function useSyncTransactions() {
   const queryClient = useQueryClient();
@@ -118,6 +124,8 @@ export function useSyncTransactions() {
       // A sync can flip an Item to login_required (or back to active), so
       // Settings must re-read it — otherwise the Reconnect prompt never appears.
       await queryClient.invalidateQueries({ queryKey: ['plaid_items'] });
+      await queryClient.invalidateQueries({ queryKey: ['reports'] });
+      await queryClient.invalidateQueries({ queryKey: ['net_worth'] });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not refresh transactions.');
     } finally {
@@ -129,25 +137,31 @@ export function useSyncTransactions() {
 }
 
 /**
- * DEV ONLY. Forces Plaid to mark an Item ITEM_LOGIN_REQUIRED so the reconnect
- * path can be tested on demand. The Edge Function refuses outside Sandbox, and
- * callers should gate the UI on __DEV__.
+ * DEV ONLY. Drives Plaid Sandbox so the webhook paths can be tested on demand.
+ * The Edge Function refuses outside Sandbox, and callers should gate the UI on
+ * __DEV__.
+ *
+ * Neither action syncs afterwards: the webhook is what should react, and a sync
+ * from here would hide whether it did. Its effect shows up when the app next
+ * refetches — background and reopen it.
  */
-export function useSandboxResetLogin() {
-  const queryClient = useQueryClient();
-  const [isResetting, setIsResetting] = useState(false);
+export function useSandboxTools() {
+  const [isBusy, setIsBusy] = useState(false);
 
-  const resetLogin = async (itemId: string) => {
-    setIsResetting(true);
+  const run = async (itemId: string, action: 'reset_login' | 'fire_webhook') => {
+    setIsBusy(true);
     try {
-      await supabase.functions.invoke('plaid-sandbox-reset-login', { body: { item_id: itemId } });
-      // The next sync is what should discover the broken state.
-      await supabase.functions.invoke('plaid-sync-transactions');
-      await queryClient.invalidateQueries({ queryKey: ['plaid_items'] });
+      await supabase.functions.invoke('plaid-sandbox', { body: { item_id: itemId, action } });
     } finally {
-      setIsResetting(false);
+      setIsBusy(false);
     }
   };
 
-  return { resetLogin, isResetting };
+  return {
+    /** Forces ITEM_LOGIN_REQUIRED; Plaid then fires an ITEM ERROR webhook. */
+    resetLogin: (itemId: string) => run(itemId, 'reset_login'),
+    /** Asks Plaid to fire SYNC_UPDATES_AVAILABLE at plaid-webhook. */
+    fireWebhook: (itemId: string) => run(itemId, 'fire_webhook'),
+    isBusy,
+  };
 }

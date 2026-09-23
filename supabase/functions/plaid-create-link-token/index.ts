@@ -1,6 +1,6 @@
 import { CountryCode, Products } from 'npm:plaid@30';
 
-import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, jsonResponse } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, getWebhookUrl, jsonResponse } from '../_shared/lib.ts';
 
 /** Optional body. With item_id, Link opens in update mode to repair that Item. */
 type LinkTokenBody = { item_id?: string };
@@ -57,6 +57,8 @@ Deno.serve(async (req) => {
       ...(accessToken ? { access_token: accessToken } : { products: [Products.Transactions] }),
       country_codes: [CountryCode.Us],
       language: 'en',
+      // New Items register for webhooks at birth; see plaid-webhook.
+      webhook: getWebhookUrl(),
       // Required for the native Android Link SDK; must also be registered as an
       // Allowed Android package name in the Plaid dashboard (API settings).
       android_package_name: 'com.tusky.app',

@@ -6,8 +6,12 @@ A personal finance app — connect your banks, see your net worth, track spendin
 
 - ✅ **Phase 0** — Expo app scaffold, Tusky theme (forest-ink/tusk-ivory, Fraunces + Figtree + IBM Plex Mono), auth, 5-tab shell
 - ✅ **Phase 1** — Plaid Link end-to-end: connect a sandbox bank, accounts + net worth on Home
-- 🚧 **Phase 2 (next)** — transaction sync (cursor-based), categorized feed, webhook-driven updates
-- Planned: budgets, cash flow reports, net worth history, recurring transactions
+- ✅ **Phase 2** — transaction sync (cursor-based), categorized feed with manual overrides, reconnect via Link update mode
+- ✅ **Phase 2.5** — Plaid webhooks: verified public endpoint, background sync on new data, broken logins flagged without a manual sync
+- ✅ **Phase 3** — budgets per category, spending-by-category donut and cash-flow reports
+- ✅ **Phase 4** — net worth history: balances refresh on every sync, daily snapshots, trend line on Home
+- 🚧 **Phase 5 (next)** — recurring transactions and bills radar
+- Planned: category groups, hide/unhide toggle in the app
 
 ## Architecture
 

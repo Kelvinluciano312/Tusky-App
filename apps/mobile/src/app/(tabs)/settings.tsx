@@ -4,9 +4,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
-import { Radius, Spacing } from '@/constants/theme';
+import { Card } from '@/components/ui/card';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useConnectBank, useSandboxResetLogin } from '@/lib/plaid';
+import { useConnectBank, useSandboxTools } from '@/lib/plaid';
 import { usePlaidItems } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { supabase } from '@/lib/supabase';
@@ -17,16 +18,7 @@ export default function SettingsScreen() {
   const { session } = useSession();
   const { data: items = [] } = usePlaidItems();
   const { connectBank, isConnecting, error } = useConnectBank();
-  const { resetLogin, isResetting } = useSandboxResetLogin();
-
-  const card = {
-    backgroundColor: colors.surface,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: Spacing.lg,
-    gap: Spacing.sm,
-  } as const;
+  const { resetLogin, fireWebhook, isBusy } = useSandboxTools();
 
   return (
     <ScrollView
@@ -34,7 +26,7 @@ export default function SettingsScreen() {
       contentContainerStyle={{ padding: Spacing.md, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}>
       <AppText variant="display">Settings</AppText>
 
-      <View style={card}>
+      <Card style={{ gap: Spacing.sm }}>
         <AppText variant="section" tone="dim">
           Connections
         </AppText>
@@ -73,15 +65,25 @@ export default function SettingsScreen() {
                   style={{ paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md }}
                 />
               ) : __DEV__ ? (
-                /* Dev builds only — never ships. Forces a real
-                   ITEM_LOGIN_REQUIRED so the reconnect path is testable. */
-                <Button
-                  title="Break (dev)"
-                  variant="ghost"
-                  loading={isResetting}
-                  onPress={() => resetLogin(item.id)}
-                  style={{ paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md }}
-                />
+                /* Dev builds only — never ships. Break forces a real
+                   ITEM_LOGIN_REQUIRED (reconnect path); Webhook makes Plaid fire
+                   SYNC_UPDATES_AVAILABLE (webhook sync path). */
+                <View style={{ flexDirection: 'row' }}>
+                  <Button
+                    title="Webhook (dev)"
+                    variant="ghost"
+                    loading={isBusy}
+                    onPress={() => fireWebhook(item.id)}
+                    style={{ paddingVertical: Spacing.sm, paddingHorizontal: Spacing.sm }}
+                  />
+                  <Button
+                    title="Break (dev)"
+                    variant="ghost"
+                    loading={isBusy}
+                    onPress={() => resetLogin(item.id)}
+                    style={{ paddingVertical: Spacing.sm, paddingHorizontal: Spacing.sm }}
+                  />
+                </View>
               ) : null}
             </View>
           ))
@@ -99,9 +101,9 @@ export default function SettingsScreen() {
           onPress={() => connectBank()}
           loading={isConnecting}
         />
-      </View>
+      </Card>
 
-      <View style={card}>
+      <Card style={{ gap: Spacing.sm }}>
         <AppText variant="section" tone="dim">
           Account
         </AppText>
@@ -113,7 +115,7 @@ export default function SettingsScreen() {
             await supabase.auth.signOut();
           }}
         />
-      </View>
+      </Card>
 
       <AppText variant="caption" tone="dim" style={{ textAlign: 'center' }}>
         Tusky v0.1.0 · Plaid Sandbox
