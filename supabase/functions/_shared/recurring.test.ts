@@ -192,3 +192,8 @@ Deno.test('ignoredCategoryIds is every transfer except card payments', () => {
   // A card payment is a transfer for spending, but still a bill with a due date.
   assertEquals(ids.sort(), ['c-accounts', 'g-transfer']);
 });
+
+Deno.test('ignoredCategoryIds includes a custom transfer category', () => {
+  // Custom rows have no slug; sync now passes the owner's transfer children in.
+  assertEquals(ignoredCategoryIds([{ id: 'u-venmo', kind: 'transfer', slug: null }]), ['u-venmo']);
+});
