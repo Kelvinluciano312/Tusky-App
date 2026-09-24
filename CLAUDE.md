@@ -3,8 +3,8 @@
 Monarch-Money-style personal finance mobile app. Expo (React Native) + Supabase + Plaid Sandbox.
 Approved plan/phases: see README Status (Phases 0–6 done; Phase 6's final step, the Plaid key switch, waits
 on Pedro's go-ahead — see its spec, `docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md`).
-Next: Phase 7 — categories — `docs/superpowers/specs/2026-09-24-phase-7-categories-design.md` (awaiting review;
-built as milestones 7a/7b/7c). Latest handoff: `docs/superpowers/plans/2026-09-24-phase-6-handoff.md`; specs in `docs/superpowers/specs/`.
+Now: Phase 7 — categories — `docs/superpowers/specs/2026-09-24-phase-7-categories-design.md`, built as milestones
+7a/7b/7c: 7a is built, 7b is next. Latest handoff: `docs/superpowers/plans/2026-09-24-phase-7a-handoff.md`; specs in `docs/superpowers/specs/`.
 
 ## Layout
 
@@ -17,6 +17,7 @@ built as milestones 7a/7b/7c). Latest handoff: `docs/superpowers/plans/2026-09-2
 ```sh
 # app (run inside apps/mobile)
 npm run typecheck && npx expo lint      # run both before committing
+npm test                                # app pure-logic tests (node --test, no deps)
 npx expo run:android --device Pixel_7   # emulator (x86_64); omit --device for default target
 # backend (repo root; per machine, run `supabase login` + `link` once — see "First run")
 npx supabase db push
@@ -110,6 +111,21 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
 - Duplicate links are refused in `plaid-exchange-token` **before** the token exchange (409
   `duplicate`), by `isDuplicateLink`: same institution plus an account with the same name and mask on a
   live Item. Archived Items never block a relink.
+- **Categories are two levels** (Phase 7a). The 16 original rows are the groups (`parent_id` null) and
+  keep their ids; 61 children hang off them. `categories_enforce_tree` allows a parent only if it is a
+  built-in group, and copies the group's `kind` onto the child. Sync resolves **manual > rule (7c) >
+  Plaid detailed (`plaid_detailed_map`) > Plaid primary (`plaid_category_map`, whose entries are
+  groups) > uncategorized**: `resolveCategoryId` in `_shared/categorize.ts`, with `pickCategoryId` on
+  top. `credit_card_payment` is transfer-kind, so it leaves spending and cash flow, but
+  `ignoredCategoryIds` keeps it in recurring detection: a card bill still has a due date. Rollups go
+  through `lib/categories.ts` (`groupIdOf`, `rollupByGroup`), and a group and its children are never
+  budgeted at once (`budgetsReplacedBy`). `transactions.merchant_key` is a generated column, the SQL
+  twin of `normalizeMerchant`. Change both together, or rules and renames (7c) stop matching.
+- **App pure logic is tested with `npm test`** (`node --test src/lib/*.test.ts`; Node strips the types).
+  A module under test may import other modules only as `import type`, or at runtime by relative
+  `./x.ts` path (`allowImportingTsExtensions` is on). A `@/` alias or a React Native import breaks
+  the run. TS 6 no longer auto-includes `@types`, so each test file starts with
+  `/// <reference types="node" />`.
 - Recurring streams are derived: detection (`_shared/recurring.ts`) runs at the end of every sync and
   owns every column except `dismissed`, which only the user writes. Never add `dismissed` to its
   upsert payload.

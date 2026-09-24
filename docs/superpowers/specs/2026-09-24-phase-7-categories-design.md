@@ -1,6 +1,6 @@
 # Phase 7 — Categories: groups, custom categories, rules, merchant renaming (design)
 
-Status: design approved in plan mode 2026-09-24; **spec awaiting Pedro's review**. Build it in three
+Status: approved 2026-09-24. **7a built** (handoff: `docs/superpowers/plans/2026-09-24-phase-7a-handoff.md`); 7b and 7c next. Build it in three
 milestones — 7a, 7b, 7c — each with its own implementation plan (`superpowers:writing-plans`) and its
 own PR.
 
