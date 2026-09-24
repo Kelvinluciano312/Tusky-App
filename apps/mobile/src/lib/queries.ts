@@ -138,6 +138,8 @@ export type Category = {
   icon: string;
   color: string;
   sort_order: number;
+  /** null for a group; a child's group otherwise. */
+  parent_id: string | null;
 };
 
 export function useCategories() {
@@ -147,7 +149,7 @@ export function useCategories() {
     queryFn: async (): Promise<Category[]> => {
       const { data, error } = await supabase
         .from('categories')
-        .select('id, slug, name, kind, icon, color, sort_order')
+        .select('id, slug, name, kind, icon, color, sort_order, parent_id')
         .order('sort_order', { ascending: true });
       if (error) throw error;
       return data;

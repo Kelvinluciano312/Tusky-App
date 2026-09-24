@@ -214,6 +214,15 @@ const streamKey = (s: { account_id: string; direction: Direction; merchant_key: 
   `${s.account_id}|${s.direction}|${s.merchant_key}`;
 
 /**
+ * The categories detection ignores: every transfer — money moving between
+ * your own accounts is not a bill — except Credit Card Payment, which is a
+ * transfer for spending purposes but still a recurring bill with a due date.
+ */
+export function ignoredCategoryIds(categories: { id: string; kind: string; slug: string | null }[]): string[] {
+  return categories.filter((c) => c.kind === 'transfer' && c.slug !== 'credit_card_payment').map((c) => c.id);
+}
+
+/**
  * Posted transactions → recurring streams, one per (account, direction,
  * merchant). Transfer-kind categories are excluded by OUR category_id, so a
  * manual recategorization to Transfer takes a stream out at the next sync.

@@ -3,7 +3,7 @@ import type { PlaidApi } from 'npm:plaid@30';
 
 import { buildSnapshotRows, syncAccounts } from './accounts.ts';
 import { type CategoryMap, pickCategoryId, resolveCategoryId, toSignedAmount } from './categorize.ts';
-import { refreshRecurring } from './recurring.ts';
+import { ignoredCategoryIds, refreshRecurring } from './recurring.ts';
 
 const PAGE_SIZE = 500;
 const FIRST_SYNC_DAYS = 90;
@@ -28,8 +28,9 @@ export type SyncContext = {
   admin: SupabaseClient;
   plaid: PlaidApi;
   categoryMap: CategoryMap;
+  detailedMap: CategoryMap;
   fallbackId: string;
-  /** Categories of kind 'transfer' — recurring detection ignores them. */
+  /** Categories recurring detection ignores (transfers, except card payments). */
   transferCategoryIds: string[];
 };
 
@@ -54,22 +55,31 @@ export async function loadSyncContext(admin: SupabaseClient, plaid: PlaidApi): P
     (mapRows ?? []).map((r) => [r.pfc_primary, r.category_id]),
   );
 
+  const { data: detailedRows, error: detailedError } = await admin
+    .from('plaid_detailed_map')
+    .select('pfc_detailed, category_id');
+  if (detailedError) throw new Error(`failed to load detailed map: ${detailedError.message}`);
+  const detailedMap: CategoryMap = Object.fromEntries(
+    (detailedRows ?? []).map((r) => [r.pfc_detailed, r.category_id]),
+  );
+
   const { data: fallback, error: fallbackError } = await admin
     .from('categories').select('id').eq('slug', 'uncategorized').single();
   if (fallbackError || !fallback) {
     throw new Error(`uncategorized category missing: ${fallbackError?.message ?? 'no row'}`);
   }
 
-  const { data: transferRows, error: transferError } = await admin
-    .from('categories').select('id').eq('kind', 'transfer');
-  if (transferError) throw new Error(`failed to load transfer categories: ${transferError.message}`);
+  const { data: categoryRows, error: categoryError } = await admin
+    .from('categories').select('id, kind, slug');
+  if (categoryError) throw new Error(`failed to load categories: ${categoryError.message}`);
 
   return {
     admin,
     plaid,
     categoryMap,
+    detailedMap,
     fallbackId: fallback.id,
-    transferCategoryIds: (transferRows ?? []).map((r) => r.id),
+    transferCategoryIds: ignoredCategoryIds(categoryRows ?? []),
   };
 }
 
@@ -104,7 +114,7 @@ export async function syncItem(
   ctx: SyncContext,
   item: { id: string; user_id: string },
 ): Promise<ItemResult> {
-  const { admin, plaid, categoryMap, fallbackId, transferCategoryIds } = ctx;
+  const { admin, plaid, categoryMap, detailedMap, fallbackId, transferCategoryIds } = ctx;
   const base: ItemResult = { item_id: item.id, status: 'synced', added: 0, modified: 0, removed: 0 };
   let result: ItemResult = base;
 
@@ -207,7 +217,14 @@ export async function syncItem(
       const rows = upserts
         .filter((t) => accountByPlaidId.has(t.account_id))
         .map((t) => {
-          const incoming = resolveCategoryId(categoryMap, t.personal_finance_category?.primary, fallbackId);
+          const incoming = resolveCategoryId(
+            {
+              detailed: t.personal_finance_category?.detailed,
+              primary: t.personal_finance_category?.primary,
+            },
+            { detailed: detailedMap, primary: categoryMap },
+            fallbackId,
+          );
           const existing = existingByPlaidId.get(t.transaction_id) ?? null;
           return {
             user_id: item.user_id,
@@ -216,6 +233,7 @@ export async function syncItem(
             plaid_transaction_id: t.transaction_id,
             name: t.name,
             merchant_name: t.merchant_name ?? null,
+            merchant_entity_id: t.merchant_entity_id ?? null,
             logo_url: t.logo_url ?? null,
             amount: toSignedAmount(t.amount),
             iso_currency_code: t.iso_currency_code ?? 'USD',

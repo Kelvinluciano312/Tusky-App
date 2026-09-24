@@ -12,7 +12,10 @@ A personal finance app — connect your banks, see your net worth, track spendin
 - ✅ **Phase 4** — net worth history: balances refresh on every sync, daily snapshots, trend line on Home
 - ✅ **Phase 5** — recurring transactions and bills radar: detected bills, subscriptions and paychecks, Upcoming on Home, price-change flags
 - ✅ **Phase 6** — connections & control: disconnect a bank (keep its history or delete it), hide/unhide accounts, duplicate connections refused, database grants closed. Its last step, the Plaid key switch, waits on a go-ahead — [spec](docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md)
-- Planned: a categories phase — category groups, custom categories and rules, merchant renaming
+- 🚧 **Phase 7** — categories, in three milestones — [spec](docs/superpowers/specs/2026-09-24-phase-7-categories-design.md)
+  - ✅ **7a** — the 16 categories become groups over 61 finer ones from Plaid's detailed codes; budgets on a group or a category; Reports by group with a drill-in; card payments are transfers but stay on the bills radar
+  - Next: **7b** custom categories and hide/rename/recolour built-ins, then **7c** merchant rules and renaming
+- Planned: community categorization (consent-based learning from users' category choices)
 
 ## Architecture
 

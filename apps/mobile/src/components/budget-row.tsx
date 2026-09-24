@@ -12,10 +12,14 @@ type Props = {
   spent: number;
   /** Undefined for a category with no budget set. */
   budget?: number;
+  /** Replaces category.name, e.g. to name a category's group. */
+  label?: string;
+  /** A category listed under its group. */
+  indent?: boolean;
   onPress: () => void;
 };
 
-export function BudgetRow({ category, spent, budget, onPress }: Props) {
+export function BudgetRow({ category, spent, budget, label, indent = false, onPress }: Props) {
   const colors = useTheme();
   const over = budget !== undefined && spent > budget;
   // Clamped for the bar only: `spent` itself can go negative in a month where
@@ -34,6 +38,7 @@ export function BudgetRow({ category, spent, budget, onPress }: Props) {
         gap: Spacing.sm,
         paddingVertical: Spacing.sm + 2,
         paddingHorizontal: Spacing.xs,
+        paddingLeft: indent ? Spacing.lg + Spacing.xs : Spacing.xs,
         borderRadius: Radius.md,
         backgroundColor: pressed ? colors.elevated : 'transparent',
       })}>
@@ -51,7 +56,7 @@ export function BudgetRow({ category, spent, budget, onPress }: Props) {
         </View>
 
         <AppText variant="label" style={{ flex: 1 }}>
-          {category.name}
+          {label ?? category.name}
         </AppText>
 
         <View style={{ alignItems: 'flex-end' }}>

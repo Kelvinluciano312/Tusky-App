@@ -2,20 +2,43 @@ import { assertEquals } from 'jsr:@std/assert';
 
 import { pickCategoryId, resolveCategoryId, toSignedAmount } from './categorize.ts';
 
-const MAP = { FOOD_AND_DRINK: 'cat-food', INCOME: 'cat-income' };
+const MAPS = {
+  detailed: { FOOD_AND_DRINK_COFFEE: 'cat-coffee' },
+  primary: { FOOD_AND_DRINK: 'cat-food', INCOME: 'cat-income' },
+};
 const FALLBACK = 'cat-uncategorized';
 
-Deno.test('resolveCategoryId maps a known PFC primary', () => {
-  assertEquals(resolveCategoryId(MAP, 'FOOD_AND_DRINK', FALLBACK), 'cat-food');
+Deno.test('resolveCategoryId prefers the detailed code', () => {
+  assertEquals(
+    resolveCategoryId({ detailed: 'FOOD_AND_DRINK_COFFEE', primary: 'FOOD_AND_DRINK' }, MAPS, FALLBACK),
+    'cat-coffee',
+  );
 });
 
-Deno.test('resolveCategoryId falls back for an unknown primary', () => {
-  assertEquals(resolveCategoryId(MAP, 'CRYPTO_MOONSHOTS', FALLBACK), FALLBACK);
+Deno.test('resolveCategoryId falls to the primary for an unmapped detailed code', () => {
+  // e.g. FOOD_AND_DRINK_OTHER_FOOD_AND_DRINK lands on the group itself
+  assertEquals(
+    resolveCategoryId({ detailed: 'FOOD_AND_DRINK_VENDING_MACHINES', primary: 'FOOD_AND_DRINK' }, MAPS, FALLBACK),
+    'cat-food',
+  );
 });
 
-Deno.test('resolveCategoryId falls back for null/undefined', () => {
-  assertEquals(resolveCategoryId(MAP, null, FALLBACK), FALLBACK);
-  assertEquals(resolveCategoryId(MAP, undefined, FALLBACK), FALLBACK);
+Deno.test('resolveCategoryId falls to the primary when there is no detailed code', () => {
+  // Older rows can have pfc_detailed null.
+  assertEquals(resolveCategoryId({ detailed: null, primary: 'INCOME' }, MAPS, FALLBACK), 'cat-income');
+});
+
+Deno.test('resolveCategoryId falls back when nothing maps', () => {
+  assertEquals(resolveCategoryId({ primary: 'CRYPTO_MOONSHOTS' }, MAPS, FALLBACK), FALLBACK);
+  assertEquals(resolveCategoryId({}, MAPS, FALLBACK), FALLBACK);
+  assertEquals(resolveCategoryId({ detailed: undefined, primary: undefined }, MAPS, FALLBACK), FALLBACK);
+});
+
+Deno.test('resolveCategoryId puts a merchant rule above Plaid', () => {
+  assertEquals(
+    resolveCategoryId({ rule: 'cat-rule', detailed: 'FOOD_AND_DRINK_COFFEE', primary: 'FOOD_AND_DRINK' }, MAPS, FALLBACK),
+    'cat-rule',
+  );
 });
 
 Deno.test('pickCategoryId keeps a manual override', () => {

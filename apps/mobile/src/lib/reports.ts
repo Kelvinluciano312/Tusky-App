@@ -1,9 +1,11 @@
-import type { Category, MonthlyTotal } from '@/lib/queries';
+import type { MonthlyTotal } from '@/lib/queries';
+
+import { type CategoriesById, groupIdOf } from './categories.ts';
+
+export type { CategoriesById };
 
 /** Rows from the view carry no category when category_id is null. */
 const NO_CATEGORY = '__none';
-
-export type CategoriesById = Map<string, Category>;
 
 /**
  * The one sign flip in the app.
@@ -88,10 +90,10 @@ export type CategorySlice = {
 };
 
 /**
- * Expense categories for one month, biggest first, ready for the donut and the
- * list beneath it. Income and transfers are dropped, as are categories that came
- * out non-positive (a month of pure refunds), which would otherwise draw a
- * negative arc.
+ * Expense groups for one month, biggest first, ready for the donut and the list
+ * beneath it: each group's own rows plus its children's. Income and transfers
+ * are dropped, as are groups that came out non-positive (a month of pure
+ * refunds), which would otherwise draw a negative arc.
  */
 export function buildCategorySlices(
   rows: MonthlyTotal[],
@@ -102,7 +104,7 @@ export function buildCategorySlices(
   for (const row of rows) {
     const category = row.category_id ? categoriesById.get(row.category_id) : undefined;
     if (category && category.kind !== 'expense') continue;
-    const key = row.category_id ?? NO_CATEGORY;
+    const key = row.category_id ? groupIdOf(row.category_id, categoriesById) : NO_CATEGORY;
     spentById.set(key, (spentById.get(key) ?? 0) + spentFor(row.total));
   }
 
@@ -123,4 +125,42 @@ export function buildCategorySlices(
 
   const total = slices.reduce((sum, slice) => sum + slice.spent, 0);
   return total === 0 ? slices : slices.map((slice) => ({ ...slice, share: slice.spent / total }));
+}
+
+/**
+ * One group's spend split by category, for the Reports drill-in: its children,
+ * plus the group itself — "(general)" — for rows categorized at group level,
+ * which manual overrides from before Phase 7 and unmapped Plaid codes both are.
+ * Biggest first, and non-positive entries (a month of refunds) are dropped, as
+ * in the donut; shares are of what remains.
+ */
+export function buildGroupBreakdown(
+  rows: MonthlyTotal[],
+  groupId: string,
+  categoriesById: CategoriesById,
+): CategorySlice[] {
+  const spentById = new Map<string, number>();
+  for (const row of rows) {
+    if (!row.category_id || groupIdOf(row.category_id, categoriesById) !== groupId) continue;
+    spentById.set(row.category_id, (spentById.get(row.category_id) ?? 0) + spentFor(row.total));
+  }
+
+  const parts = [...spentById]
+    .filter(([, spent]) => spent > 0)
+    .map(([id, spent]) => {
+      const category = categoriesById.get(id);
+      const name = category?.name ?? 'Uncategorized';
+      return {
+        id,
+        name: id === groupId ? `${name} (general)` : name,
+        color: category?.color ?? '#94A198',
+        icon: category?.icon ?? 'CircleDashed',
+        spent,
+        share: 0,
+      };
+    })
+    .sort((a, b) => b.spent - a.spent);
+
+  const total = parts.reduce((sum, part) => sum + part.spent, 0);
+  return total === 0 ? parts : parts.map((part) => ({ ...part, share: part.spent / total }));
 }
