@@ -63,3 +63,17 @@ Deno.test('buildSnapshotRows keeps a negative balance signed as stored', () => {
   const rows = buildSnapshotRows([{ id: 'a', current_balance: -65262 }], USER);
   assertEquals(rows[0].balance, -65262);
 });
+
+Deno.test('buildSnapshotRows skips accounts of an archived bank', () => {
+  // A disconnected bank's balance is frozen. Carrying it forward would count it
+  // in today's net worth, though Home no longer does. Its past rows remain.
+  const rows = buildSnapshotRows(
+    [
+      { id: 'a', current_balance: 1 },
+      { id: 'b', current_balance: 2, archived: true },
+      { id: 'c', current_balance: 3, archived: false },
+    ],
+    USER,
+  );
+  assertEquals(rows.map((r) => r.account_id), ['a', 'c']);
+});

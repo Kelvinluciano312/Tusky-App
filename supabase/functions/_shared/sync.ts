@@ -34,7 +34,7 @@ export type SyncContext = {
 };
 
 /** Plaid SDK errors carry the useful detail on response.data. */
-function describeError(err: unknown): string {
+export function describeError(err: unknown): string {
   const data = (err as { response?: { data?: { error_code?: string; error_message?: string } } })
     ?.response?.data;
   if (data?.error_code) return `${data.error_code}: ${data.error_message ?? ''}`.trim();
@@ -74,6 +74,28 @@ export async function loadSyncContext(admin: SupabaseClient, plaid: PlaidApi): P
 }
 
 /**
+ * Claim an Item for exclusive work — a sync or a disconnect. Atomic, survives
+ * across HTTP calls, and self-heals when stale. Only a live Item can be
+ * claimed, whatever list the caller loaded: a sync that finished after an
+ * archive would otherwise write rows and set status back to 'active'.
+ */
+export async function claimItem(
+  admin: SupabaseClient,
+  itemId: string,
+): Promise<{ id: string; sync_cursor: string | null } | null> {
+  const staleBefore = new Date(Date.now() - STALE_CLAIM_MS).toISOString();
+  const { data } = await admin
+    .from('plaid_items')
+    .update({ sync_locked_at: new Date().toISOString() })
+    .eq('id', itemId)
+    .in('status', ['active', 'login_required'])
+    .or(`sync_locked_at.is.null,sync_locked_at.lt.${staleBefore}`)
+    .select('id, sync_cursor')
+    .maybeSingle();
+  return data;
+}
+
+/**
  * Sync one Item. Shared by the user-triggered sync and the Plaid webhook, so
  * both paths claim, retry, preserve manual categories and advance the cursor
  * the same way. Never throws: failures come back as an ItemResult.
@@ -86,16 +108,7 @@ export async function syncItem(
   const base: ItemResult = { item_id: item.id, status: 'synced', added: 0, modified: 0, removed: 0 };
   let result: ItemResult = base;
 
-  // Claim the item: atomic, survives across HTTP calls, self-heals when stale.
-  const staleBefore = new Date(Date.now() - STALE_CLAIM_MS).toISOString();
-  const { data: claimed } = await admin
-    .from('plaid_items')
-    .update({ sync_locked_at: new Date().toISOString() })
-    .eq('id', item.id)
-    .or(`sync_locked_at.is.null,sync_locked_at.lt.${staleBefore}`)
-    .select('id, sync_cursor')
-    .maybeSingle();
-
+  const claimed = await claimItem(admin, item.id);
   if (!claimed) return { ...base, status: 'skipped' };
 
   try {
@@ -235,11 +248,14 @@ export async function syncItem(
 
     // Cursor last: a crash before here means the next run re-applies the same
     // window idempotently rather than skipping it. A successful sync also
-    // clears a stale login_required — proof the credentials work again.
+    // clears a stale login_required — proof the credentials work again. Never
+    // an archived Item's: a sync that outlived the stale window must not
+    // un-archive a bank disconnected meanwhile.
     await admin
       .from('plaid_items')
       .update({ sync_cursor: finalCursor, status: 'active' })
-      .eq('id', item.id);
+      .eq('id', item.id)
+      .in('status', ['active', 'login_required']);
 
     result = { ...base, added: added.length, modified: modified.length, removed: removed.length };
 
@@ -254,10 +270,19 @@ export async function syncItem(
     // chart would sawtooth. An Item stuck on login_required keeps contributing
     // its last known balance, which is a deliberate carry-forward — stale, but
     // the alternative is the sawtooth. Settings' Reconnect prompt is the fix.
+    // An archived bank is different — disconnected, not stale — and
+    // buildSnapshotRows skips it.
     try {
       const { data: allAccounts } = await admin
-        .from('accounts').select('id, current_balance').eq('user_id', item.user_id);
-      const snapshots = buildSnapshotRows(allAccounts ?? [], item.user_id);
+        .from('accounts').select('id, current_balance, plaid_items(status)').eq('user_id', item.user_id);
+      const snapshots = buildSnapshotRows(
+        (allAccounts ?? []).map((a) => ({
+          id: a.id,
+          current_balance: a.current_balance,
+          archived: (a.plaid_items as { status?: string } | null)?.status === 'archived',
+        })),
+        item.user_id,
+      );
       if (snapshots.length > 0) {
         const { error } = await admin
           .from('balance_snapshots').upsert(snapshots, { onConflict: 'account_id,date' });
