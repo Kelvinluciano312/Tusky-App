@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, Modal, Pressable, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
@@ -113,106 +113,110 @@ export function CategorySheet({ target, onClose }: Props) {
 
   return (
     <Modal visible={target !== null} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={onClose} />
-      <View
-        style={{
-          backgroundColor: colors.surface,
-          borderTopLeftRadius: Radius.xl,
-          borderTopRightRadius: Radius.xl,
-          paddingTop: Spacing.lg,
-          paddingHorizontal: Spacing.md,
-          paddingBottom: insets.bottom + Spacing.md,
-          gap: Spacing.md,
-        }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm + 2 }}>
-          <View
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: Radius.full,
-              backgroundColor: colors.elevated,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-            <CategoryIcon name={icon} size={17} color={color} />
+      {/* Padding on Android too: a Modal is its own window, which the activity's
+          resize-for-keyboard never reaches, so the keyboard would cover the sheet. */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={onClose} />
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            borderTopLeftRadius: Radius.xl,
+            borderTopRightRadius: Radius.xl,
+            paddingTop: Spacing.lg,
+            paddingHorizontal: Spacing.md,
+            paddingBottom: insets.bottom + Spacing.md,
+            gap: Spacing.md,
+          }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm + 2 }}>
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: Radius.full,
+                backgroundColor: colors.elevated,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+              <CategoryIcon name={icon} size={17} color={color} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <AppText variant="title">{target?.mode === 'add' ? 'New category' : (editing?.name ?? '')}</AppText>
+              {group ? (
+                <AppText variant="caption" tone="dim">
+                  In {group.name}
+                </AppText>
+              ) : null}
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <AppText variant="title">{target?.mode === 'add' ? 'New category' : (editing?.name ?? '')}</AppText>
-            {group ? (
-              <AppText variant="caption" tone="dim">
-                In {group.name}
+
+          <TextField label="Name" value={name} onChangeText={setName} maxLength={40} placeholder="e.g. Date night" />
+
+          {custom ? (
+            <View style={{ gap: Spacing.xs + 2 }}>
+              <AppText variant="label" tone="dim">
+                Icon
               </AppText>
-            ) : null}
-          </View>
-        </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm }}>
+                {CUSTOM_ICONS.map((iconName) => (
+                  <Pressable
+                    key={iconName}
+                    accessibilityLabel={`Icon ${iconName}`}
+                    onPress={() => setIcon(iconName)}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: Radius.full,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: icon === iconName ? colors.elevated : 'transparent',
+                      borderWidth: icon === iconName ? 1 : 0,
+                      borderColor: colors.brand,
+                    }}>
+                    <CategoryIcon name={iconName} size={17} color={icon === iconName ? color : colors.textDim} />
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
 
-        <TextField label="Name" value={name} onChangeText={setName} maxLength={40} placeholder="e.g. Date night" />
-
-        {custom ? (
           <View style={{ gap: Spacing.xs + 2 }}>
             <AppText variant="label" tone="dim">
-              Icon
+              Colour
             </AppText>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm }}>
-              {CUSTOM_ICONS.map((iconName) => (
+              {SWATCHES.map((swatch) => (
                 <Pressable
-                  key={iconName}
-                  accessibilityLabel={`Icon ${iconName}`}
-                  onPress={() => setIcon(iconName)}
+                  key={swatch}
+                  accessibilityLabel={`Colour ${swatch}`}
+                  onPress={() => setColor(swatch)}
                   style={{
-                    width: 36,
-                    height: 36,
+                    width: 30,
+                    height: 30,
                     borderRadius: Radius.full,
+                    backgroundColor: swatch,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    backgroundColor: icon === iconName ? colors.elevated : 'transparent',
-                    borderWidth: icon === iconName ? 1 : 0,
-                    borderColor: colors.brand,
                   }}>
-                  <CategoryIcon name={iconName} size={17} color={icon === iconName ? color : colors.textDim} />
+                  {color === swatch ? <Check size={16} color={colors.bg} /> : null}
                 </Pressable>
               ))}
             </View>
           </View>
-        ) : null}
 
-        <View style={{ gap: Spacing.xs + 2 }}>
-          <AppText variant="label" tone="dim">
-            Colour
-          </AppText>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm }}>
-            {SWATCHES.map((swatch) => (
-              <Pressable
-                key={swatch}
-                accessibilityLabel={`Colour ${swatch}`}
-                onPress={() => setColor(swatch)}
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: Radius.full,
-                  backgroundColor: swatch,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}>
-                {color === swatch ? <Check size={16} color={colors.bg} /> : null}
-              </Pressable>
-            ))}
-          </View>
+          <Button
+            title={target?.mode === 'add' ? 'Add category' : 'Save'}
+            disabled={!valid}
+            loading={busy}
+            onPress={() => void save()}
+          />
+          {editing && !editing.is_custom && editing.overridden ? (
+            <Button title="Reset to default" variant="ghost" onPress={() => void reset()} />
+          ) : null}
+          {editing?.is_custom ? (
+            <Button title="Delete category" variant="ghost" onPress={() => void confirmDelete()} />
+          ) : null}
         </View>
-
-        <Button
-          title={target?.mode === 'add' ? 'Add category' : 'Save'}
-          disabled={!valid}
-          loading={busy}
-          onPress={() => void save()}
-        />
-        {editing && !editing.is_custom && editing.overridden ? (
-          <Button title="Reset to default" variant="ghost" onPress={() => void reset()} />
-        ) : null}
-        {editing?.is_custom ? (
-          <Button title="Delete category" variant="ghost" onPress={() => void confirmDelete()} />
-        ) : null}
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
