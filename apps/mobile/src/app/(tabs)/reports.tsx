@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CashFlowBars } from '@/components/charts/cash-flow-bars';
@@ -13,7 +13,7 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { currentMonthStart, monthsEndingAt } from '@/lib/month';
 import { useCategories, useMonthlyTotals } from '@/lib/queries';
-import { buildCashFlow, buildCategorySlices } from '@/lib/reports';
+import { buildCashFlow, buildCategorySlices, buildGroupBreakdown } from '@/lib/reports';
 
 /** Months of history in the cash-flow chart, and the range the donut can browse. */
 const WINDOW = 6;
@@ -40,6 +40,16 @@ export default function ReportsScreen() {
   const slices = useMemo(
     () => buildCategorySlices(totals.filter((t) => t.month === month), categoriesById),
     [totals, month, categoriesById],
+  );
+  // One group open at a time; it stays open across months and simply shows
+  // nothing for a month where that group had no spend.
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const breakdown = useMemo(
+    () =>
+      openGroup
+        ? buildGroupBreakdown(totals.filter((t) => t.month === month), openGroup, categoriesById)
+        : [],
+    [openGroup, totals, month, categoriesById],
   );
 
   const selected = cashFlow.find((m) => m.month === month);
@@ -108,27 +118,65 @@ export default function ReportsScreen() {
 
                 <View style={{ gap: Spacing.sm }}>
                   {slices.map((slice) => (
-                    <View
-                      key={slice.id}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm + 2 }}>
-                      <View
-                        style={{
-                          width: 30,
-                          height: 30,
-                          borderRadius: Radius.full,
-                          backgroundColor: colors.elevated,
+                    <View key={slice.id} style={{ gap: Spacing.sm }}>
+                      <Pressable
+                        onPress={() => setOpenGroup(openGroup === slice.id ? null : slice.id)}
+                        style={({ pressed }) => ({
+                          flexDirection: 'row',
                           alignItems: 'center',
-                          justifyContent: 'center',
-                        }}>
-                        <CategoryIcon name={slice.icon} size={15} color={slice.color} />
-                      </View>
-                      <AppText variant="label" style={{ flex: 1 }}>
-                        {slice.name}
-                      </AppText>
-                      <AppText variant="caption" tone="dim" style={{ width: 42, textAlign: 'right' }}>
-                        {Math.round(slice.share * 100)}%
-                      </AppText>
-                      <Amount value={slice.spent} size={14} />
+                          gap: Spacing.sm + 2,
+                          opacity: pressed ? 0.7 : 1,
+                        })}>
+                        <View
+                          style={{
+                            width: 30,
+                            height: 30,
+                            borderRadius: Radius.full,
+                            backgroundColor: colors.elevated,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}>
+                          <CategoryIcon name={slice.icon} size={15} color={slice.color} />
+                        </View>
+                        <AppText variant="label" style={{ flex: 1 }}>
+                          {slice.name}
+                        </AppText>
+                        <AppText variant="caption" tone="dim" style={{ width: 42, textAlign: 'right' }}>
+                          {Math.round(slice.share * 100)}%
+                        </AppText>
+                        <Amount value={slice.spent} size={14} />
+                      </Pressable>
+
+                      {openGroup === slice.id
+                        ? breakdown.map((part) => (
+                            <View key={part.id} style={{ paddingLeft: 30 + Spacing.sm + 2, gap: Spacing.xs }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+                                <AppText variant="caption" style={{ flex: 1 }}>
+                                  {part.name}
+                                </AppText>
+                                <AppText variant="caption" tone="dim">
+                                  {Math.round(part.share * 100)}%
+                                </AppText>
+                                <Amount value={part.spent} size={13} />
+                              </View>
+                              <View
+                                style={{
+                                  height: 4,
+                                  borderRadius: Radius.full,
+                                  backgroundColor: colors.elevated,
+                                  overflow: 'hidden',
+                                }}>
+                                <View
+                                  style={{
+                                    width: `${part.share * 100}%`,
+                                    height: '100%',
+                                    backgroundColor: part.color,
+                                  }}
+                                />
+                              </View>
+                            </View>
+                          ))
+                        : null}
                     </View>
                   ))}
                 </View>
