@@ -1,4 +1,4 @@
-/** PFC primary (e.g. 'FOOD_AND_DRINK') -> our category UUID. */
+/** PFC code (primary or detailed) -> our category UUID. */
 export type CategoryMap = Record<string, string>;
 
 export type ExistingCategory = {
@@ -7,16 +7,23 @@ export type ExistingCategory = {
 } | null;
 
 /**
- * Resolve a Plaid PFC primary to one of our categories. An unmapped or absent
- * primary resolves to the fallback so a transaction can never be dropped.
+ * Resolve a transaction's category from its sources, in precedence order:
+ * a merchant rule (7c), then Plaid's detailed code, then Plaid's primary code
+ * (whose entries point at groups), then the fallback. The ordered sources leave
+ * a slot for a future community source between rule and detailed. A manual
+ * choice is applied on top by pickCategoryId, so it always wins.
  */
 export function resolveCategoryId(
-  map: CategoryMap,
-  pfcPrimary: string | null | undefined,
+  sources: { rule?: string | null; detailed?: string | null; primary?: string | null },
+  maps: { detailed: CategoryMap; primary: CategoryMap },
   fallbackId: string,
 ): string {
-  if (!pfcPrimary) return fallbackId;
-  return map[pfcPrimary] ?? fallbackId;
+  return (
+    sources.rule ||
+    (sources.detailed ? maps.detailed[sources.detailed] : undefined) ||
+    (sources.primary ? maps.primary[sources.primary] : undefined) ||
+    fallbackId
+  );
 }
 
 /**

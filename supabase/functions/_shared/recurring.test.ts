@@ -1,6 +1,6 @@
 import { assertEquals } from 'jsr:@std/assert';
 
-import { type DetectInput, detectStreams, normalizeMerchant, staleStreamIds } from './recurring.ts';
+import { type DetectInput, detectStreams, ignoredCategoryIds, normalizeMerchant, staleStreamIds } from './recurring.ts';
 
 const TRANSFER = 'cat-transfer';
 
@@ -179,4 +179,16 @@ Deno.test('early payments split evenly across a month boundary still predict the
     tx('2026-09-02', -1850, 'Rent'),
   ]);
   assertEquals(s.next_date, '2026-10-01');
+});
+
+Deno.test('ignoredCategoryIds is every transfer except card payments', () => {
+  const ids = ignoredCategoryIds([
+    { id: 'g-transfer', kind: 'transfer', slug: 'transfer' },
+    { id: 'c-accounts', kind: 'transfer', slug: 'account_transfers' },
+    { id: 'c-card', kind: 'transfer', slug: 'credit_card_payment' },
+    { id: 'c-coffee', kind: 'expense', slug: 'coffee_shops' },
+    { id: 'c-pay', kind: 'income', slug: 'paychecks' },
+  ]);
+  // A card payment is a transfer for spending, but still a bill with a due date.
+  assertEquals(ids.sort(), ['c-accounts', 'g-transfer']);
 });
