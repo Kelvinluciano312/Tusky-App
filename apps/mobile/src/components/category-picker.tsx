@@ -7,7 +7,7 @@ import { AppText } from '@/components/ui/app-text';
 import { CategoryIcon } from '@/components/ui/category-icon';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { buildTree, sectionsByKind } from '@/lib/categories';
+import { buildTree, pickerSections } from '@/lib/categories';
 import { type Category, useCategories } from '@/lib/queries';
 
 const KIND_LABEL: Record<Category['kind'], string> = {
@@ -27,7 +27,11 @@ export function CategoryPicker({ visible, selectedId, onSelect, onClose }: Props
   const colors = useTheme();
   const insets = useSafeAreaInsets();
   const { data: categories = [] } = useCategories();
-  const sections = useMemo(() => sectionsByKind(buildTree(categories)), [categories]);
+  // Hidden categories leave the picker, but the current one stays so its check shows.
+  const sections = useMemo(
+    () => pickerSections(buildTree(categories), { selectedId }),
+    [categories, selectedId],
+  );
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>

@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { buildTree, budgetsReplacedBy, rollupByGroup } from '@/lib/categories';
+import { buildTree, budgetsReplacedBy, rollupByGroup, withoutHidden } from '@/lib/categories';
 import { currentMonthStart } from '@/lib/month';
 import {
   type Category,
@@ -54,6 +54,9 @@ export default function BudgetsScreen() {
     [categories, spentByGroup],
   );
   const groupById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups]);
+  // Suggestions skip what the user hid. Existing budgets still show, and a
+  // budgeted group's breakdown still lists every category with spend.
+  const discoverable = useMemo(() => withoutHidden(groups, null), [groups]);
 
   // What a budget's bar measures: a group budget covers its own rows plus its
   // children's, a category budget just its own. No overlap exists, because
@@ -175,7 +178,7 @@ export default function BudgetsScreen() {
               <AppText variant="caption" tone="dim" style={sectionLabel}>
                 Not budgeted
               </AppText>
-              {groups
+              {discoverable
                 // A group with its own budget covers its children: none of them is budgetable.
                 .filter((group) => !budgetByCategory.has(group.id))
                 .filter((group) => showAll || (spentByGroup.get(group.id) ?? 0) !== 0)
