@@ -19,6 +19,7 @@ export type Account = {
 const ACCOUNT_COLUMNS =
   'id, item_id, name, official_name, mask, type, subtype, current_balance, available_balance, iso_currency_code, hidden';
 
+
 /**
  * Home's accounts. A disconnected (archived) bank's accounts are excluded in
  * SQL rather than filtered here, so the hero never counts them while the
@@ -29,11 +30,16 @@ export function useAccounts() {
   return useQuery({
     queryKey: ['accounts'],
     queryFn: async (): Promise<Account[]> => {
+      // A bank's accounts arrive in one upsert and share a created_at. Ties come
+      // back in physical order, and an UPDATE moves the row — so without the
+      // tiebreakers, hiding an account made it jump to the top of the list.
       const { data, error } = await supabase
         .from('accounts')
         .select(`${ACCOUNT_COLUMNS}, plaid_items!inner(status)`)
         .neq('plaid_items.status', 'archived')
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .order('name', { ascending: true })
+        .order('id', { ascending: true });
       if (error) throw error;
       return data;
     },
@@ -49,11 +55,14 @@ export function useItemAccounts(itemId: string) {
   return useQuery({
     queryKey: ['accounts', itemId],
     queryFn: async (): Promise<Account[]> => {
+      // Same tiebreakers as useAccounts, for the same reason.
       const { data, error } = await supabase
         .from('accounts')
         .select(ACCOUNT_COLUMNS)
         .eq('item_id', itemId)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .order('name', { ascending: true })
+        .order('id', { ascending: true });
       if (error) throw error;
       return data;
     },
