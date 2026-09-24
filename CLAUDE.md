@@ -1,9 +1,9 @@
 # Tusky — agent notes
 
 Monarch-Money-style personal finance mobile app. Expo (React Native) + Supabase + Plaid Sandbox.
-Approved plan/phases: see README Status (Phases 0–5 done; Phase 6 — connections & control — specced, not
-started: `docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md`).
-Latest handoff: `docs/superpowers/plans/2026-09-23-phase-5-handoff.md`; specs in `docs/superpowers/specs/`.
+Approved plan/phases: see README Status (Phases 0–6 done; Phase 6's final step, the Plaid key switch, waits
+on Pedro's go-ahead — see its spec, `docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md`).
+Latest handoff: `docs/superpowers/plans/2026-09-24-phase-6-handoff.md`; specs in `docs/superpowers/specs/`.
 
 ## Layout
 
@@ -20,7 +20,7 @@ npx expo run:android --device Pixel_7   # emulator (x86_64); omit --device for d
 # backend (repo root; per machine, run `supabase login` + `link` once — see "First run")
 npx supabase db push
 npx supabase functions deploy <name> --use-api   # omit <name> to deploy all; reads config.toml
-npx supabase secrets set --env-file supabase/functions/.env
+npx supabase secrets set --env-file supabase/functions/.env   # NOT YET: the file holds the pending new Plaid keys (see Phase 6 spec, final step)
 npx -y deno test supabase/functions/_shared/    # Edge Function unit tests; Deno need not be installed
 ```
 
@@ -89,13 +89,26 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
 ## Conventions
 
 - All Plaid calls go through Edge Functions; the app never sees access tokens (`plaid_tokens` has zero client grants/policies).
-- New tables: enable RLS, add `(select auth.uid()) = user_id` policies, then **`revoke all ... from anon,
-  authenticated`** before granting exactly what the app uses. This project's default privileges give anon
-  and authenticated EVERY privilege on each new public table, so a column-scoped `grant update (col)`
-  alone restricts nothing — found in Phase 5; `20260923181000_recurring_streams_revoke_defaults.sql` is
-  the reference. Older tables (transactions, accounts, budgets, …) still carry the defaults: RLS confines
-  users to their own rows, but their column-grant comments overstate the protection. Check with
-  `has_column_privilege('authenticated', '<table>', '<col>', 'UPDATE')`.
+- New tables: enable RLS, add `(select auth.uid()) = user_id` policies, then grant `authenticated`
+  exactly what the app uses — **a new table is unreachable from the app until you do**. Since Phase 6
+  (`20260924120100_phase6_revoke_default_grants.sql`) `postgres`'s default privileges in `public` give
+  anon and authenticated nothing (service_role still gets everything), and every older table was revoked
+  and re-granted to match what the app uses. Before that, the defaults gave anon and authenticated EVERY
+  privilege, and a column-scoped `grant update (col)` restricted nothing. Check with
+  `has_column_privilege('authenticated', '<table>', '<col>', 'UPDATE')`. A table-level `revoke` also
+  drops that table's column grants, so re-issue them afterwards. Functions still get `EXECUTE` from
+  PUBLIC by Postgres default: revisit that when adding the first RPC.
+- **Disconnecting a bank** (`plaid-disconnect-item`, logic in `_shared/connections.ts`) calls
+  `/item/remove` FIRST, and changes local state only if that succeeds or returns `ITEM_NOT_FOUND`. The
+  token is the only way to stop Plaid's billing, so it is never deleted after a transient error. "Keep
+  history" sets `status = 'archived'` (token, streams and today's snapshots deleted; accounts,
+  transactions and past snapshots kept). "Delete everything" deletes the `plaid_items` row and lets the
+  cascade do the rest. Disconnect and `syncItem` share `claimItem`, which never claims an archived Item.
+  Every query of live data must therefore exclude archived Items: Home's `useAccounts` does it in SQL,
+  and the sync, webhook and snapshot paths skip them.
+- Duplicate links are refused in `plaid-exchange-token` **before** the token exchange (409
+  `duplicate`), by `isDuplicateLink`: same institution plus an account with the same name and mask on a
+  live Item. Archived Items never block a relink.
 - Recurring streams are derived: detection (`_shared/recurring.ts`) runs at the end of every sync and
   owns every column except `dismissed`, which only the user writes. Never add `dismissed` to its
   upsert payload.
@@ -125,7 +138,7 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
 - `plaid-sandbox` is **dev/test only**, with two actions: `reset_login` forces a real
   `ITEM_LOGIN_REQUIRED` (Plaid then fires an ITEM ERROR webhook), `fire_webhook` makes Plaid send
   `SYNC_UPDATES_AVAILABLE`. Two guards — the function 403s unless `PLAID_ENV=sandbox`, and the
-  Settings buttons that call it are behind `__DEV__` so they are stripped from release builds.
+  bank screen's (`app/bank/[id].tsx`) buttons that call it are behind `__DEV__` so they are stripped from release builds.
   Never expose it in production.
 - **Monetization is planned but unbuilt** — free tier plus two subscriptions (Tusklet, Tusk) via
   Stripe; see `docs/product/monetization.md` before designing anything that touches limits or cost.

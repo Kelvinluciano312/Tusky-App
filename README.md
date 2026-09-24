@@ -11,7 +11,7 @@ A personal finance app — connect your banks, see your net worth, track spendin
 - ✅ **Phase 3** — budgets per category, spending-by-category donut and cash-flow reports
 - ✅ **Phase 4** — net worth history: balances refresh on every sync, daily snapshots, trend line on Home
 - ✅ **Phase 5** — recurring transactions and bills radar: detected bills, subscriptions and paychecks, Upcoming on Home, price-change flags
-- 🚧 **Phase 6 (next)** — connections & control: disconnect a bank (keep its history or delete it), hide/unhide accounts, block duplicate connections, close the database grants, then the Plaid key switch — [spec](docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md), not started
+- ✅ **Phase 6** — connections & control: disconnect a bank (keep its history or delete it), hide/unhide accounts, duplicate connections refused, database grants closed. Its last step, the Plaid key switch, waits on a go-ahead — [spec](docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md)
 - Planned: a categories phase — category groups, custom categories and rules, merchant renaming
 
 ## Architecture
