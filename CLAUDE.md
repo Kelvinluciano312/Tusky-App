@@ -3,7 +3,8 @@
 Monarch-Money-style personal finance mobile app. Expo (React Native) + Supabase + Plaid Sandbox.
 Approved plan/phases: see README Status (Phases 0–6 done; Phase 6's final step, the Plaid key switch, waits
 on Pedro's go-ahead — see its spec, `docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md`).
-Latest handoff: `docs/superpowers/plans/2026-09-24-phase-6-handoff.md`; specs in `docs/superpowers/specs/`.
+Next: Phase 7 — categories — `docs/superpowers/specs/2026-09-24-phase-7-categories-design.md` (awaiting review;
+built as milestones 7a/7b/7c). Latest handoff: `docs/superpowers/plans/2026-09-24-phase-6-handoff.md`; specs in `docs/superpowers/specs/`.
 
 ## Layout
 
