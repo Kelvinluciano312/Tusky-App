@@ -4,6 +4,11 @@
  * See the Phase 6 spec.
  */
 
+import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
+import type { PlaidApi } from 'npm:plaid@30';
+
+import { claimItem, describeError } from './sync.ts';
+
 export type DisconnectMode = 'archive' | 'delete';
 export type DisconnectPlan = 'noop' | 'delete_local' | 'remove_then_archive' | 'remove_then_delete';
 export type DisconnectResult = 'ok' | 'busy' | 'plaid_failed';
@@ -54,4 +59,96 @@ export function isDuplicateLink(existing: LinkedAccount[], incoming: LinkedAccou
   return masked.some((i) =>
     existing.some((e) => fold(e.mask) === fold(i.mask) && fold(e.name) === fold(i.name))
   );
+}
+
+/**
+ * Disconnect one Item. Plaid first: local state changes only once
+ * /item/remove succeeds or says the Item is already gone. The token is the
+ * only way to stop the billing, so deleting it after a transient error would
+ * leak a billed Item forever. Throws on a database error.
+ */
+export async function disconnectItem(
+  admin: SupabaseClient,
+  plaid: PlaidApi,
+  item: { id: string; status: string },
+  mode: DisconnectMode,
+): Promise<DisconnectResult> {
+  const plan = planDisconnect(item.status, mode);
+  if (plan === 'noop') return 'ok';
+
+  if (plan === 'delete_local') {
+    // No claim needed: claimItem never claims an archived Item, so no sync can race this.
+    const { error } = await admin.from('plaid_items').delete().eq('id', item.id).eq('status', 'archived');
+    if (error) throw error;
+    return 'ok';
+  }
+
+  // The same claim as syncItem: a sync finishing after an archive would write
+  // rows and set status back to 'active'.
+  if (!(await claimItem(admin, item.id))) return 'busy';
+  const release = () => admin.from('plaid_items').update({ sync_locked_at: null }).eq('id', item.id);
+
+  try {
+    const { data: tokenRow, error: tokenError } = await admin
+      .from('plaid_tokens').select('access_token').eq('item_id', item.id).maybeSingle();
+    if (tokenError) throw tokenError;
+
+    // No token: an earlier attempt already removed the Item at Plaid, then
+    // stopped before archiving. Continue from where it stopped.
+    if (tokenRow) {
+      try {
+        await plaid.itemRemove({ access_token: tokenRow.access_token });
+      } catch (err) {
+        if (!isItemGone(err)) {
+          console.error(`item/remove failed for item ${item.id}: ${describeError(err)}`);
+          await release();
+          return 'plaid_failed';
+        }
+      }
+    }
+
+    if (plan === 'remove_then_delete') {
+      // The cascade covers plaid_tokens, accounts, and through them
+      // transactions, balance_snapshots and recurring_streams.
+      const { error } = await admin.from('plaid_items').delete().eq('id', item.id);
+      if (error) throw error;
+      return 'ok';
+    }
+
+    // remove_then_archive. Status goes LAST: a crash before it leaves a live,
+    // retryable Item whose next attempt finds no token (or ITEM_NOT_FOUND).
+    const { error: tokenDeleteError } = await admin.from('plaid_tokens').delete().eq('item_id', item.id);
+    if (tokenDeleteError) throw tokenDeleteError;
+
+    const { data: accounts, error: accountsError } = await admin
+      .from('accounts').select('id').eq('item_id', item.id);
+    if (accountsError) throw accountsError;
+    const accountIds = (accounts ?? []).map((a) => a.id);
+
+    if (accountIds.length > 0) {
+      // Dismissed or not: an archived Item never re-detects, so a dismissal has
+      // nothing left to protect.
+      const { error: streamsError } = await admin
+        .from('recurring_streams').delete().in('account_id', accountIds);
+      if (streamsError) throw streamsError;
+
+      // Today's rows (UTC, the snapshot clock) still count this bank. Dropping
+      // them makes the chart's last point equal Home's hero; earlier days keep it.
+      const { error: snapshotError } = await admin
+        .from('balance_snapshots').delete()
+        .in('account_id', accountIds)
+        .eq('date', new Date().toISOString().slice(0, 10));
+      if (snapshotError) throw snapshotError;
+    }
+
+    const { error: archiveError } = await admin
+      .from('plaid_items')
+      .update({ status: 'archived', sync_cursor: null, sync_locked_at: null })
+      .eq('id', item.id);
+    if (archiveError) throw archiveError;
+    return 'ok';
+  } catch (err) {
+    await release();
+    throw err;
+  }
 }
