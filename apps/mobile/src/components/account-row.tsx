@@ -1,4 +1,5 @@
-import { View } from 'react-native';
+import type { ReactNode } from 'react';
+import { Pressable, View } from 'react-native';
 
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
@@ -12,29 +13,51 @@ export function signedBalance(account: Account): number {
   return account.type === 'credit' || account.type === 'loan' ? -balance : balance;
 }
 
-export function AccountRow({ account }: { account: Account }) {
+type Props = {
+  account: Account;
+  onPress?: () => void;
+  /** Rendered after the balance — the bank screen's show/hide switch. */
+  trailing?: ReactNode;
+  /** Not counted in net worth (a disconnected bank): name and balance fade. */
+  dimmed?: boolean;
+};
+
+export function AccountRow({ account, onPress, trailing, dimmed = false }: Props) {
   const colors = useTheme();
   const detail = [account.mask ? `···· ${account.mask}` : null, account.subtype ?? account.type]
     .filter(Boolean)
     .join(' · ');
 
   return (
-    <View
-      style={{
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      style={({ pressed }) => ({
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        gap: Spacing.sm,
         paddingVertical: Spacing.sm + 2,
         borderBottomWidth: 1,
         borderBottomColor: colors.border,
-      }}>
-      <View style={{ flexShrink: 1, paddingRight: Spacing.sm }}>
-        <AppText variant="label">{account.name}</AppText>
-        <AppText variant="caption" tone="dim">
-          {detail}
-        </AppText>
+        backgroundColor: pressed ? colors.elevated : 'transparent',
+      })}>
+      <View
+        style={{
+          flex: 1,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          opacity: dimmed ? 0.5 : 1,
+        }}>
+        <View style={{ flexShrink: 1, paddingRight: Spacing.sm }}>
+          <AppText variant="label">{account.name}</AppText>
+          <AppText variant="caption" tone="dim">
+            {detail}
+          </AppText>
+        </View>
+        <Amount value={signedBalance(account)} size={15} />
       </View>
-      <Amount value={signedBalance(account)} size={15} />
-    </View>
+      {trailing}
+    </Pressable>
   );
 }

@@ -5,6 +5,8 @@ import type { PlaidApi } from 'npm:plaid@30';
 export type AccountRow = {
   id: string;
   current_balance: number | null;
+  /** On an archived (disconnected) Item: frozen, so never carried forward. */
+  archived?: boolean;
 };
 
 export type SnapshotRow = {
@@ -68,11 +70,15 @@ export async function syncAccounts(
  * sawtooth. Snapshotting all of them makes each date complete by construction,
  * which is what lets daily_net_worth be a plain group-by with no carry-forward.
  *
+ * Archived banks' accounts are skipped: their balance is frozen, and Home no
+ * longer counts them. Their past rows stay, so earlier days still include them.
+ *
  * `date` is omitted so the column default (current_date) applies — one clock,
  * and defaults resolve before ON CONFLICT arbitration.
  */
 export function buildSnapshotRows(accounts: AccountRow[], userId: string): SnapshotRow[] {
   return accounts
+    .filter((a) => !a.archived)
     // Sorted so two concurrent invocations take row locks in the same order.
     // The claim in syncItem is per-Item and the webhook path runs in
     // waitUntil, so two Items of one user really can snapshot at once; without

@@ -1,10 +1,13 @@
 import { syncAccounts } from '../_shared/accounts.ts';
+import { isDuplicateLink, type LinkedAccount } from '../_shared/connections.ts';
 import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, jsonResponse } from '../_shared/lib.ts';
 
 type ExchangeBody = {
   public_token: string;
   institution_id?: string;
   institution_name?: string;
+  /** Link's metadata.accounts, name and mask only — for the duplicate check. */
+  accounts?: LinkedAccount[];
 };
 
 Deno.serve(async (req) => {
@@ -31,6 +34,25 @@ Deno.serve(async (req) => {
   const plaid = getPlaidClient();
 
   try {
+    // 0. Refuse a duplicate BEFORE the exchange, as Plaid advises: no access
+    //    token is ever created, so nothing is billed. Only live Items count —
+    //    an archived one must not lock the user out of re-adding that bank.
+    //    Without an institution_id there is nothing to compare.
+    if (body.institution_id) {
+      const { data: existing, error: existingError } = await admin
+        .from('accounts')
+        .select('name, mask, plaid_items!inner(institution_id, status)')
+        .eq('user_id', user.id)
+        .eq('plaid_items.institution_id', body.institution_id)
+        .in('plaid_items.status', ['active', 'login_required']);
+      if (existingError) throw existingError;
+      const incoming = Array.isArray(body.accounts) ? body.accounts : [];
+      if (isDuplicateLink(existing ?? [], incoming)) {
+        console.log(`duplicate link refused: user ${user.id}, institution ${body.institution_id}`);
+        return jsonResponse({ error: 'duplicate' }, 409);
+      }
+    }
+
     // 1. Exchange the public token for a permanent access token
     const { data: exchange } = await plaid.itemPublicTokenExchange({
       public_token: body.public_token,

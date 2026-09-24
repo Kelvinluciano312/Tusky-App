@@ -114,7 +114,11 @@ export default function HomeScreen() {
             Accounts
           </AppText>
           {visibleAccounts.map((account) => (
-            <AccountRow key={account.id} account={account} />
+            <AccountRow
+              key={account.id}
+              account={account}
+              onPress={() => router.push({ pathname: '/bank/[id]', params: { id: account.item_id } })}
+            />
           ))}
         </Card>
       ) : (

@@ -94,6 +94,8 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="(tabs)" />
         {/* Pushed from Home's Upcoming card; the native header supplies Back. */}
         <Stack.Screen name="recurring" options={{ headerShown: true, title: 'Recurring' }} />
+        {/* Pushed from Settings and Home's account rows; the page sets its own title. */}
+        <Stack.Screen name="bank/[id]" options={{ headerShown: true, title: '' }} />
       </Stack.Protected>
       <Stack.Protected guard={session === null}>
         <Stack.Screen name="(auth)" />

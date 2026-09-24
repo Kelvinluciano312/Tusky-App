@@ -16,27 +16,104 @@ export type Account = {
   hidden: boolean;
 };
 
+const ACCOUNT_COLUMNS =
+  'id, item_id, name, official_name, mask, type, subtype, current_balance, available_balance, iso_currency_code, hidden';
+
+
+/**
+ * Home's accounts. A disconnected (archived) bank's accounts are excluded in
+ * SQL rather than filtered here, so the hero never counts them while the
+ * banks list is still loading. `!inner` drops the row instead of nulling the
+ * embed, the same idiom as the feed's `accounts!inner(hidden)`.
+ */
 export function useAccounts() {
   return useQuery({
     queryKey: ['accounts'],
     queryFn: async (): Promise<Account[]> => {
+      // A bank's accounts arrive in one upsert and share a created_at. Ties come
+      // back in physical order, and an UPDATE moves the row — so without the
+      // tiebreakers, hiding an account made it jump to the top of the list.
       const { data, error } = await supabase
         .from('accounts')
-        .select(
-          'id, item_id, name, official_name, mask, type, subtype, current_balance, available_balance, iso_currency_code, hidden',
-        )
-        .order('created_at', { ascending: true });
+        .select(`${ACCOUNT_COLUMNS}, plaid_items!inner(status)`)
+        .neq('plaid_items.status', 'archived')
+        .order('created_at', { ascending: true })
+        .order('name', { ascending: true })
+        .order('id', { ascending: true });
       if (error) throw error;
       return data;
     },
   });
 }
 
+/**
+ * Every account of one bank, hidden ones included — the bank screen is the one
+ * place hidden accounts are listed, so they can be unhidden. Keyed under
+ * ['accounts'] so every existing accounts invalidation covers it by prefix.
+ */
+export function useItemAccounts(itemId: string) {
+  return useQuery({
+    queryKey: ['accounts', itemId],
+    queryFn: async (): Promise<Account[]> => {
+      // Same tiebreakers as useAccounts, for the same reason.
+      const { data, error } = await supabase
+        .from('accounts')
+        .select(ACCOUNT_COLUMNS)
+        .eq('item_id', itemId)
+        .order('created_at', { ascending: true })
+        .order('name', { ascending: true })
+        .order('id', { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+/**
+ * Every query whose rows `accounts.hidden` or a bank's presence filters in SQL.
+ * Hiding an account, connecting or disconnecting a bank, and syncing must
+ * refetch all of them, or one screen goes stale while the rest move.
+ */
+export const HIDDEN_DEPENDENT_KEYS = [['accounts'], ['transactions'], ['reports'], ['net_worth'], ['recurring']];
+
+/**
+ * Hide or unhide one account. Optimistic on the bank screen's list, because a
+ * Switch that lags the finger reads as broken; rolled back if the write fails.
+ */
+export function useSetAccountHidden() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ accountId, hidden }: { accountId: string; itemId: string; hidden: boolean }) => {
+      const { error } = await supabase.from('accounts').update({ hidden }).eq('id', accountId);
+      if (error) throw error;
+    },
+    onMutate: async ({ accountId, itemId, hidden }) => {
+      const key = ['accounts', itemId];
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Account[]>(key);
+      queryClient.setQueryData<Account[]>(key, (old) =>
+        old?.map((a) => (a.id === accountId ? { ...a, hidden } : a)),
+      );
+      return { previous };
+    },
+    onError: (_err, { itemId }, context) => {
+      if (context?.previous) queryClient.setQueryData(['accounts', itemId], context.previous);
+    },
+    onSettled: () => {
+      for (const queryKey of HIDDEN_DEPENDENT_KEYS) queryClient.invalidateQueries({ queryKey });
+    },
+  });
+}
+
+export type ItemStatus = 'active' | 'login_required' | 'archived';
+
 export type PlaidItem = {
   id: string;
   institution_id: string | null;
   institution_name: string | null;
-  status: string;
+  status: ItemStatus;
+  created_at: string;
 };
 
 export function usePlaidItems() {
@@ -45,7 +122,7 @@ export function usePlaidItems() {
     queryFn: async (): Promise<PlaidItem[]> => {
       const { data, error } = await supabase
         .from('plaid_items')
-        .select('id, institution_id, institution_name, status')
+        .select('id, institution_id, institution_name, status, created_at')
         .order('created_at', { ascending: true });
       if (error) throw error;
       return data;

@@ -1,5 +1,6 @@
-import { Landmark } from 'lucide-react-native';
-import { ScrollView, View } from 'react-native';
+import { router } from 'expo-router';
+import { ChevronRight, Landmark } from 'lucide-react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
@@ -7,8 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useConnectBank, useSandboxTools } from '@/lib/plaid';
-import { usePlaidItems } from '@/lib/queries';
+import { useConnectBank } from '@/lib/plaid';
+import { type PlaidItem, usePlaidItems } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { supabase } from '@/lib/supabase';
 
@@ -18,7 +19,55 @@ export default function SettingsScreen() {
   const { session } = useSession();
   const { data: items = [] } = usePlaidItems();
   const { connectBank, isConnecting, error } = useConnectBank();
-  const { resetLogin, fireWebhook, isBusy } = useSandboxTools();
+
+  const live = items.filter((item) => item.status !== 'archived');
+  const archived = items.filter((item) => item.status === 'archived');
+
+  const bankRow = (item: PlaidItem) => {
+    const broken = item.status === 'login_required';
+    return (
+      <Pressable
+        key={item.id}
+        onPress={() => router.push({ pathname: '/bank/[id]', params: { id: item.id } })}
+        style={({ pressed }) => ({
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: Spacing.sm,
+          paddingVertical: Spacing.xs,
+          backgroundColor: pressed ? colors.elevated : 'transparent',
+        })}>
+        <Landmark
+          size={20}
+          color={item.status === 'active' ? colors.brand : broken ? colors.negative : colors.textDim}
+          strokeWidth={1.75}
+        />
+        <View style={{ flex: 1 }}>
+          <AppText variant="label">{item.institution_name ?? 'Bank'}</AppText>
+          {broken ? (
+            <AppText variant="caption" tone="negative">
+              Sign-in expired
+            </AppText>
+          ) : item.status === 'archived' ? (
+            <AppText variant="caption" tone="dim">
+              History kept
+            </AppText>
+          ) : null}
+        </View>
+        {broken ? (
+          /* Update mode: repairs this Item in place rather than creating a
+             duplicate connection. */
+          <Button
+            title="Reconnect"
+            variant="secondary"
+            loading={isConnecting}
+            onPress={() => connectBank(item.id)}
+            style={{ paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md }}
+          />
+        ) : null}
+        <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
+      </Pressable>
+    );
+  };
 
   return (
     <ScrollView
@@ -31,63 +80,23 @@ export default function SettingsScreen() {
           Connections
         </AppText>
 
-        {items.length === 0 ? (
+        {live.length === 0 && archived.length === 0 ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
             <Landmark size={20} color={colors.textDim} strokeWidth={1.75} />
             <AppText tone="dim">No banks connected</AppText>
           </View>
         ) : (
-          items.map((item) => (
-            <View
-              key={item.id}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.xs }}>
-              <Landmark
-                size={20}
-                color={item.status === 'active' ? colors.brand : colors.negative}
-                strokeWidth={1.75}
-              />
-              <View style={{ flex: 1 }}>
-                <AppText variant="label">{item.institution_name ?? 'Bank'}</AppText>
-                {item.status !== 'active' && (
-                  <AppText variant="caption" tone="negative">
-                    Sign-in expired
-                  </AppText>
-                )}
-              </View>
-              {item.status !== 'active' ? (
-                /* Update mode: repairs this Item in place rather than creating a
-                   duplicate connection. */
-                <Button
-                  title="Reconnect"
-                  variant="secondary"
-                  loading={isConnecting}
-                  onPress={() => connectBank(item.id)}
-                  style={{ paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md }}
-                />
-              ) : __DEV__ ? (
-                /* Dev builds only — never ships. Break forces a real
-                   ITEM_LOGIN_REQUIRED (reconnect path); Webhook makes Plaid fire
-                   SYNC_UPDATES_AVAILABLE (webhook sync path). */
-                <View style={{ flexDirection: 'row' }}>
-                  <Button
-                    title="Webhook (dev)"
-                    variant="ghost"
-                    loading={isBusy}
-                    onPress={() => fireWebhook(item.id)}
-                    style={{ paddingVertical: Spacing.sm, paddingHorizontal: Spacing.sm }}
-                  />
-                  <Button
-                    title="Break (dev)"
-                    variant="ghost"
-                    loading={isBusy}
-                    onPress={() => resetLogin(item.id)}
-                    style={{ paddingVertical: Spacing.sm, paddingHorizontal: Spacing.sm }}
-                  />
-                </View>
-              ) : null}
-            </View>
-          ))
+          live.map(bankRow)
         )}
+
+        {archived.length > 0 ? (
+          <>
+            <AppText variant="caption" tone="dim" style={{ marginTop: Spacing.sm }}>
+              Disconnected
+            </AppText>
+            {archived.map(bankRow)}
+          </>
+        ) : null}
 
         {error && (
           <AppText variant="caption" tone="negative">
@@ -96,7 +105,7 @@ export default function SettingsScreen() {
         )}
 
         <Button
-          title={items.length === 0 ? 'Connect a bank' : 'Connect another bank'}
+          title={live.length === 0 ? 'Connect a bank' : 'Connect another bank'}
           variant="secondary"
           onPress={() => connectBank()}
           loading={isConnecting}

@@ -1,7 +1,8 @@
 # Phase 6 — Connections & control (design)
 
-Status: approved 2026-09-23 and **not started**. Build it in a later session: write the implementation plan
-(`superpowers:writing-plans`) from this spec at that point, so the plan matches the code as it is then.
+Status: approved 2026-09-23; **built 2026-09-24** (plan: `docs/superpowers/plans/2026-09-24-phase-6-connections-control.md`,
+handoff: `docs/superpowers/plans/2026-09-24-phase-6-handoff.md`). Only the final step, the Plaid key switch, remains, and it
+waits on Pedro's go-ahead.
 
 Phase 6 gives users control over their connected banks:
 
