@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { ChevronRight, Landmark } from 'lucide-react-native';
+import { ChevronRight, Landmark, Tags } from 'lucide-react-native';
 import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -110,6 +110,27 @@ export default function SettingsScreen() {
           onPress={() => connectBank()}
           loading={isConnecting}
         />
+      </Card>
+
+      <Card style={{ gap: Spacing.sm }}>
+        <AppText variant="section" tone="dim">
+          Categories
+        </AppText>
+        <Pressable
+          onPress={() => router.push('/categories')}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: Spacing.sm,
+            paddingVertical: Spacing.xs,
+            backgroundColor: pressed ? colors.elevated : 'transparent',
+          })}>
+          <Tags size={20} color={colors.brand} strokeWidth={1.75} />
+          <AppText variant="label" style={{ flex: 1 }}>
+            Rename, hide or add categories
+          </AppText>
+          <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
+        </Pressable>
       </Card>
 
       <Card style={{ gap: Spacing.sm }}>
