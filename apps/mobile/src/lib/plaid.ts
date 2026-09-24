@@ -2,7 +2,28 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { createPlaidLinkSession } from 'react-native-plaid-link-sdk';
 
+import { HIDDEN_DEPENDENT_KEYS } from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
+
+/** FunctionsHttpError carries the Response; its JSON body says what actually failed. */
+async function readFunctionError(err: unknown): Promise<{ status?: number; message?: string }> {
+  const response = (err as { context?: Response }).context;
+  let message: string | undefined;
+  try {
+    const body = await response?.json();
+    if (typeof body?.error === 'string') message = body.error;
+  } catch {
+    // non-JSON body; the caller keeps its own wording
+  }
+  return { status: response?.status, message };
+}
+
+/** Everything a bank's arrival, departure or sync can change on screen. */
+const BANK_DEPENDENT_KEYS = [['plaid_items'], ...HIDDEN_DEPENDENT_KEYS];
+
+function invalidateBankData(queryClient: ReturnType<typeof useQueryClient>) {
+  return Promise.all(BANK_DEPENDENT_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
+}
 
 /**
  * Connect a bank, or repair one.
@@ -40,22 +61,25 @@ export function useConnectBank() {
                   public_token: success.publicToken,
                   institution_id: institution?.id,
                   institution_name: institution?.name,
+                  // Name and mask only: the server's duplicate check compares them.
+                  accounts: success.metadata.accounts.map(({ name, mask }) => ({ name, mask })),
                 },
               });
               if (exchangeError) {
+                const { status, message } = await readFunctionError(exchangeError);
+                if (status === 409 && message === 'duplicate') {
+                  throw new Error(
+                    `${institution?.name ?? 'This bank'} is already connected. If it stopped syncing, use Reconnect in Settings.`,
+                  );
+                }
                 throw new Error('The bank responded, but saving the connection failed.');
               }
             }
             // Update mode skips the exchange entirely — the access_token did not
             // change, so the sync below is all that is needed to restore the Item.
             await supabase.functions.invoke('plaid-sync-transactions');
-            await queryClient.invalidateQueries({ queryKey: ['accounts'] });
-            await queryClient.invalidateQueries({ queryKey: ['transactions'] });
-            await queryClient.invalidateQueries({ queryKey: ['plaid_items'] });
-            await queryClient.invalidateQueries({ queryKey: ['reports'] });
-            await queryClient.invalidateQueries({ queryKey: ['net_worth'] });
-            // Detection runs at the end of every sync.
-            await queryClient.invalidateQueries({ queryKey: ['recurring'] });
+            // Detection runs at the end of every sync, so recurring is among these.
+            await invalidateBankData(queryClient);
           } catch (e) {
             setError(e instanceof Error ? e.message : 'Something went wrong saving the connection.');
           } finally {
@@ -99,15 +123,8 @@ export function useSyncTransactions() {
     try {
       const { data, error: fnError } = await supabase.functions.invoke('plaid-sync-transactions');
       if (fnError) {
-        // FunctionsHttpError carries the response; its body says what actually failed.
-        let detail = fnError.message;
-        try {
-          const body = await (fnError as { context?: Response }).context?.json();
-          if (body?.error) detail = body.error;
-        } catch {
-          // non-JSON body; keep the transport message
-        }
-        throw new Error(`Sync failed: ${detail}`);
+        const { message } = await readFunctionError(fnError);
+        throw new Error(`Sync failed: ${message ?? fnError.message}`);
       }
       const failed = (data?.results ?? []).filter(
         (r: { status: string }) => r.status === 'error' || r.status === 'login_required',
@@ -121,15 +138,10 @@ export function useSyncTransactions() {
             : `Sync failed: ${detail ?? 'unknown error'}`,
         );
       }
-      await queryClient.invalidateQueries({ queryKey: ['transactions'] });
-      await queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      // A sync can flip an Item to login_required (or back to active), so
-      // Settings must re-read it — otherwise the Reconnect prompt never appears.
-      await queryClient.invalidateQueries({ queryKey: ['plaid_items'] });
-      await queryClient.invalidateQueries({ queryKey: ['reports'] });
-      await queryClient.invalidateQueries({ queryKey: ['net_worth'] });
-      // Detection runs at the end of every sync.
-      await queryClient.invalidateQueries({ queryKey: ['recurring'] });
+      // plaid_items is among these: a sync can flip an Item to login_required
+      // (or back to active), and without it the Reconnect prompt never appears.
+      // Detection runs at the end of every sync, so recurring is too.
+      await invalidateBankData(queryClient);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not refresh transactions.');
     } finally {
@@ -138,6 +150,42 @@ export function useSyncTransactions() {
   };
 
   return { sync, isSyncing, error };
+}
+
+/**
+ * Disconnect a bank. 'archive' keeps its history; 'delete' removes it. Either
+ * way the Item is removed at Plaid first, which is what stops its billing.
+ * Resolves true on success, so the screen can leave.
+ */
+export function useDisconnectBank() {
+  const queryClient = useQueryClient();
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const disconnect = async (itemId: string, mode: 'archive' | 'delete'): Promise<boolean> => {
+    setError(null);
+    setIsDisconnecting(true);
+    try {
+      const { error: fnError } = await supabase.functions.invoke('plaid-disconnect-item', {
+        body: { item_id: itemId, mode },
+      });
+      if (fnError) {
+        // The function's own wording: busy, Plaid failed, or unknown bank.
+        const { message } = await readFunctionError(fnError);
+        setError(message ?? 'Could not disconnect the bank. Try again in a moment.');
+        return false;
+      }
+      await invalidateBankData(queryClient);
+      return true;
+    } catch {
+      setError('Could not disconnect the bank. Try again in a moment.');
+      return false;
+    } finally {
+      setIsDisconnecting(false);
+    }
+  };
+
+  return { disconnect, isDisconnecting, error };
 }
 
 /**
