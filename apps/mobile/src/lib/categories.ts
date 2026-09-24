@@ -62,3 +62,63 @@ export function sectionsByKind(tree: CategoryNode[]): { kind: Category['kind']; 
     (s) => s.groups.length > 0,
   );
 }
+
+/**
+ * The tree minus hidden categories, for the picker and Budgets' suggestions. A
+ * hidden group takes its children with it. `keepId` survives regardless, with
+ * its group, because the picker's current selection must stay visible and
+ * checked.
+ */
+export function withoutHidden(tree: CategoryNode[], keepId: string | null): CategoryNode[] {
+  const out: CategoryNode[] = [];
+  for (const group of tree) {
+    const children = group.children.filter((c) => c.id === keepId || (!c.hidden && !group.hidden));
+    if (!group.hidden || group.id === keepId || children.length > 0) out.push({ ...group, children });
+  }
+  return out;
+}
+
+/** The picker's sections: hidden categories dropped, except the current selection. */
+export function pickerSections(tree: CategoryNode[], { selectedId }: { selectedId: string | null }) {
+  return sectionsByKind(withoutHidden(tree, selectedId));
+}
+
+/** A category name as stored: trimmed, 1–40 characters, as the database checks. Null when invalid. */
+export function validateCategoryName(raw: string): string | null {
+  const name = raw.trim();
+  return name.length >= 1 && name.length <= 40 ? name : null;
+}
+
+/**
+ * A built-in's edit as an override patch: only the fields that changed, so a
+ * colour change does not also pin today's name.
+ */
+export function changedFields(
+  category: Category,
+  edits: { name: string; color: string },
+): { name?: string; color?: string } {
+  const patch: { name?: string; color?: string } = {};
+  if (edits.name !== category.name) patch.name = edits.name;
+  if (edits.color !== category.color) patch.color = edits.color;
+  return patch;
+}
+
+/** The delete confirmation's body. */
+export function deleteCategoryMessage(count: number, groupName: string, hasBudget: boolean): string {
+  const moves =
+    count === 0 ? 'It has no transactions' : `Moves its ${count} transaction${count === 1 ? '' : 's'} to ${groupName}`;
+  return `${moves}${hasBudget ? ', and removes its budget' : ''}.`;
+}
+
+/** Colour choices: the seeded group colours (category colours are data, not theme). */
+export const SWATCHES = [
+  '#55C084', '#94A198', '#E07856', '#D9A441', '#4E9BD1', '#A97ACD', '#D96BA0', '#46B3A8',
+  '#E05A5A', '#C98BB8', '#8C9F5B', '#7C8BA1', '#B5784B', '#9A8C7A', '#6F8FA6',
+];
+
+/** Icon choices for a custom category; every name exists in the installed lucide-react-native. */
+export const CUSTOM_ICONS = [
+  'Tag', 'ShoppingBag', 'Coffee', 'Utensils', 'Car', 'House', 'Heart', 'Gift',
+  'Plane', 'Music', 'Book', 'Dumbbell', 'PawPrint', 'Baby', 'Briefcase', 'GraduationCap',
+  'Wrench', 'Smartphone', 'Shirt', 'Gamepad2', 'Camera', 'Leaf', 'Star', 'Wallet',
+];
