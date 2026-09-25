@@ -31,6 +31,17 @@ export function inviteMessage(herdName: string, code: string): string {
   return `Join ${herdName} on Tusky: open tusky:///join/${code}, or in Tusky go to Settings, tap your herd, choose "Join someone else's herd" and enter ${shown}.`;
 }
 
+/**
+ * Who paid, or whose account (Phase 9d): a member's first name, Joint (null),
+ * or Former member for someone no longer in the herd.
+ */
+export function payerLabel(userId: string | null, members: { user_id: string; display_name: string }[]): string {
+  if (userId === null) return 'Joint';
+  const member = members.find((m) => m.user_id === userId);
+  if (!member) return 'Former member';
+  return member.display_name.trim().split(/\s+/)[0] || member.display_name;
+}
+
 /** Up to two initials for a member's avatar. */
 export function initials(displayName: string): string {
   const words = displayName.trim().split(/\s+/).filter(Boolean);

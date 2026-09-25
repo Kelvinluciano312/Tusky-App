@@ -20,10 +20,12 @@ export type Account = {
   is_private: boolean;
   /** Who connected it: the only member who can make it private. */
   user_id: string;
+  /** Whose account it is (Phase 9d), the default payer of its transactions; null = Joint. */
+  owner_id: string | null;
 };
 
 const ACCOUNT_COLUMNS =
-  'id, item_id, user_id, name, official_name, mask, type, subtype, current_balance, available_balance, iso_currency_code, hidden, is_private';
+  'id, item_id, user_id, owner_id, name, official_name, mask, type, subtype, current_balance, available_balance, iso_currency_code, hidden, is_private';
 
 
 /**
@@ -191,13 +193,16 @@ export type Transaction = {
   category_is_manual: boolean;
   /** The user's memo (Phase 8); null when none. */
   notes: string | null;
+  /** Who paid (Phase 9d); null = Joint. Follows the account's owner until set by hand. */
+  paid_by: string | null;
+  paid_by_is_manual: boolean;
 };
 
 const PAGE_SIZE = 50;
 type PageCursor = { date: string; id: string } | null;
 
 const TRANSACTION_COLUMNS =
-  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, notes';
+  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, notes, paid_by, paid_by_is_manual';
 
 /**
  * Keyset pagination on (date, id), NOT offset. Sync inserts rows while the user
@@ -917,6 +922,66 @@ export function useRemoveMember() {
     mutationFn: (userId: string) =>
       callHerd({ action: 'remove_member', user_id: userId }, 'Could not remove them.'),
     onSuccess: () => resetAll(),
+  });
+}
+
+/**
+ * Whose account it is (Phase 9d). The database re-applies the new owner as
+ * payer to every row of the account nobody set by hand, so transactions refetch.
+ */
+export function useSetAccountOwner() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ accountId, ownerId }: { accountId: string; itemId: string; ownerId: string | null }) => {
+      const { error } = await supabase.from('accounts').update({ owner_id: ownerId }).eq('id', accountId);
+      if (error) throw error;
+    },
+    onMutate: async ({ accountId, itemId, ownerId }) => {
+      const key = ['accounts', itemId];
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Account[]>(key);
+      queryClient.setQueryData<Account[]>(key, (old) =>
+        old?.map((a) => (a.id === accountId ? { ...a, owner_id: ownerId } : a)),
+      );
+      return { previous };
+    },
+    onError: (_err, { itemId }, context) => {
+      if (context?.previous) queryClient.setQueryData(['accounts', itemId], context.previous);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+    },
+  });
+}
+
+/** Who paid for one transaction, set by hand: it no longer follows the account's owner. */
+export function useSetPaidBy() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ transactionId, paidBy }: { transactionId: string; paidBy: string | null }) => {
+      const { error } = await supabase
+        .from('transactions')
+        .update({ paid_by: paidBy, paid_by_is_manual: true })
+        .eq('id', transactionId);
+      if (error) throw error;
+    },
+    onMutate: async ({ transactionId, paidBy }) => {
+      const queryKey = ['transactions', 'detail', transactionId];
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<TransactionDetail>(queryKey);
+      if (previous) {
+        queryClient.setQueryData<TransactionDetail>(queryKey, { ...previous, paid_by: paidBy, paid_by_is_manual: true });
+      }
+      return { previous };
+    },
+    onError: (_err, { transactionId }, context) => {
+      if (context?.previous) queryClient.setQueryData(['transactions', 'detail', transactionId], context.previous);
+    },
+    onSettled: (_data, _err, { transactionId }) =>
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'detail', transactionId] }),
   });
 }
 

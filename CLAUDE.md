@@ -5,7 +5,7 @@ Approved plan/phases: see README Status (Phases 0–6 done; Phase 6's final step
 on Pedro's go-ahead — see its spec, `docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md`).
 Phases 7 (categories) and 8 (transaction review) are merged. Now: Phase 9 — names, herds (shared
 households), who paid, production project — `docs/superpowers/specs/2026-09-25-phase-9-herds-design.md`,
-milestones 9a → 9d plus Track P. Latest handoff: `docs/superpowers/plans/2026-09-27-phase-9c-handoff.md`.
+milestones 9a → 9d plus Track P. Latest handoff: `docs/superpowers/plans/2026-09-28-phase-9d-handoff.md`.
 
 ## Layout
 
@@ -131,6 +131,15 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     max 6 members. `accounts.is_private` is changed only by the account's connector
     (`accounts_private_by_connector` trigger). Herd mates see each other's profiles. The app resets its
     whole query cache after a join, leave or removal.
+  - **Who paid (9d).** `accounts.owner_id` (null = Joint) defaults to the connector on insert, and any
+    member may change it. `transactions.paid_by` (null = Joint) is set by the database, never by sync's
+    payload: `ab_transactions_paid_by` copies the account's owner onto each new row, and
+    `accounts_owner_reapply` re-applies a new owner to the rows where `paid_by_is_manual` is false. An
+    owner or payer must be a member of the row's herd (`private.is_herd_member`, which triggers call as
+    the app's user; that is why it lives in `private`). Sync carries a hand-picked payer from pending to
+    posted (`carryForward`), except for a payer who has since left. Leaving hands the leaver's banks to
+    them as owner and payer, and makes accounts they owned on others' banks Joint. The app shows who-paid
+    UI only in herds of two or more.
   - **The app hides connector-only actions**: reconnect, disconnect, the Private switch and the sandbox
     tools show only when `item.user_id` is the signed-in user.
   - **`node scripts/rls-check.mjs`** proves every member sees exactly their herd minus others' private
