@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
   const admin = getAdminClient();
   const { data: item, error: itemError } = await admin
     .from('plaid_items')
-    .select('id, user_id')
+    .select('id, user_id, herd_id')
     .eq('plaid_item_id', body.item_id)
     .in('status', ['active', 'login_required'])
     .maybeSingle();

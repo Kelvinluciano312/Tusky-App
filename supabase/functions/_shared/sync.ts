@@ -82,7 +82,7 @@ export async function loadSyncContext(admin: SupabaseClient, plaid: PlaidApi): P
   const { categoryMap, detailedMap, fallbackId } = await loadCategoryMaps(admin);
 
   const { data: categoryRows, error: categoryError } = await admin
-    .from('categories').select('id, kind, slug').is('user_id', null);
+    .from('categories').select('id, kind, slug').is('herd_id', null);
   if (categoryError) throw new Error(`failed to load categories: ${categoryError.message}`);
 
   return {
@@ -124,7 +124,7 @@ export async function claimItem(
  */
 export async function syncItem(
   ctx: SyncContext,
-  item: { id: string; user_id: string },
+  item: { id: string; user_id: string; herd_id: string },
 ): Promise<ItemResult> {
   const { admin, plaid, categoryMap, detailedMap, fallbackId, transferCategoryIds } = ctx;
   const base: ItemResult = { item_id: item.id, status: 'synced', added: 0, modified: 0, removed: 0 };
@@ -216,12 +216,12 @@ export async function syncItem(
 
     const upserts = [...added, ...modified];
     if (upserts.length > 0) {
-      // The owner's merchant rules outrank Plaid (a manual choice still wins,
+      // The herd's merchant rules outrank Plaid (a manual choice still wins,
       // in pickCategoryId). Keyed like transactions.merchant_key.
       const { data: ruleRows, error: ruleError } = await admin
         .from('merchant_rules')
         .select('merchant_key, category_id')
-        .eq('user_id', item.user_id)
+        .eq('herd_id', item.herd_id)
         .not('category_id', 'is', null);
       if (ruleError) throw ruleError;
       const ruleByMerchant = new Map((ruleRows ?? []).map((r) => [r.merchant_key, r.category_id as string]));
@@ -317,7 +317,7 @@ export async function syncItem(
     // login_required and error paths too, and a throw there would escape
     // syncItem, breaking the never-throws contract the webhook relies on.
     //
-    // Every account of the USER, not just this Item's: otherwise a day where one
+    // Every account of the HERD, not just this Item's: otherwise a day where one
     // Item synced and another did not would sum to a partial net worth and the
     // chart would sawtooth. An Item stuck on login_required keeps contributing
     // its last known balance, which is a deliberate carry-forward — stale, but
@@ -326,14 +326,14 @@ export async function syncItem(
     // buildSnapshotRows skips it.
     try {
       const { data: allAccounts } = await admin
-        .from('accounts').select('id, current_balance, plaid_items(status)').eq('user_id', item.user_id);
+        .from('accounts').select('id, user_id, current_balance, plaid_items(status)').eq('herd_id', item.herd_id);
       const snapshots = buildSnapshotRows(
         (allAccounts ?? []).map((a) => ({
           id: a.id,
+          user_id: a.user_id,
           current_balance: a.current_balance,
           archived: (a.plaid_items as { status?: string } | null)?.status === 'archived',
         })),
-        item.user_id,
       );
       if (snapshots.length > 0) {
         const { error } = await admin
@@ -349,12 +349,12 @@ export async function syncItem(
     // Never in `finally` — the login_required and error paths have no new data,
     // and a throw there would escape syncItem.
     try {
-      // The owner's custom transfer categories join the built-in ones. Loaded
-      // per Item, so the shared context never holds every user's rows.
+      // The herd's custom transfer categories join the built-in ones. Loaded
+      // per Item, so the shared context never holds every herd's rows.
       const { data: ownTransfers, error: ownError } = await admin
         .from('categories')
         .select('id, kind, slug')
-        .eq('user_id', item.user_id)
+        .eq('herd_id', item.herd_id)
         .eq('kind', 'transfer');
       if (ownError) throw ownError;
       await refreshRecurring(admin, item, [...transferCategoryIds, ...ignoredCategoryIds(ownTransfers ?? [])]);

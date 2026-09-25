@@ -18,17 +18,17 @@ Deno.test('readCategoryId rejects a missing, non-string or malformed id', () => 
   }
 });
 
-Deno.test("planCategoryDelete moves the caller's custom category to its group", () => {
-  assertEquals(planCategoryDelete({ id: ID, parent_id: GROUP, user_id: ME }, ME), { moveTo: GROUP });
+Deno.test("planCategoryDelete moves the herd's custom category to its group", () => {
+  assertEquals(planCategoryDelete({ id: ID, parent_id: GROUP, herd_id: ME }, ME), { moveTo: GROUP });
 });
 
 Deno.test('planCategoryDelete refuses a built-in', () => {
-  assertEquals(planCategoryDelete({ id: ID, parent_id: GROUP, user_id: null }, ME), null);
-  assertEquals(planCategoryDelete({ id: GROUP, parent_id: null, user_id: null }, ME), null);
+  assertEquals(planCategoryDelete({ id: ID, parent_id: GROUP, herd_id: null }, ME), null);
+  assertEquals(planCategoryDelete({ id: GROUP, parent_id: null, herd_id: null }, ME), null);
 });
 
-Deno.test("planCategoryDelete refuses another user's category", () => {
-  assertEquals(planCategoryDelete({ id: ID, parent_id: GROUP, user_id: THEM }, ME), null);
+Deno.test("planCategoryDelete refuses another herd's category", () => {
+  assertEquals(planCategoryDelete({ id: ID, parent_id: GROUP, herd_id: THEM }, ME), null);
 });
 
 Deno.test('planCategoryDelete refuses a missing row', () => {
