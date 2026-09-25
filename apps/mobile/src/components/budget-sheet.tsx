@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Modal, Pressable, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { CategoryIcon } from '@/components/ui/category-icon';
+import { Sheet } from '@/components/ui/sheet';
 import { TextField } from '@/components/ui/text-field';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -23,7 +23,6 @@ type Props = {
 
 export function BudgetSheet({ category, budget, onSave, onRemove, onClose, isSaving }: Props) {
   const colors = useTheme();
-  const insets = useSafeAreaInsets();
   // Seeded once per mount. The screen keys this component by category, so
   // reopening for a different one remounts rather than carrying the last amount
   // over — no effect, and nothing to keep in sync.
@@ -33,61 +32,42 @@ export function BudgetSheet({ category, budget, onSave, onRemove, onClose, isSav
   const valid = value.trim() !== '' && Number.isFinite(parsed) && parsed >= 0;
 
   return (
-    <Modal visible={category !== null} animationType="slide" transparent onRequestClose={onClose}>
-      {/* Padding on Android too: a Modal is its own window, which the activity's
-          resize-for-keyboard never reaches, so the keyboard would cover Save. */}
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={onClose} />
+    <Sheet
+      visible={category !== null}
+      onClose={onClose}
+      avoidKeyboard
+      style={{ paddingTop: Spacing.lg, paddingHorizontal: Spacing.md, gap: Spacing.md }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm + 2 }}>
         <View
           style={{
-            backgroundColor: colors.surface,
-            borderTopLeftRadius: Radius.xl,
-            borderTopRightRadius: Radius.xl,
-            paddingTop: Spacing.lg,
-            paddingHorizontal: Spacing.md,
-            paddingBottom: insets.bottom + Spacing.md,
-            gap: Spacing.md,
+            width: 34,
+            height: 34,
+            borderRadius: Radius.full,
+            backgroundColor: colors.elevated,
+            alignItems: 'center',
+            justifyContent: 'center',
           }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm + 2 }}>
-            <View
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: Radius.full,
-                backgroundColor: colors.elevated,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
-              <CategoryIcon name={category?.icon} size={17} color={category?.color ?? colors.textDim} />
-            </View>
-            <AppText variant="title">{category?.name ?? 'Budget'}</AppText>
-          </View>
-
-          <TextField
-            label="Monthly budget"
-            value={value}
-            onChangeText={setValue}
-            keyboardType="decimal-pad"
-            placeholder="0.00"
-            autoFocus
-          />
-
-          <AppText variant="caption" tone="dim">
-            Applies to every month.
-          </AppText>
-
-          <Button
-            title="Save budget"
-            disabled={!valid}
-            loading={isSaving}
-            onPress={() => onSave(parsed)}
-          />
-
-          {budget ? (
-            <Button title="Remove budget" variant="ghost" onPress={() => onRemove(budget.id)} />
-          ) : null}
+          <CategoryIcon name={category?.icon} size={17} color={category?.color ?? colors.textDim} />
         </View>
-      </KeyboardAvoidingView>
-    </Modal>
+        <AppText variant="title">{category?.name ?? 'Budget'}</AppText>
+      </View>
+
+      <TextField
+        label="Monthly budget"
+        value={value}
+        onChangeText={setValue}
+        keyboardType="decimal-pad"
+        placeholder="0.00"
+        autoFocus
+      />
+
+      <AppText variant="caption" tone="dim">
+        Applies to every month.
+      </AppText>
+
+      <Button title="Save budget" disabled={!valid} loading={isSaving} onPress={() => onSave(parsed)} />
+
+      {budget ? <Button title="Remove budget" variant="ghost" onPress={() => onRemove(budget.id)} /> : null}
+    </Sheet>
   );
 }

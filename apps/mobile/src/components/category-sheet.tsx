@@ -1,11 +1,11 @@
 import { Check } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Pressable, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Alert, Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { CategoryIcon } from '@/components/ui/category-icon';
+import { Sheet } from '@/components/ui/sheet';
 import { TextField } from '@/components/ui/text-field';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -38,7 +38,6 @@ type Props = {
  */
 export function CategorySheet({ target, onClose }: Props) {
   const colors = useTheme();
-  const insets = useSafeAreaInsets();
   const editing = target?.mode === 'edit' ? target.category : null;
   const group = target?.group;
   // Seeded once per mount. The screen keys this sheet by target, as Budgets
@@ -112,111 +111,99 @@ export function CategorySheet({ target, onClose }: Props) {
   };
 
   return (
-    <Modal visible={target !== null} animationType="slide" transparent onRequestClose={onClose}>
-      {/* Padding on Android too: a Modal is its own window, which the activity's
-          resize-for-keyboard never reaches, so the keyboard would cover the sheet. */}
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={onClose} />
+    <Sheet
+      visible={target !== null}
+      onClose={onClose}
+      avoidKeyboard
+      style={{ paddingTop: Spacing.lg, paddingHorizontal: Spacing.md, gap: Spacing.md }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm + 2 }}>
         <View
           style={{
-            backgroundColor: colors.surface,
-            borderTopLeftRadius: Radius.xl,
-            borderTopRightRadius: Radius.xl,
-            paddingTop: Spacing.lg,
-            paddingHorizontal: Spacing.md,
-            paddingBottom: insets.bottom + Spacing.md,
-            gap: Spacing.md,
+            width: 34,
+            height: 34,
+            borderRadius: Radius.full,
+            backgroundColor: colors.elevated,
+            alignItems: 'center',
+            justifyContent: 'center',
           }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm + 2 }}>
-            <View
+          <CategoryIcon name={icon} size={17} color={color} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <AppText variant="title">{target?.mode === 'add' ? 'New category' : (editing?.name ?? '')}</AppText>
+          {group ? (
+            <AppText variant="caption" tone="dim">
+              In {group.name}
+            </AppText>
+          ) : null}
+        </View>
+      </View>
+
+      <TextField label="Name" value={name} onChangeText={setName} maxLength={40} placeholder="e.g. Date night" />
+
+      {custom ? (
+        <View style={{ gap: Spacing.xs + 2 }}>
+          <AppText variant="label" tone="dim">
+            Icon
+          </AppText>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm }}>
+            {CUSTOM_ICONS.map((iconName) => (
+              <Pressable
+                key={iconName}
+                accessibilityLabel={`Icon ${iconName}`}
+                onPress={() => setIcon(iconName)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: Radius.full,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: icon === iconName ? colors.elevated : 'transparent',
+                  borderWidth: icon === iconName ? 1 : 0,
+                  borderColor: colors.brand,
+                }}>
+                <CategoryIcon name={iconName} size={17} color={icon === iconName ? color : colors.textDim} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      <View style={{ gap: Spacing.xs + 2 }}>
+        <AppText variant="label" tone="dim">
+          Colour
+        </AppText>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm }}>
+          {SWATCHES.map((swatch) => (
+            <Pressable
+              key={swatch}
+              accessibilityLabel={`Colour ${swatch}`}
+              onPress={() => setColor(swatch)}
               style={{
-                width: 34,
-                height: 34,
+                width: 30,
+                height: 30,
                 borderRadius: Radius.full,
-                backgroundColor: colors.elevated,
+                backgroundColor: swatch,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}>
-              <CategoryIcon name={icon} size={17} color={color} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <AppText variant="title">{target?.mode === 'add' ? 'New category' : (editing?.name ?? '')}</AppText>
-              {group ? (
-                <AppText variant="caption" tone="dim">
-                  In {group.name}
-                </AppText>
-              ) : null}
-            </View>
-          </View>
-
-          <TextField label="Name" value={name} onChangeText={setName} maxLength={40} placeholder="e.g. Date night" />
-
-          {custom ? (
-            <View style={{ gap: Spacing.xs + 2 }}>
-              <AppText variant="label" tone="dim">
-                Icon
-              </AppText>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm }}>
-                {CUSTOM_ICONS.map((iconName) => (
-                  <Pressable
-                    key={iconName}
-                    accessibilityLabel={`Icon ${iconName}`}
-                    onPress={() => setIcon(iconName)}
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: Radius.full,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: icon === iconName ? colors.elevated : 'transparent',
-                      borderWidth: icon === iconName ? 1 : 0,
-                      borderColor: colors.brand,
-                    }}>
-                    <CategoryIcon name={iconName} size={17} color={icon === iconName ? color : colors.textDim} />
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          ) : null}
-
-          <View style={{ gap: Spacing.xs + 2 }}>
-            <AppText variant="label" tone="dim">
-              Colour
-            </AppText>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm }}>
-              {SWATCHES.map((swatch) => (
-                <Pressable
-                  key={swatch}
-                  accessibilityLabel={`Colour ${swatch}`}
-                  onPress={() => setColor(swatch)}
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: Radius.full,
-                    backgroundColor: swatch,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}>
-                  {color === swatch ? <Check size={16} color={colors.bg} /> : null}
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          <Button
-            title={target?.mode === 'add' ? 'Add category' : 'Save'}
-            disabled={!valid}
-            loading={busy}
-            onPress={() => void save()}
-          />
-          {editing && !editing.is_custom && editing.overridden ? (
-            <Button title="Reset to default" variant="ghost" onPress={() => void reset()} />
-          ) : null}
-          {editing?.is_custom ? (
-            <Button title="Delete category" variant="ghost" onPress={() => void confirmDelete()} />
-          ) : null}
+              {color === swatch ? <Check size={16} color={colors.bg} /> : null}
+            </Pressable>
+          ))}
         </View>
-      </KeyboardAvoidingView>
-    </Modal>
+      </View>
+
+      <Button
+        title={target?.mode === 'add' ? 'Add category' : 'Save'}
+        disabled={!valid}
+        loading={busy}
+        onPress={() => void save()}
+      />
+      {editing && !editing.is_custom && editing.overridden ? (
+        <Button title="Reset to default" variant="ghost" onPress={() => void reset()} />
+      ) : null}
+      {editing?.is_custom ? (
+        <Button title="Delete category" variant="ghost" onPress={() => void confirmDelete()} />
+      ) : null}
+    </Sheet>
   );
 }
