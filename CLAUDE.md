@@ -3,8 +3,9 @@
 Monarch-Money-style personal finance mobile app. Expo (React Native) + Supabase + Plaid Sandbox.
 Approved plan/phases: see README Status (Phases 0–6 done; Phase 6's final step, the Plaid key switch, waits
 on Pedro's go-ahead — see its spec, `docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md`).
-Now: Phase 7 — categories — `docs/superpowers/specs/2026-09-24-phase-7-categories-design.md`, built as milestones
-7a/7b/7c, all built. Latest handoff: `docs/superpowers/plans/2026-09-25-phase-7c-handoff.md`; specs in `docs/superpowers/specs/`.
+Phase 7 (categories, 7a/7b/7c) is merged. Now: Phase 8 — transaction review —
+`docs/superpowers/specs/2026-09-25-phase-8-transaction-review-design.md`, built. Latest handoff:
+`docs/superpowers/plans/2026-09-25-phase-8-handoff.md`; specs in `docs/superpowers/specs/`.
 
 ## Layout
 
@@ -154,6 +155,11 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   `./x.ts` path (`allowImportingTsExtensions` is on). A `@/` alias or a React Native import breaks
   the run. TS 6 no longer auto-includes `@types`, so each test file starts with
   `/// <reference types="node" />`.
+- **Transaction review** (Phase 8). `reviewed_at` null means "in the queue" (posted rows only), and
+  `notes` holds the memo. Both are user-owned: sync's upsert must never include them. A bulk upsert sends
+  the union of the rows' keys, so a key on only some rows nulls it on the rest. `carryForward`
+  (`_shared/review.ts`) moves a pending row's memo and manual category onto the posted row that replaces
+  it. The `/review` queue is a per-visit id snapshot kept outside `['transactions']` on purpose.
 - Recurring streams are derived: detection (`_shared/recurring.ts`) runs at the end of every sync and
   owns every column except `dismissed`, which only the user writes. Never add `dismissed` to its
   upsert payload.
