@@ -15,7 +15,7 @@ A personal finance app — connect your banks, see your net worth, track spendin
 - 🚧 **Phase 7** — categories, in three milestones — [spec](docs/superpowers/specs/2026-09-24-phase-7-categories-design.md)
   - ✅ **7a** — the 16 categories become groups over 61 finer ones from Plaid's detailed codes; budgets on a group or a category; Reports by group with a drill-in; card payments are transfers but stay on the bills radar
   - ✅ **7b** — rename, recolour and hide the built-in categories; add your own under any group, and delete them (their transactions move to the group); a Categories screen in Settings
-  - Next: **7c** merchant rules and renaming
+  - ✅ **7c** — merchant rules ("always categorize this merchant as X", past and future, never over a manual choice) and merchant renames that show everywhere; a transaction screen and a rules screen
 - Planned: community categorization (consent-based learning from users' category choices)
 
 ## Architecture

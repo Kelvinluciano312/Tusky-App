@@ -4,7 +4,7 @@ Monarch-Money-style personal finance mobile app. Expo (React Native) + Supabase 
 Approved plan/phases: see README Status (Phases 0–6 done; Phase 6's final step, the Plaid key switch, waits
 on Pedro's go-ahead — see its spec, `docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md`).
 Now: Phase 7 — categories — `docs/superpowers/specs/2026-09-24-phase-7-categories-design.md`, built as milestones
-7a/7b/7c: 7a and 7b are built, 7c is next. Latest handoff: `docs/superpowers/plans/2026-09-25-phase-7b-handoff.md`; specs in `docs/superpowers/specs/`.
+7a/7b/7c, all built. Latest handoff: `docs/superpowers/plans/2026-09-25-phase-7c-handoff.md`; specs in `docs/superpowers/specs/`.
 
 ## Layout
 
@@ -130,6 +130,13 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   `delete-category` function moves the category's transactions (manual flags kept), streams and budget
   first. Sync loads only built-in categories into its shared context, and adds the Item owner's custom
   transfer categories per Item before recurring detection.
+- **Merchant rules** (Phase 7c). `merchant_rules` (one per user and `merchant_key`) holds a category, a
+  display name, or both. Clients only read it; every write goes through `set-merchant-rule`, which
+  re-resolves the merchant's non-manual rows with `resolveCategoryId` whenever the category part
+  changes, so removing a rule puts Plaid's category back. Sync loads the owner's rules per Item and passes
+  `rule:` to the same resolver. Renames apply only when data is read (`lib/merchants.ts`). Rows read the
+  rules themselves (`useMerchantRules`), so every surface shows the same name. `delete-category` moves
+  rules to the group before its delete: the rules FK has no cascade, on purpose.
 - **Bottom sheets need `KeyboardAvoidingView behavior="padding"` on Android too.** A `Modal` is its own
   window: the activity's resize for the keyboard never reaches it, and a text field there has the whole
   sheet covered by the keyboard (`budget-sheet.tsx` and `category-sheet.tsx` are the reference).
