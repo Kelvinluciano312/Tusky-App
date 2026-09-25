@@ -729,3 +729,34 @@ export function useSetTransactionNotes() {
   });
 }
 
+
+export type Profile = { user_id: string; display_name: string };
+
+/** The signed-in user's profile (Phase 9a). Created at signup by a trigger, so it always exists. */
+export function useProfile(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['profile', userId],
+    enabled: !!userId,
+    queryFn: async (): Promise<Profile> => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id, display_name')
+        .eq('user_id', userId!)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useSetDisplayName() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ userId, displayName }: { userId: string; displayName: string }) => {
+      const { error } = await supabase.from('profiles').update({ display_name: displayName }).eq('user_id', userId);
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['profile'] }),
+  });
+}
