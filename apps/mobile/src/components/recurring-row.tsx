@@ -5,7 +5,8 @@ import { AppText } from '@/components/ui/app-text';
 import { CategoryIcon } from '@/components/ui/category-icon';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import type { Category, RecurringStream } from '@/lib/queries';
+import { streamName } from '@/lib/merchants';
+import { type Category, type RecurringStream, useMerchantRules } from '@/lib/queries';
 import { frequencyLabel, relativeDay } from '@/lib/recurring';
 
 type Props = {
@@ -19,6 +20,7 @@ type Props = {
 export function RecurringRow({ stream, category, today, onPress }: Props) {
   const colors = useTheme();
   const tint = category?.color ?? colors.textDim;
+  const { data: rules = new Map() } = useMerchantRules();
   const when = relativeDay(stream.next_date, today);
   const change = stream.amount_change;
   // Paying more for a bill is bad news; being paid more is good news.
@@ -50,7 +52,7 @@ export function RecurringRow({ stream, category, today, onPress }: Props) {
 
       <View style={{ flex: 1, paddingRight: Spacing.sm }}>
         <AppText variant="label" numberOfLines={1}>
-          {stream.name}
+          {streamName(stream, rules)}
         </AppText>
         <AppText variant="caption" tone="dim" numberOfLines={1}>
           {frequencyLabel(stream.frequency)} · {stream.next_date < today ? `Expected ${when}` : when}

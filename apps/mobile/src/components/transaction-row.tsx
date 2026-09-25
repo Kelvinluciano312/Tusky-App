@@ -6,7 +6,8 @@ import { CategoryIcon } from '@/components/ui/category-icon';
 import { AppText } from '@/components/ui/app-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import type { Category, Transaction } from '@/lib/queries';
+import { transactionName } from '@/lib/merchants';
+import { type Category, type Transaction, useMerchantRules } from '@/lib/queries';
 
 type Props = {
   transaction: Transaction;
@@ -17,6 +18,8 @@ type Props = {
 export function TransactionRow({ transaction, category, onPress }: Props) {
   const colors = useTheme();
   const tint = category?.color ?? colors.textDim;
+  // Cached once for the whole list; a rename resolves at read time.
+  const { data: rules = new Map() } = useMerchantRules();
 
   return (
     <Pressable
@@ -48,7 +51,7 @@ export function TransactionRow({ transaction, category, onPress }: Props) {
 
       <View style={{ flex: 1, paddingRight: Spacing.sm }}>
         <AppText variant="label" numberOfLines={1}>
-          {transaction.merchant_name ?? transaction.name}
+          {transactionName(transaction, rules)}
         </AppText>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.xs }}>
           <View style={{ width: 7, height: 7, borderRadius: Radius.full, backgroundColor: tint }} />

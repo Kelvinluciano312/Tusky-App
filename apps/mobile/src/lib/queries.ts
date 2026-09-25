@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { readFunctionError } from '@/lib/functions';
+import type { MerchantRule, MerchantRules } from '@/lib/merchants';
 import { supabase } from '@/lib/supabase';
 
 export type Account = {
@@ -172,6 +173,8 @@ export type Transaction = {
   account_id: string;
   name: string;
   merchant_name: string | null;
+  /** normalizeMerchant(merchant_name ?? name), generated in SQL; '' for a name with no letters. Merchant rules key on it. */
+  merchant_key: string | null;
   logo_url: string | null;
   /** Positive = money in, negative = money out (inverted from Plaid on ingest). */
   amount: number;
@@ -186,7 +189,7 @@ const PAGE_SIZE = 50;
 type PageCursor = { date: string; id: string } | null;
 
 const TRANSACTION_COLUMNS =
-  'id, account_id, name, merchant_name, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual';
+  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual';
 
 /**
  * Keyset pagination on (date, id), NOT offset. Sync inserts rows while the user
@@ -403,6 +406,8 @@ export type RecurringStream = {
   id: string;
   account_id: string;
   name: string;
+  /** The same key as transactions.merchant_key, so a merchant's rename shows here too. */
+  merchant_key: string;
   category_id: string | null;
   direction: 'outflow' | 'inflow';
   frequency: 'weekly' | 'biweekly' | 'monthly';
@@ -419,7 +424,7 @@ export type RecurringStream = {
 };
 
 const STREAM_COLUMNS =
-  'id, account_id, name, category_id, direction, frequency, average_amount, last_amount, previous_amount, amount_change, last_date, next_date, dismissed';
+  'id, account_id, name, merchant_key, category_id, direction, frequency, average_amount, last_amount, previous_amount, amount_change, last_date, next_date, dismissed';
 
 /**
  * Recurring streams, written by detection at the end of each sync. Hidden
@@ -571,3 +576,66 @@ export async function countCategoryTransactions(categoryId: string): Promise<num
   if (error) throw error;
   return count ?? 0;
 }
+
+/** The user's merchant rules, by merchant_key: renames and "always categorize as". Read-only; writes go through set-merchant-rule. */
+export function useMerchantRules() {
+  return useQuery({
+    queryKey: ['merchant_rules'],
+    queryFn: async (): Promise<MerchantRules> => {
+      const { data, error } = await supabase.from('merchant_rules').select('merchant_key, category_id, display_name');
+      if (error) throw error;
+      return new Map((data as MerchantRule[]).map((r) => [r.merchant_key, r]));
+    },
+  });
+}
+
+/** What a rule write can change: names everywhere, and categories on the merchant's past rows. */
+const RULE_DEPENDENT_KEYS = [['merchant_rules'], ['transactions'], ['reports'], ['recurring']];
+
+/**
+ * Set or clear one merchant's rule. An omitted field keeps its stored value,
+ * null clears it; the function deletes the rule once both are null, and
+ * re-resolves the merchant's non-manual rows when the category part changes.
+ */
+export function useSetMerchantRule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: {
+      merchantKey: string;
+      categoryId?: string | null;
+      displayName?: string | null;
+    }): Promise<{ updated: number }> => {
+      const { data, error } = await supabase.functions.invoke('set-merchant-rule', {
+        body: { merchant_key: input.merchantKey, category_id: input.categoryId, display_name: input.displayName },
+      });
+      if (error) {
+        const { message } = await readFunctionError(error);
+        throw new Error(message ?? 'Could not save the rule. Try again in a moment.');
+      }
+      return { updated: (data as { updated?: number } | null)?.updated ?? 0 };
+    },
+    onSettled: () => {
+      for (const queryKey of RULE_DEPENDENT_KEYS) queryClient.invalidateQueries({ queryKey });
+    },
+  });
+}
+
+export type TransactionDetail = Transaction & { accounts: { name: string; mask: string | null } | null };
+
+/** One transaction, with its account, for the detail screen. Under ['transactions'], so every feed invalidation refreshes it. */
+export function useTransaction(id: string) {
+  return useQuery({
+    queryKey: ['transactions', 'detail', id],
+    queryFn: async (): Promise<TransactionDetail> => {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select(`${TRANSACTION_COLUMNS}, accounts(name, mask)`)
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      return data as unknown as TransactionDetail;
+    },
+  });
+}
+
