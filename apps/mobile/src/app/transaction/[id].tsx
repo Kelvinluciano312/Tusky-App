@@ -4,6 +4,7 @@ import { Alert, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CategoryPicker } from '@/components/category-picker';
+import { CategorySheet, type SheetTarget } from '@/components/category-sheet';
 import { DetailLine as Line } from '@/components/detail-line';
 import { NoteSheet } from '@/components/note-sheet';
 import { RenameSheet } from '@/components/rename-sheet';
@@ -44,6 +45,7 @@ export default function TransactionScreen() {
   const setRule = useSetMerchantRule();
   const setNotes = useSetTransactionNotes();
   const [picking, setPicking] = useState(false);
+  const [addTarget, setAddTarget] = useState<SheetTarget | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [noting, setNoting] = useState(false);
   const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
@@ -115,7 +117,9 @@ export default function TransactionScreen() {
         selectedId={t.category_id}
         onSelect={choose}
         onClose={() => setPicking(false)}
+        onRequestAdd={(group) => setAddTarget({ mode: 'add', group })}
       />
+      <CategorySheet target={addTarget} onClose={() => setAddTarget(null)} />
       <NoteSheet
         key={`${t.id}-${noting}`}
         visible={noting}

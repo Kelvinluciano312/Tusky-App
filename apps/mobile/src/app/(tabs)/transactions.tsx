@@ -1,17 +1,28 @@
 import { router } from 'expo-router';
-import { ArrowLeftRight } from 'lucide-react-native';
-import { useMemo } from 'react';
-import { ActivityIndicator, RefreshControl, SectionList, View } from 'react-native';
+import { ArrowLeftRight, Search, SlidersHorizontal, X } from 'lucide-react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, RefreshControl, SectionList, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TransactionRow } from '@/components/transaction-row';
+import { TransactionSortSheet, type TransactionSort } from '@/components/transaction-sort-sheet';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSyncTransactions } from '@/lib/plaid';
 import { type Transaction, useCategories, useTransactions } from '@/lib/queries';
+
+function compareByDate(a: Transaction, b: Transaction): number {
+  if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+function matchesSearch(transaction: Transaction, query: string): boolean {
+  const haystack = `${transaction.merchant_name ?? ''} ${transaction.name}`.toLowerCase();
+  return haystack.includes(query);
+}
 
 function formatSectionDate(iso: string): string {
   const date = new Date(`${iso}T00:00:00`);
@@ -33,30 +44,92 @@ function formatSectionDate(iso: string): string {
 export default function TransactionsScreen() {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useTransactions();
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, error: fetchError } = useTransactions();
   const { data: categories = [] } = useCategories();
   const { sync, isSyncing, error: syncError } = useSyncTransactions();
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<TransactionSort>('newest');
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
 
   const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
-  // Flat pages -> one section per date. Order is already guaranteed by the query.
+  const query = search.trim().toLowerCase();
+  // A search or a non-default sort needs to see the whole history, not just the
+  // pages scrolled into view so far — so once either is active, keep pulling
+  // pages until the server says there are none left.
+  const isFiltering = query !== '' || sort !== 'newest';
+  useEffect(() => {
+    if (isFiltering && hasNextPage && !isFetchingNextPage) fetchNextPage();
+  }, [isFiltering, hasNextPage, isFetchingNextPage, fetchNextPage]);
+  const isLoadingAll = isFiltering && hasNextPage;
+
+  const allLoaded = useMemo(() => data?.pages.flat() ?? [], [data]);
+  const filtered = useMemo(
+    () => (query ? allLoaded.filter((t) => matchesSearch(t, query)) : allLoaded),
+    [allLoaded, query],
+  );
+
+  const sorted = useMemo(() => {
+    if (sort === 'newest') return filtered; // already the server's order
+    const list = [...filtered];
+    if (sort === 'oldest') list.sort(compareByDate);
+    else if (sort === 'expensive') list.sort((a, b) => a.amount - b.amount);
+    else list.sort((a, b) => b.amount - a.amount);
+    return list;
+  }, [filtered, sort]);
+
+  // Grouping by day only makes sense while sorted by date; an amount sort
+  // renders as one flat, unlabeled section instead.
   const sections = useMemo(() => {
-    const all = data?.pages.flat() ?? [];
+    if (sort !== 'newest' && sort !== 'oldest') return [{ title: '', data: sorted }];
     const byDate: { title: string; data: Transaction[] }[] = [];
-    for (const transaction of all) {
+    for (const transaction of sorted) {
       const title = formatSectionDate(transaction.date);
       const current = byDate[byDate.length - 1];
       if (current && current.title === title) current.data.push(transaction);
       else byDate.push({ title, data: [transaction] });
     }
     return byDate;
-  }, [data]);
+  }, [sorted, sort]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
       <AppText variant="display" style={{ paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm }}>
         Transactions
       </AppText>
+
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: Spacing.sm,
+          marginHorizontal: Spacing.md,
+          marginBottom: Spacing.sm,
+          height: 44,
+          paddingHorizontal: Spacing.sm + 2,
+          borderRadius: Radius.md,
+          backgroundColor: colors.elevated,
+        }}>
+        <Search size={17} color={colors.textDim} />
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search transactions"
+          placeholderTextColor={colors.textDim}
+          returnKeyType="search"
+          autoCorrect={false}
+          style={{ flex: 1, fontFamily: Type.body, fontSize: 15, color: colors.text, padding: 0 }}
+        />
+        {search.length > 0 ? (
+          <Pressable onPress={() => setSearch('')} hitSlop={8}>
+            <X size={16} color={colors.textDim} />
+          </Pressable>
+        ) : null}
+        <View style={{ width: 1, height: 20, backgroundColor: colors.border }} />
+        <Pressable onPress={() => setSortSheetOpen(true)} hitSlop={8}>
+          <SlidersHorizontal size={18} color={sort !== 'newest' ? colors.brand : colors.textDim} />
+        </Pressable>
+      </View>
 
       {syncError ? (
         <AppText
@@ -66,6 +139,14 @@ export default function TransactionsScreen() {
           {syncError}
         </AppText>
       ) : null}
+      {fetchError ? (
+        <AppText
+          variant="caption"
+          tone="negative"
+          style={{ paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm }}>
+          {fetchError.message}
+        </AppText>
+      ) : null}
 
       <SectionList
         sections={sections}
@@ -73,9 +154,9 @@ export default function TransactionsScreen() {
         stickySectionHeadersEnabled={false}
         // flexGrow so the empty state centres; the list must always render so
         // RefreshControl exists — otherwise there is no way to run a first sync.
-        contentContainerStyle={sections.length === 0 ? { flexGrow: 1 } : undefined}
+        contentContainerStyle={sorted.length === 0 ? { flexGrow: 1 } : undefined}
         ListEmptyComponent={
-          isLoading ? null : (
+          isLoading || isLoadingAll ? null : allLoaded.length === 0 ? (
             <View style={{ flex: 1 }}>
               <EmptyState
                 icon={ArrowLeftRight}
@@ -91,6 +172,12 @@ export default function TransactionsScreen() {
                 style={{ marginHorizontal: Spacing.xl, marginTop: -Spacing.lg }}
               />
             </View>
+          ) : (
+            <EmptyState
+              icon={Search}
+              title="No matches"
+              message={`No transactions match "${search.trim()}".`}
+            />
           )
         }
         refreshControl={<RefreshControl refreshing={isSyncing} onRefresh={sync} tintColor={colors.textDim} />}
@@ -98,21 +185,23 @@ export default function TransactionsScreen() {
         onEndReached={() => {
           if (hasNextPage && !isFetchingNextPage) fetchNextPage();
         }}
-        renderSectionHeader={({ section }) => (
-          <AppText
-            variant="caption"
-            tone="dim"
-            style={{
-              paddingHorizontal: Spacing.md,
-              paddingTop: Spacing.md,
-              paddingBottom: Spacing.xs,
-              backgroundColor: colors.bg,
-              textTransform: 'uppercase',
-              letterSpacing: 1.1,
-            }}>
-            {section.title}
-          </AppText>
-        )}
+        renderSectionHeader={({ section }) =>
+          section.title === '' ? null : (
+            <AppText
+              variant="caption"
+              tone="dim"
+              style={{
+                paddingHorizontal: Spacing.md,
+                paddingTop: Spacing.md,
+                paddingBottom: Spacing.xs,
+                backgroundColor: colors.bg,
+                textTransform: 'uppercase',
+                letterSpacing: 1.1,
+              }}>
+              {section.title}
+            </AppText>
+          )
+        }
         renderItem={({ item }) => (
           <TransactionRow
             transaction={item}
@@ -121,12 +210,26 @@ export default function TransactionsScreen() {
           />
         )}
         ListFooterComponent={
-          isFetchingNextPage ? (
-            <ActivityIndicator color={colors.textDim} style={{ marginVertical: Spacing.lg }} />
+          isFetchingNextPage || isLoadingAll ? (
+            <View style={{ alignItems: 'center', gap: Spacing.xs, marginVertical: Spacing.lg }}>
+              <ActivityIndicator color={colors.textDim} />
+              {isLoadingAll ? (
+                <AppText variant="caption" tone="dim">
+                  Loading your full history…
+                </AppText>
+              ) : null}
+            </View>
           ) : (
             <View style={{ height: Spacing.xxl }} />
           )
         }
+      />
+
+      <TransactionSortSheet
+        visible={sortSheetOpen}
+        value={sort}
+        onSelect={setSort}
+        onClose={() => setSortSheetOpen(false)}
       />
     </View>
   );
