@@ -1,16 +1,17 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { ChevronRight } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { Alert, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CategoryPicker } from '@/components/category-picker';
+import { DetailLine as Line } from '@/components/detail-line';
+import { NoteSheet } from '@/components/note-sheet';
 import { RenameSheet } from '@/components/rename-sheet';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
-import { CategoryIcon } from '@/components/ui/category-icon';
-import { Radius, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
+import { useCategoryChoice } from '@/hooks/use-category-choice';
 import { useTheme } from '@/hooks/use-theme';
 import { transactionName } from '@/lib/merchants';
 import {
@@ -18,7 +19,7 @@ import {
   useCategories,
   useMerchantRules,
   useSetMerchantRule,
-  useSetTransactionCategory,
+  useSetTransactionNotes,
   useTransaction,
 } from '@/lib/queries';
 
@@ -39,10 +40,12 @@ export default function TransactionScreen() {
   const { data: t, error } = useTransaction(id);
   const { data: categories = [] } = useCategories();
   const { data: rules = new Map() } = useMerchantRules();
-  const setCategory = useSetTransactionCategory();
+  const chooseCategory = useCategoryChoice();
   const setRule = useSetMerchantRule();
+  const setNotes = useSetTransactionNotes();
   const [picking, setPicking] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [noting, setNoting] = useState(false);
   const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
   if (!t) {
@@ -63,28 +66,7 @@ export default function TransactionScreen() {
 
   const choose = (next: Category) => {
     setPicking(false);
-    if (next.id === t.category_id) return;
-    const once = () => setCategory.mutate({ transactionId: t.id, categoryId: next.id });
-    if (!merchantKey) {
-      once();
-      return;
-    }
-    Alert.alert(
-      `Always categorize ${name} as ${next.name}?`,
-      "Applies to past and future ones you haven't set by hand.",
-      [
-        { text: 'Just this one', onPress: once },
-        {
-          text: 'Always',
-          onPress: () => {
-            setRule.mutate({ merchantKey, categoryId: next.id }, { onError: failed });
-            // The rule skips rows set by hand, and this one may be one.
-            if (t.category_is_manual) once();
-          },
-        },
-      ],
-      { cancelable: true },
-    );
+    chooseCategory(t, name, next);
   };
 
   return (
@@ -119,6 +101,7 @@ export default function TransactionScreen() {
               {t.category_is_manual ? ', but this one was set by hand' : ''}.
             </AppText>
           ) : null}
+          <Line label="Memo" value={t.notes ?? 'Add a memo'} dim={!t.notes} onPress={() => setNoting(true)} />
           <Line
             label="Account"
             value={`${t.accounts?.name ?? 'Account'}${t.accounts?.mask ? ` ···· ${t.accounts.mask}` : ''}`}
@@ -132,6 +115,16 @@ export default function TransactionScreen() {
         selectedId={t.category_id}
         onSelect={choose}
         onClose={() => setPicking(false)}
+      />
+      <NoteSheet
+        key={`${t.id}-${noting}`}
+        visible={noting}
+        current={t.notes}
+        isSaving={setNotes.isPending}
+        onSave={(notes) =>
+          setNotes.mutate({ transactionId: t.id, notes }, { onSuccess: () => setNoting(false), onError: failed })
+        }
+        onClose={() => setNoting(false)}
       />
       {merchantKey ? (
         <RenameSheet
@@ -154,52 +147,5 @@ export default function TransactionScreen() {
         />
       ) : null}
     </View>
-  );
-}
-
-function Line({
-  label,
-  value,
-  icon,
-  onPress,
-}: {
-  label: string;
-  value: string;
-  icon?: Category;
-  onPress?: () => void;
-}) {
-  const colors = useTheme();
-  return (
-    <Pressable
-      disabled={!onPress}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.sm,
-        paddingVertical: Spacing.sm + 2,
-        opacity: pressed ? 0.7 : 1,
-      })}>
-      <AppText variant="label" tone="dim" style={{ width: 92 }}>
-        {label}
-      </AppText>
-      {icon ? (
-        <View
-          style={{
-            width: 26,
-            height: 26,
-            borderRadius: Radius.full,
-            backgroundColor: colors.elevated,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-          <CategoryIcon name={icon.icon} size={13} color={icon.color} />
-        </View>
-      ) : null}
-      <AppText style={{ flex: 1 }} numberOfLines={2}>
-        {value}
-      </AppText>
-      {onPress ? <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} /> : null}
-    </Pressable>
   );
 }
