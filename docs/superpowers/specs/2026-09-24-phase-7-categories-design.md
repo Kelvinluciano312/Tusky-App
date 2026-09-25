@@ -1,6 +1,6 @@
 # Phase 7 — Categories: groups, custom categories, rules, merchant renaming (design)
 
-Status: approved 2026-09-24. **7a built** (handoff: `docs/superpowers/plans/2026-09-24-phase-7a-handoff.md`); 7b and 7c next. Build it in three
+Status: approved 2026-09-24. **7a and 7b built** (latest handoff: `docs/superpowers/plans/2026-09-25-phase-7b-handoff.md`); 7c next. Build it in three
 milestones — 7a, 7b, 7c — each with its own implementation plan (`superpowers:writing-plans`) and its
 own PR.
 

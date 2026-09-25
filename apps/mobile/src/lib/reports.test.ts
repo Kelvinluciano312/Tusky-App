@@ -7,7 +7,7 @@ import type { Category, MonthlyTotal } from './queries';
 import { buildCashFlow, buildCategorySlices, buildGroupBreakdown } from './reports.ts';
 
 const cat = (id: string, parent_id: string | null, kind: Category['kind'] = 'expense'): Category => ({
-  id, parent_id, kind, sort_order: 1, slug: id, name: id, icon: 'Tag', color: '#000000',
+  id, parent_id, kind, sort_order: 1, slug: id, name: id, icon: 'Tag', color: '#000000', hidden: false, is_custom: false, overridden: false,
 });
 const byId = new Map(
   [cat('food', null), cat('coffee', 'food'), cat('groceries', 'food'), cat('fun', null),

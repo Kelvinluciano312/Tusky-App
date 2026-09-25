@@ -30,7 +30,7 @@ export type SyncContext = {
   categoryMap: CategoryMap;
   detailedMap: CategoryMap;
   fallbackId: string;
-  /** Categories recurring detection ignores (transfers, except card payments). */
+  /** Built-in categories recurring detection ignores (transfers, except card payments); syncItem adds the owner's custom transfers. */
   transferCategoryIds: string[];
 };
 
@@ -70,7 +70,7 @@ export async function loadSyncContext(admin: SupabaseClient, plaid: PlaidApi): P
   }
 
   const { data: categoryRows, error: categoryError } = await admin
-    .from('categories').select('id, kind, slug');
+    .from('categories').select('id, kind, slug').is('user_id', null);
   if (categoryError) throw new Error(`failed to load categories: ${categoryError.message}`);
 
   return {
@@ -315,7 +315,15 @@ export async function syncItem(
     // Never in `finally` — the login_required and error paths have no new data,
     // and a throw there would escape syncItem.
     try {
-      await refreshRecurring(admin, item, transferCategoryIds);
+      // The owner's custom transfer categories join the built-in ones. Loaded
+      // per Item, so the shared context never holds every user's rows.
+      const { data: ownTransfers, error: ownError } = await admin
+        .from('categories')
+        .select('id, kind, slug')
+        .eq('user_id', item.user_id)
+        .eq('kind', 'transfer');
+      if (ownError) throw ownError;
+      await refreshRecurring(admin, item, [...transferCategoryIds, ...ignoredCategoryIds(ownTransfers ?? [])]);
     } catch (err) {
       console.warn(`recurring refresh failed for item ${item.id}: ${describeError(err)}`);
     }

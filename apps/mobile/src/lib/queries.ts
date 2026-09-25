@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { readFunctionError } from '@/lib/functions';
 import { supabase } from '@/lib/supabase';
 
 export type Account = {
@@ -132,14 +133,23 @@ export function usePlaidItems() {
 
 export type Category = {
   id: string;
-  slug: string;
+  /** Built-ins only; a custom category has none. */
+  slug: string | null;
+  /** The user's name for it: their rename of a built-in, or their own category's. */
   name: string;
   kind: 'income' | 'expense' | 'transfer';
   icon: string;
+  /** The user's colour for it, as with name. */
   color: string;
   sort_order: number;
   /** null for a group; a child's group otherwise. */
   parent_id: string | null;
+  /** Hidden by this user: out of the picker and Budgets' suggestions; its transactions and budget stay. */
+  hidden: boolean;
+  /** The user's own category, always a child of a built-in group. */
+  is_custom: boolean;
+  /** A built-in this user renamed, recoloured or hid. Reset deletes the override. */
+  overridden: boolean;
 };
 
 export function useCategories() {
@@ -148,8 +158,8 @@ export function useCategories() {
     staleTime: 1000 * 60 * 60, // the taxonomy only changes with a migration
     queryFn: async (): Promise<Category[]> => {
       const { data, error } = await supabase
-        .from('categories')
-        .select('id, slug, name, kind, icon, color, sort_order, parent_id')
+        .from('user_categories')
+        .select('id, slug, name, kind, icon, color, sort_order, parent_id, hidden, is_custom, overridden')
         .order('sort_order', { ascending: true });
       if (error) throw error;
       return data;
@@ -447,4 +457,117 @@ export function useSetStreamDismissed() {
       queryClient.invalidateQueries({ queryKey: ['recurring'] });
     },
   });
+}
+
+/** What a category edit changes on screen. Names resolve on the client, so these three are enough. */
+const CATEGORY_EDIT_KEYS = [['categories'], ['reports'], ['budgets']];
+
+export type CategoryPatch = { name?: string | null; color?: string | null; hidden?: boolean };
+
+/**
+ * Rename, recolour or hide a built-in for this user; a null patch resets it
+ * (deletes the override). The upsert names only the patched columns, so the
+ * others keep their stored values. Optimistic on `hidden`, so the switch
+ * never lags.
+ */
+export function useCategoryOverride() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ categoryId, patch }: { categoryId: string; patch: CategoryPatch | null }) => {
+      const { error } =
+        patch === null
+          ? await supabase.from('category_overrides').delete().eq('category_id', categoryId)
+          : await supabase
+              .from('category_overrides')
+              .upsert({ category_id: categoryId, ...patch }, { onConflict: 'user_id,category_id' });
+      if (error) throw error;
+    },
+    onMutate: async ({ categoryId, patch }) => {
+      const hidden = patch?.hidden;
+      if (hidden === undefined) return {};
+      await queryClient.cancelQueries({ queryKey: ['categories'] });
+      const previous = queryClient.getQueryData<Category[]>(['categories']);
+      queryClient.setQueryData<Category[]>(['categories'], (old) =>
+        old?.map((c) => (c.id === categoryId ? { ...c, hidden } : c)),
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['categories'], context.previous);
+    },
+    onSettled: () => {
+      for (const queryKey of CATEGORY_EDIT_KEYS) queryClient.invalidateQueries({ queryKey });
+    },
+  });
+}
+
+/**
+ * Add a custom category under a group. The payload names exactly the granted
+ * columns; user_id, kind and sort_order come from defaults and the tree trigger.
+ */
+export function useCreateCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ parentId, name, icon, color }: { parentId: string; name: string; icon: string; color: string }) => {
+      const { error } = await supabase.from('categories').insert({ parent_id: parentId, name, icon, color });
+      if (error) throw error;
+    },
+    onSettled: () => {
+      for (const queryKey of CATEGORY_EDIT_KEYS) queryClient.invalidateQueries({ queryKey });
+    },
+  });
+}
+
+/** Edit one of the user's own categories. RLS refuses a built-in. */
+export function useUpdateCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, name, icon, color }: { id: string; name: string; icon: string; color: string }) => {
+      const { error } = await supabase.from('categories').update({ name, icon, color }).eq('id', id);
+      if (error) throw error;
+    },
+    onSettled: () => {
+      for (const queryKey of CATEGORY_EDIT_KEYS) queryClient.invalidateQueries({ queryKey });
+    },
+  });
+}
+
+/**
+ * Delete one of the user's own categories through delete-category, which
+ * moves its transactions and streams to the group first. Everything that
+ * shows a category id can change.
+ */
+export function useDeleteCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (categoryId: string): Promise<{ moved: number }> => {
+      const { data, error } = await supabase.functions.invoke('delete-category', {
+        body: { category_id: categoryId },
+      });
+      if (error) {
+        const { message } = await readFunctionError(error);
+        throw new Error(message ?? 'Could not delete the category. Try again in a moment.');
+      }
+      return { moved: (data as { moved?: number } | null)?.moved ?? 0 };
+    },
+    onSettled: () => {
+      for (const queryKey of [...CATEGORY_EDIT_KEYS, ...HIDDEN_DEPENDENT_KEYS]) {
+        queryClient.invalidateQueries({ queryKey });
+      }
+    },
+  });
+}
+
+/** How many of the user's transactions sit in one category, for the delete confirmation. */
+export async function countCategoryTransactions(categoryId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('transactions')
+    .select('id', { count: 'exact', head: true })
+    .eq('category_id', categoryId);
+  if (error) throw error;
+  return count ?? 0;
 }

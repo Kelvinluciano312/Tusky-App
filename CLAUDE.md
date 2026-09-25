@@ -4,7 +4,7 @@ Monarch-Money-style personal finance mobile app. Expo (React Native) + Supabase 
 Approved plan/phases: see README Status (Phases 0–6 done; Phase 6's final step, the Plaid key switch, waits
 on Pedro's go-ahead — see its spec, `docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md`).
 Now: Phase 7 — categories — `docs/superpowers/specs/2026-09-24-phase-7-categories-design.md`, built as milestones
-7a/7b/7c: 7a is built, 7b is next. Latest handoff: `docs/superpowers/plans/2026-09-24-phase-7a-handoff.md`; specs in `docs/superpowers/specs/`.
+7a/7b/7c: 7a and 7b are built, 7c is next. Latest handoff: `docs/superpowers/plans/2026-09-25-phase-7b-handoff.md`; specs in `docs/superpowers/specs/`.
 
 ## Layout
 
@@ -121,6 +121,18 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   through `lib/categories.ts` (`groupIdOf`, `rollupByGroup`), and a group and its children are never
   budgeted at once (`budgetsReplacedBy`). `transactions.merchant_key` is a generated column, the SQL
   twin of `normalizeMerchant`. Change both together, or rules and renames (7c) stop matching.
+- **Custom categories and overrides** (Phase 7b). The app reads `user_categories`, never `categories`
+  directly. That view applies this user's `category_overrides` (name, colour, hidden) to the built-ins and
+  adds their own custom rows. Overrides are for built-ins only (a trigger refuses custom rows). A custom
+  category is a child of a built-in group. The client may `insert (name, parent_id, icon, color)` and
+  `update (name, icon, color)`, and nothing else. `parent_id` is insert-only because
+  `categories_enforce_tree` cannot stop a group being made its own parent. Clients cannot delete: the
+  `delete-category` function moves the category's transactions (manual flags kept), streams and budget
+  first. Sync loads only built-in categories into its shared context, and adds the Item owner's custom
+  transfer categories per Item before recurring detection.
+- **Bottom sheets need `KeyboardAvoidingView behavior="padding"` on Android too.** A `Modal` is its own
+  window: the activity's resize for the keyboard never reaches it, and a text field there has the whole
+  sheet covered by the keyboard (`budget-sheet.tsx` and `category-sheet.tsx` are the reference).
 - **App pure logic is tested with `npm test`** (`node --test src/lib/*.test.ts`; Node strips the types).
   A module under test may import other modules only as `import type`, or at runtime by relative
   `./x.ts` path (`allowImportingTsExtensions` is on). A `@/` alias or a React Native import breaks

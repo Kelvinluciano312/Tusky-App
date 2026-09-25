@@ -4,10 +4,21 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { Budget, Category } from './queries';
-import { budgetsReplacedBy, buildTree, groupIdOf, rollupByGroup, sectionsByKind } from './categories.ts';
+import {
+  budgetsReplacedBy,
+  buildTree,
+  changedFields,
+  deleteCategoryMessage,
+  groupIdOf,
+  pickerSections,
+  rollupByGroup,
+  sectionsByKind,
+  validateCategoryName,
+  withoutHidden,
+} from './categories.ts';
 
 const cat = (id: string, parent_id: string | null, kind: Category['kind'] = 'expense', sort_order = 1): Category => ({
-  id, parent_id, kind, sort_order, slug: id, name: id, icon: 'Tag', color: '#000000',
+  id, parent_id, kind, sort_order, slug: id, name: id, icon: 'Tag', color: '#000000', hidden: false, is_custom: false, overridden: false,
 });
 
 const food = cat('food', null, 'expense', 3);
@@ -65,4 +76,51 @@ test('budgetsReplacedBy: changing an existing budget replaces nothing', () => {
 test('sectionsByKind orders expense, income, transfer and drops empty kinds', () => {
   const sections = sectionsByKind(buildTree([food, coffee, transfer, card]));
   assert.deepEqual(sections.map((s) => s.kind), ['expense', 'transfer']);
+});
+
+test('withoutHidden drops a hidden category, and a hidden group with its children', () => {
+  const tree = buildTree([food, { ...coffee, hidden: true }, groceries, { ...transfer, hidden: true }, card, income]);
+  const out = withoutHidden(tree, null);
+  assert.deepEqual(out.map((g) => g.id), ['income', 'food']);
+  assert.deepEqual(out[1].children.map((c) => c.id), ['groceries']);
+});
+
+test('withoutHidden keeps the selection and its group, even when both are hidden', () => {
+  const tree = buildTree([{ ...food, hidden: true }, coffee, groceries]);
+  const shape = (keepId: string | null) => withoutHidden(tree, keepId).map((g) => [g.id, g.children.map((c) => c.id)]);
+  assert.deepEqual(shape('coffee'), [['food', ['coffee']]]);
+  assert.deepEqual(shape('food'), [['food', []]]);
+  assert.deepEqual(shape(null), []);
+});
+
+test('pickerSections drops hidden categories but keeps the selected one', () => {
+  const tree = buildTree([food, { ...coffee, hidden: true }, groceries]);
+  assert.deepEqual(pickerSections(tree, { selectedId: null })[0].groups[0].children.map((c) => c.id), ['groceries']);
+  assert.deepEqual(
+    pickerSections(tree, { selectedId: 'coffee' })[0].groups[0].children.map((c) => c.id),
+    ['groceries', 'coffee'],
+  );
+});
+
+test('validateCategoryName trims and allows 1–40 characters', () => {
+  assert.equal(validateCategoryName('  Date night  '), 'Date night');
+  assert.equal(validateCategoryName('   '), null);
+  assert.equal(validateCategoryName(''), null);
+  assert.equal(validateCategoryName('x'.repeat(40)), 'x'.repeat(40));
+  assert.equal(validateCategoryName('x'.repeat(41)), null);
+});
+
+test('changedFields sends only what changed', () => {
+  assert.deepEqual(changedFields(food, { name: 'food', color: '#000000' }), {});
+  assert.deepEqual(changedFields(food, { name: 'Eating out', color: '#000000' }), { name: 'Eating out' });
+  assert.deepEqual(changedFields(food, { name: 'food', color: '#E07856' }), { color: '#E07856' });
+});
+
+test('deleteCategoryMessage says where the transactions go, and about the budget', () => {
+  assert.equal(deleteCategoryMessage(1, 'Food & Dining', false), 'Moves its 1 transaction to Food & Dining.');
+  assert.equal(
+    deleteCategoryMessage(3, 'Food & Dining', true),
+    'Moves its 3 transactions to Food & Dining, and removes its budget.',
+  );
+  assert.equal(deleteCategoryMessage(0, 'Food & Dining', false), 'It has no transactions.');
 });

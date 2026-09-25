@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, Pressable, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
@@ -34,56 +34,60 @@ export function BudgetSheet({ category, budget, onSave, onRemove, onClose, isSav
 
   return (
     <Modal visible={category !== null} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={onClose} />
-      <View
-        style={{
-          backgroundColor: colors.surface,
-          borderTopLeftRadius: Radius.xl,
-          borderTopRightRadius: Radius.xl,
-          paddingTop: Spacing.lg,
-          paddingHorizontal: Spacing.md,
-          paddingBottom: insets.bottom + Spacing.md,
-          gap: Spacing.md,
-        }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm + 2 }}>
-          <View
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: Radius.full,
-              backgroundColor: colors.elevated,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-            <CategoryIcon name={category?.icon} size={17} color={category?.color ?? colors.textDim} />
+      {/* Padding on Android too: a Modal is its own window, which the activity's
+          resize-for-keyboard never reaches, so the keyboard would cover Save. */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={onClose} />
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            borderTopLeftRadius: Radius.xl,
+            borderTopRightRadius: Radius.xl,
+            paddingTop: Spacing.lg,
+            paddingHorizontal: Spacing.md,
+            paddingBottom: insets.bottom + Spacing.md,
+            gap: Spacing.md,
+          }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm + 2 }}>
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: Radius.full,
+                backgroundColor: colors.elevated,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+              <CategoryIcon name={category?.icon} size={17} color={category?.color ?? colors.textDim} />
+            </View>
+            <AppText variant="title">{category?.name ?? 'Budget'}</AppText>
           </View>
-          <AppText variant="title">{category?.name ?? 'Budget'}</AppText>
+
+          <TextField
+            label="Monthly budget"
+            value={value}
+            onChangeText={setValue}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+            autoFocus
+          />
+
+          <AppText variant="caption" tone="dim">
+            Applies to every month.
+          </AppText>
+
+          <Button
+            title="Save budget"
+            disabled={!valid}
+            loading={isSaving}
+            onPress={() => onSave(parsed)}
+          />
+
+          {budget ? (
+            <Button title="Remove budget" variant="ghost" onPress={() => onRemove(budget.id)} />
+          ) : null}
         </View>
-
-        <TextField
-          label="Monthly budget"
-          value={value}
-          onChangeText={setValue}
-          keyboardType="decimal-pad"
-          placeholder="0.00"
-          autoFocus
-        />
-
-        <AppText variant="caption" tone="dim">
-          Applies to every month.
-        </AppText>
-
-        <Button
-          title="Save budget"
-          disabled={!valid}
-          loading={isSaving}
-          onPress={() => onSave(parsed)}
-        />
-
-        {budget ? (
-          <Button title="Remove budget" variant="ghost" onPress={() => onRemove(budget.id)} />
-        ) : null}
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

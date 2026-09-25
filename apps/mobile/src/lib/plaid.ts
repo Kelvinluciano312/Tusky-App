@@ -2,21 +2,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { createPlaidLinkSession } from 'react-native-plaid-link-sdk';
 
+import { readFunctionError } from '@/lib/functions';
 import { HIDDEN_DEPENDENT_KEYS } from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
-
-/** FunctionsHttpError carries the Response; its JSON body says what actually failed. */
-async function readFunctionError(err: unknown): Promise<{ status?: number; message?: string }> {
-  const response = (err as { context?: Response }).context;
-  let message: string | undefined;
-  try {
-    const body = await response?.json();
-    if (typeof body?.error === 'string') message = body.error;
-  } catch {
-    // non-JSON body; the caller keeps its own wording
-  }
-  return { status: response?.status, message };
-}
 
 /** Everything a bank's arrival, departure or sync can change on screen. */
 const BANK_DEPENDENT_KEYS = [['plaid_items'], ...HIDDEN_DEPENDENT_KEYS];
