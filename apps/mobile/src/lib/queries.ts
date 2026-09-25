@@ -196,7 +196,7 @@ const TRANSACTION_COLUMNS =
 /**
  * Keyset pagination on (date, id), NOT offset. Sync inserts rows while the user
  * scrolls; with OFFSET every insertion shifts later pages, duplicating and
- * skipping rows. The (user_id, date desc, id desc) index serves this directly.
+ * skipping rows. The (herd_id, date desc, id desc) index serves this directly.
  *
  * Hidden accounts leave the feed as well as net worth, as in Monarch. `!inner`
  * makes the embedded filter drop the transaction rather than null the embed.
@@ -334,11 +334,11 @@ export function useBudgets() {
  * Create or change the budget for a category — one amount per category, applied
  * to every month.
  *
- * `user_id` is deliberately absent from the payload. PostgREST builds the insert
+ * `herd_id` is deliberately absent from the payload. PostgREST builds the insert
  * column list from the payload's keys, so an omitted column takes its default
- * (`auth.uid()`) rather than null, and Postgres resolves defaults before ON
- * CONFLICT arbitration. That keeps the repo's rule that no client query ever
- * names a user id, with the RLS with-check doing the actual enforcing.
+ * (`private.my_herd_id()`) rather than null, and Postgres resolves defaults before
+ * ON CONFLICT arbitration. That keeps the repo's rule that no client query ever
+ * names an owner, with the RLS with-check doing the actual enforcing.
  */
 export function useSetBudget() {
   const queryClient = useQueryClient();
@@ -347,7 +347,7 @@ export function useSetBudget() {
     mutationFn: async ({ categoryId, amount }: { categoryId: string; amount: number }) => {
       const { error } = await supabase
         .from('budgets')
-        .upsert({ category_id: categoryId, amount }, { onConflict: 'user_id,category_id' });
+        .upsert({ category_id: categoryId, amount }, { onConflict: 'herd_id,category_id' });
       if (error) throw error;
     },
     onSettled: () => {
@@ -487,7 +487,7 @@ export function useCategoryOverride() {
           ? await supabase.from('category_overrides').delete().eq('category_id', categoryId)
           : await supabase
               .from('category_overrides')
-              .upsert({ category_id: categoryId, ...patch }, { onConflict: 'user_id,category_id' });
+              .upsert({ category_id: categoryId, ...patch }, { onConflict: 'herd_id,category_id' });
       if (error) throw error;
     },
     onMutate: async ({ categoryId, patch }) => {
@@ -511,7 +511,7 @@ export function useCategoryOverride() {
 
 /**
  * Add a custom category under a group. The payload names exactly the granted
- * columns; user_id, kind and sort_order come from defaults and the tree trigger.
+ * columns; herd_id, kind and sort_order come from defaults and the tree trigger.
  */
 export function useCreateCategory() {
   const queryClient = useQueryClient();

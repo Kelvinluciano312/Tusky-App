@@ -102,15 +102,39 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
 ## Conventions
 
 - All Plaid calls go through Edge Functions; the app never sees access tokens (`plaid_tokens` has zero client grants/policies).
-- New tables: enable RLS, add `(select auth.uid()) = user_id` policies, then grant `authenticated`
+- **Herds own the data** (Phase 9b). Every user belongs to exactly one herd (`herd_members.user_id`
+  is unique), and a personal one is created at signup by `handle_new_user`.
+  - **Access.** `herd_id` is the access boundary on every owned table. Policies use
+    `herd_id = (select private.my_herd_id())`. Account-bearing tables also require
+    `account_id = any ((select private.my_account_ids())::uuid[])`, which is what hides another
+    member's private account. The `::uuid[]` cast is required: without it, `= any ((select …))` is
+    read as a subquery and fails with `uuid = uuid[]`.
+  - **`user_id` on Plaid data** (items, accounts, transactions, snapshots, streams) means "connected
+    by". It decides who may reconnect or disconnect a bank and which banks leave with a member, never
+    who may read a row.
+  - **Config tables** (budgets, category_overrides, merchant_rules, custom categories) have no
+    `user_id`. A built-in category is `herd_id is null`. Client inserts get
+    `herd_id default private.my_herd_id()`.
+  - **Composite keys.** `(item_id, herd_id)` and `(account_id, herd_id)` cascade on update, so moving a
+    bank to another herd is one `update plaid_items set herd_id`. They are the ONLY foreign keys to
+    their parent: a second one makes PostgREST refuse embeds with PGRST201.
+  - **Triggers.** `fill_herd_id` fills `herd_id` on Plaid inserts, so server code never names it.
+    `category_in_herd` refuses a category from another herd, which an FK check would allow because it
+    bypasses RLS.
+  - **Edge Functions** scope with `getCallerHerd` (`_shared/lib.ts`).
+  - **`node scripts/rls-check.mjs`** proves every member sees exactly their herd minus others' private
+    accounts, and that forbidden writes fail. It runs as each user inside a rolled-back block, with no
+    credentials. Run it after any migration that touches RLS, grants or views.
+- New tables: enable RLS, add herd policies (above), then grant `authenticated`
   exactly what the app uses — **a new table is unreachable from the app until you do**. Since Phase 6
   (`20260924120100_phase6_revoke_default_grants.sql`) `postgres`'s default privileges in `public` give
   anon and authenticated nothing (service_role still gets everything), and every older table was revoked
   and re-granted to match what the app uses. Before that, the defaults gave anon and authenticated EVERY
   privilege, and a column-scoped `grant update (col)` restricted nothing. Check with
   `has_column_privilege('authenticated', '<table>', '<col>', 'UPDATE')`. A table-level `revoke` also
-  drops that table's column grants, so re-issue them afterwards. Functions still get `EXECUTE` from
-  PUBLIC by Postgres default: revisit that when adding the first RPC.
+  drops that table's column grants, so re-issue them afterwards. Since 9a, functions `postgres`
+  creates in `public` no longer get `EXECUTE` from PUBLIC; grant it per function when one is meant to
+  be called.
 - **Disconnecting a bank** (`plaid-disconnect-item`, logic in `_shared/connections.ts`) calls
   `/item/remove` FIRST, and changes local state only if that succeeds or returns `ITEM_NOT_FOUND`. The
   token is the only way to stop Plaid's billing, so it is never deleted after a transient error. "Keep
@@ -133,18 +157,18 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   budgeted at once (`budgetsReplacedBy`). `transactions.merchant_key` is a generated column, the SQL
   twin of `normalizeMerchant`. Change both together, or rules and renames (7c) stop matching.
 - **Custom categories and overrides** (Phase 7b). The app reads `user_categories`, never `categories`
-  directly. That view applies this user's `category_overrides` (name, colour, hidden) to the built-ins and
-  adds their own custom rows. Overrides are for built-ins only (a trigger refuses custom rows). A custom
+  directly. That view applies the herd's `category_overrides` (name, colour, hidden) to the built-ins and
+  adds the herd's custom rows. Overrides are for built-ins only (a trigger refuses custom rows). A custom
   category is a child of a built-in group. The client may `insert (name, parent_id, icon, color)` and
   `update (name, icon, color)`, and nothing else. `parent_id` is insert-only because
   `categories_enforce_tree` cannot stop a group being made its own parent. Clients cannot delete: the
   `delete-category` function moves the category's transactions (manual flags kept), streams and budget
-  first. Sync loads only built-in categories into its shared context, and adds the Item owner's custom
+  first. Sync loads only built-in categories into its shared context, and adds the Item's herd's custom
   transfer categories per Item before recurring detection.
-- **Merchant rules** (Phase 7c). `merchant_rules` (one per user and `merchant_key`) holds a category, a
+- **Merchant rules** (Phase 7c). `merchant_rules` (one per herd and `merchant_key`) holds a category, a
   display name, or both. Clients only read it; every write goes through `set-merchant-rule`, which
   re-resolves the merchant's non-manual rows with `resolveCategoryId` whenever the category part
-  changes, so removing a rule puts Plaid's category back. Sync loads the owner's rules per Item and passes
+  changes, so removing a rule puts Plaid's category back. Sync loads the Item's herd's rules and passes
   `rule:` to the same resolver. Renames apply only when data is read (`lib/merchants.ts`). Rows read the
   rules themselves (`useMerchantRules`), so every surface shows the same name. `delete-category` moves
   rules to the group before its delete: the rules FK has no cascade, on purpose.

@@ -13,12 +13,29 @@ export function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-/** Service-role client — bypasses RLS. Only for use inside Edge Functions. */
+/**
+ * Service-role client — bypasses RLS. Only for use inside Edge Functions.
+ * New projects may ship only the new secret keys (a JSON map in
+ * SUPABASE_SECRET_KEYS); older ones have the legacy service_role key.
+ */
 export function getAdminClient(): SupabaseClient {
-  return createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-  );
+  const secretKeys = Deno.env.get('SUPABASE_SECRET_KEYS');
+  const key = (secretKeys ? JSON.parse(secretKeys).default : null) ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  return createClient(Deno.env.get('SUPABASE_URL')!, key);
+}
+
+/**
+ * The caller's herd (Phase 9b). Every user is in exactly one, created with
+ * their account, so a missing row is a server fault, not a client error.
+ */
+export async function getCallerHerd(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<{ herd_id: string; role: 'owner' | 'member' }> {
+  const { data, error } = await admin
+    .from('herd_members').select('herd_id, role').eq('user_id', userId).single();
+  if (error || !data) throw new Error(`no herd for user ${userId}`);
+  return data as { herd_id: string; role: 'owner' | 'member' };
 }
 
 /** Resolve the calling user from the request's JWT; null if invalid. */
