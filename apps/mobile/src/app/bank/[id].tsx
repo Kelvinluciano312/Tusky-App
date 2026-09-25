@@ -10,7 +10,16 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useConnectBank, useDisconnectBank, useSandboxTools } from '@/lib/plaid';
-import { useHerd, useItemAccounts, usePlaidItems, useSetAccountHidden, useSetAccountPrivate } from '@/lib/queries';
+import { Chips } from '@/components/ui/chips';
+import { memberChips } from '@/components/who-paid';
+import {
+  useHerd,
+  useItemAccounts,
+  usePlaidItems,
+  useSetAccountHidden,
+  useSetAccountOwner,
+  useSetAccountPrivate,
+} from '@/lib/queries';
 import { useSession } from '@/lib/session';
 
 function connectedOn(iso: string) {
@@ -32,6 +41,7 @@ export default function BankScreen() {
   const { data: herd } = useHerd();
   const setHidden = useSetAccountHidden();
   const setPrivate = useSetAccountPrivate();
+  const setOwner = useSetAccountOwner();
   const { disconnect, isDisconnecting, error: disconnectError } = useDisconnectBank();
   const { connectBank, isConnecting, error: connectError } = useConnectBank();
   const { resetLogin, fireWebhook, isBusy } = useSandboxTools();
@@ -150,6 +160,37 @@ export default function BankScreen() {
           Hidden accounts leave net worth, transactions, budgets, reports and bills. Nothing is deleted.
         </AppText>
       </Card>
+
+      {herd && herd.members.length > 1 ? (
+        /* Who paid (9d): an account's owner is the default payer of its
+           transactions. Any member may set it. */
+        <Card style={{ gap: Spacing.xs }}>
+          <AppText variant="section" tone="dim">
+            Whose account?
+          </AppText>
+          {accounts.map((account) => (
+            <View
+              key={account.id}
+              style={{
+                gap: Spacing.sm,
+                paddingVertical: Spacing.sm,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+              }}>
+              <AppText variant="label">{account.name}</AppText>
+              <Chips
+                accessibilityLabel={`Whose account is ${account.name}`}
+                options={memberChips(herd)}
+                selected={account.owner_id}
+                onSelect={(ownerId) => setOwner.mutate({ accountId: account.id, itemId: item.id, ownerId })}
+              />
+            </View>
+          ))}
+          <AppText variant="caption" tone="dim" style={{ marginTop: Spacing.xs }}>
+            Its transactions count as paid by its owner, unless you change one by hand.
+          </AppText>
+        </Card>
+      ) : null}
 
       {mine ? (
         <Card>

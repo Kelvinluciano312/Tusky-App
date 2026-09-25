@@ -233,9 +233,9 @@ export async function syncItem(
       ))];
       const { data: existingRows } = await admin
         .from('transactions')
-        .select('plaid_transaction_id, category_id, category_is_manual, notes')
+        .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual')
         .in('plaid_transaction_id', ids);
-      const { existingFor, notes: carriedNotes } = carryForward(
+      const { existingFor, notes: carriedNotes, payers: carriedPayers } = carryForward(
         upserts,
         new Map(((existingRows ?? []) as ExistingRow[]).map((r) => [r.plaid_transaction_id, r])),
       );
@@ -287,6 +287,23 @@ export async function syncItem(
         const { error } = await admin
           .from('transactions').update({ notes: c.notes })
           .eq('plaid_transaction_id', c.plaid_transaction_id).is('notes', null);
+        if (error) throw error;
+      }
+      // Who paid (9d): the database gave each new row its account's owner; a
+      // payer picked by hand on the pending row replaces it, never over one
+      // already picked on the posted row. A payer who has left the herd is not
+      // carried: the payer trigger would refuse it and fail the whole sync.
+      let members = new Set<string>();
+      if (carriedPayers.length > 0) {
+        const { data: memberRows, error: memberError } = await admin
+          .from('herd_members').select('user_id').eq('herd_id', item.herd_id);
+        if (memberError) throw memberError;
+        members = new Set((memberRows ?? []).map((m) => m.user_id as string));
+      }
+      for (const p of carriedPayers.filter((p) => p.paid_by === null || members.has(p.paid_by))) {
+        const { error } = await admin
+          .from('transactions').update({ paid_by: p.paid_by, paid_by_is_manual: true })
+          .eq('plaid_transaction_id', p.plaid_transaction_id).eq('paid_by_is_manual', false);
         if (error) throw error;
       }
     }

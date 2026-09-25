@@ -66,7 +66,17 @@ const setup = !scenario
   perform public.merge_into_herd('${joiner}', 'TESTJ01N', array(
     select a.id from public.accounts a join public.herd_members m on m.herd_id = a.herd_id
     where m.user_id = '${joiner}' order by a.id limit 1));
-  ${scenario === 'join-leave' ? `perform public.leave_herd('${joiner}');` : ''}`;
+  ${scenario === 'join-leave'
+    ? `-- Cross ownership first (9d), so leaving must untangle it: the host owns
+  -- one of the joiner's accounts and paid on it; the joiner owns one of the host's.
+  update public.accounts set owner_id = '${host}' where id = (
+    select id from public.accounts where user_id = '${joiner}' and not is_private order by id limit 1);
+  update public.transactions set paid_by = '${host}', paid_by_is_manual = true where id = (
+    select id from public.transactions where user_id = '${joiner}' order by id limit 1);
+  update public.accounts set owner_id = '${joiner}' where id = (
+    select id from public.accounts where user_id = '${host}' order by id limit 1);
+  perform public.leave_herd('${joiner}');`
+    : ''}`;
 
 const users = only
   ? [only]
@@ -128,6 +138,7 @@ declare
   builtin uuid;
   r text;
   mate_account uuid;
+  outsider uuid;
 begin
   ${setup}
   select herd_id, role into h, r from public.herd_members where user_id = u;
@@ -141,6 +152,13 @@ begin
   -- Invariant: the banks you connected are always in your herd.
   w := w || jsonb_build_object('own_banks_elsewhere',
     (select count(*) from public.plaid_items where user_id = u and herd_id <> h));
+  -- Invariant (9d): owners and payers are members of the row's herd.
+  w := w || jsonb_build_object('owners_payers_outside_herd',
+    (select count(*) from public.accounts a where a.herd_id = h and a.owner_id is not null
+       and not exists (select 1 from public.herd_members m where m.herd_id = h and m.user_id = a.owner_id))
+    + (select count(*) from public.transactions t where t.herd_id = h and t.paid_by is not null
+       and not exists (select 1 from public.herd_members m where m.herd_id = h and m.user_id = t.paid_by)));
+  select user_id into outsider from public.herd_members where herd_id <> h limit 1;
   ${expected}
 
   perform set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated')::text, true);
@@ -180,6 +198,22 @@ begin
       w := w || jsonb_build_object('privatize_mates_account', 'denied');
     end;
   end if;
+  -- Who paid (9d): never someone outside the herd.
+  if own_tx is not null and outsider is not null then
+    begin
+      update public.transactions set paid_by = outsider, paid_by_is_manual = true where id = own_tx;
+      w := w || jsonb_build_object('payer_outside_herd', 'allowed');
+    exception when check_violation then
+      w := w || jsonb_build_object('payer_outside_herd', 'denied');
+    end;
+  end if;
+  -- A mate's shared account can be made yours, and its rows follow.
+  if mate_account is not null then
+    update public.accounts set owner_id = u where id = mate_account;
+    w := w || jsonb_build_object('owner_change_followed',
+      not exists (select 1 from public.transactions where account_id = mate_account
+                  and not paid_by_is_manual and paid_by is distinct from u));
+  end if;
   -- Only the owner renames the herd.
   update public.herds set name = name where id = h;
   get diagnostics n = row_count;
@@ -205,6 +239,9 @@ const WRITE_EXPECT = {
   own_banks_elsewhere: 0,
   privatize_mates_account: 'denied',
   rename_herd_matches_role: true,
+  owners_payers_outside_herd: 0,
+  payer_outside_herd: 'denied',
+  owner_change_followed: true,
 };
 
 let failures = 0;

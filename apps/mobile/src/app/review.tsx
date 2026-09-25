@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CategoryPicker } from '@/components/category-picker';
 import { DetailLine } from '@/components/detail-line';
 import { NoteSheet } from '@/components/note-sheet';
+import { WhoPaid } from '@/components/who-paid';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
@@ -134,6 +135,7 @@ function ReviewCard({ id }: { id: string }) {
           onPress={() => setPicking(true)}
         />
         <DetailLine label="Memo" value={t.notes ?? 'Add a memo'} dim={!t.notes} onPress={() => setNoting(true)} />
+        <WhoPaid transaction={t} />
       </Card>
 
       <AppText variant="caption" tone="dim" style={{ textAlign: 'center' }}>

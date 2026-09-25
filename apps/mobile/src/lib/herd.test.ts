@@ -3,7 +3,18 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { expiresIn, formatCode, initials, inviteMessage, normalizeCode } from './herd.ts';
+import { expiresIn, formatCode, initials, inviteMessage, normalizeCode, payerLabel } from './herd.ts';
+
+test('payerLabel names a member by first name, null as Joint, anyone else as Former member', () => {
+  const members = [
+    { user_id: 'a', display_name: 'Pedro Leão' },
+    { user_id: 'b', display_name: 'Kelvyn' },
+  ];
+  assert.equal(payerLabel('a', members), 'Pedro');
+  assert.equal(payerLabel('b', members), 'Kelvyn');
+  assert.equal(payerLabel(null, members), 'Joint');
+  assert.equal(payerLabel('gone', members), 'Former member');
+});
 
 test('normalizeCode forgives case, dashes, spaces and look-alikes', () => {
   assert.equal(normalizeCode('abcd-efgh'), 'ABCDEFGH');

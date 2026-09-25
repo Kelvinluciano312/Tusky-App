@@ -7,7 +7,45 @@ const row = (id: string, over: Partial<ExistingRow> = {}): ExistingRow => ({
   category_id: 'cat-plaid',
   category_is_manual: false,
   notes: null,
+  paid_by: 'owner',
+  paid_by_is_manual: false,
   ...over,
+});
+
+Deno.test('carryForward: a hand-picked payer, Joint included, moves to the posted row', () => {
+  const { payers } = carryForward(
+    [
+      { transaction_id: 'posted1', pending_transaction_id: 'p1' },
+      { transaction_id: 'posted2', pending_transaction_id: 'p2' },
+    ],
+    new Map([
+      ['p1', row('p1', { paid_by: 'kelvyn', paid_by_is_manual: true })],
+      ['p2', row('p2', { paid_by: null, paid_by_is_manual: true })],
+    ]),
+  );
+  assertEquals(payers, [
+    { plaid_transaction_id: 'posted1', paid_by: 'kelvyn' },
+    { plaid_transaction_id: 'posted2', paid_by: null },
+  ]);
+});
+
+Deno.test("carryForward: a payer from the account's owner is not carried; the database sets it", () => {
+  const { payers } = carryForward(
+    [{ transaction_id: 'posted1', pending_transaction_id: 'p1' }],
+    new Map([['p1', row('p1')]]),
+  );
+  assertEquals(payers, []);
+});
+
+Deno.test('carryForward: an existing row keeps its own payer', () => {
+  const { payers } = carryForward(
+    [{ transaction_id: 'posted1', pending_transaction_id: 'p1' }],
+    new Map([
+      ['posted1', row('posted1')],
+      ['p1', row('p1', { paid_by: 'kelvyn', paid_by_is_manual: true })],
+    ]),
+  );
+  assertEquals(payers, []);
 });
 
 Deno.test('carryForward: a new posted row inherits its pending predecessor and its memo', () => {

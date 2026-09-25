@@ -8,6 +8,7 @@ import { CategorySheet, type SheetTarget } from '@/components/category-sheet';
 import { DetailLine as Line } from '@/components/detail-line';
 import { NoteSheet } from '@/components/note-sheet';
 import { RenameSheet } from '@/components/rename-sheet';
+import { WhoPaid } from '@/components/who-paid';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
@@ -104,6 +105,7 @@ export default function TransactionScreen() {
             </AppText>
           ) : null}
           <Line label="Memo" value={t.notes ?? 'Add a memo'} dim={!t.notes} onPress={() => setNoting(true)} />
+          <WhoPaid transaction={t} />
           <Line
             label="Account"
             value={`${t.accounts?.name ?? 'Account'}${t.accounts?.mask ? ` ···· ${t.accounts.mask}` : ''}`}
