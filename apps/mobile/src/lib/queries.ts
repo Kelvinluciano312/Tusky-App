@@ -16,10 +16,14 @@ export type Account = {
   available_balance: number | null;
   iso_currency_code: string;
   hidden: boolean;
+  /** Visible only to the member who connected it (Phase 9c). */
+  is_private: boolean;
+  /** Who connected it: the only member who can make it private. */
+  user_id: string;
 };
 
 const ACCOUNT_COLUMNS =
-  'id, item_id, name, official_name, mask, type, subtype, current_balance, available_balance, iso_currency_code, hidden';
+  'id, item_id, user_id, name, official_name, mask, type, subtype, current_balance, available_balance, iso_currency_code, hidden, is_private';
 
 
 /**
@@ -116,6 +120,8 @@ export type PlaidItem = {
   institution_name: string | null;
   status: ItemStatus;
   created_at: string;
+  /** Who connected it: the only member who can reconnect or disconnect it. */
+  user_id: string;
 };
 
 export function usePlaidItems() {
@@ -124,7 +130,7 @@ export function usePlaidItems() {
     queryFn: async (): Promise<PlaidItem[]> => {
       const { data, error } = await supabase
         .from('plaid_items')
-        .select('id, institution_id, institution_name, status, created_at')
+        .select('id, institution_id, institution_name, status, created_at, user_id')
         .order('created_at', { ascending: true });
       if (error) throw error;
       return data;
@@ -758,5 +764,189 @@ export function useSetDisplayName() {
       if (error) throw error;
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['profile'] }),
+  });
+}
+
+// Herds (Phase 9c). Reads go straight to the tables (RLS shows the caller's
+// herd only); invites, joining, leaving and removing go through the `herd`
+// function.
+
+export type HerdMember = { user_id: string; role: 'owner' | 'member'; joined_at: string; display_name: string };
+export type Herd = { id: string; name: string; members: HerdMember[] };
+
+/** The caller's herd with its members, oldest first. Every user has one. */
+export function useHerd() {
+  return useQuery({
+    queryKey: ['herd'],
+    queryFn: async (): Promise<Herd> => {
+      // No foreign key joins members to profiles (both point at auth.users), so three reads.
+      const [herd, members, profiles] = await Promise.all([
+        supabase.from('herds').select('id, name').single(),
+        supabase.from('herd_members').select('user_id, role, joined_at').order('joined_at'),
+        supabase.from('profiles').select('user_id, display_name'),
+      ]);
+      if (herd.error) throw herd.error;
+      if (members.error) throw members.error;
+      if (profiles.error) throw profiles.error;
+      const names = new Map(profiles.data.map((p) => [p.user_id, p.display_name as string]));
+      return {
+        ...herd.data,
+        members: members.data.map((m) => ({
+          ...(m as Omit<HerdMember, 'display_name'>),
+          display_name: names.get(m.user_id) ?? 'Member',
+        })),
+      };
+    },
+  });
+}
+
+export type HerdInvite = { code: string; expires_at: string };
+
+/** Open invites: not used yet and not expired. */
+export function useHerdInvites() {
+  return useQuery({
+    queryKey: ['herd', 'invites'],
+    queryFn: async (): Promise<HerdInvite[]> => {
+      const { data, error } = await supabase
+        .from('herd_invites')
+        .select('code, expires_at')
+        .is('accepted_at', null)
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at');
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+/** Owner only (RLS refuses anyone else, so the update changes no row). */
+export function useRenameHerd() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ herdId, name }: { herdId: string; name: string }) => {
+      const { data, error } = await supabase.from('herds').update({ name }).eq('id', herdId).select('id');
+      if (error) throw error;
+      if (data.length === 0) throw new Error('Only the herd owner can rename it.');
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['herd'] }),
+  });
+}
+
+async function callHerd<T>(body: Record<string, unknown>, fallback: string): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('herd', { body });
+  if (error) {
+    const { message } = await readFunctionError(error);
+    throw new Error(message ?? fallback);
+  }
+  return data as T;
+}
+
+export function useCreateInvite() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => callHerd<HerdInvite>({ action: 'create_invite' }, 'Could not create an invite.'),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['herd', 'invites'] }),
+  });
+}
+
+export function useRevokeInvite() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (code: string) => callHerd({ action: 'revoke_invite', code }, 'Could not cancel the invite.'),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['herd', 'invites'] }),
+  });
+}
+
+export type InvitePreview = {
+  herd_name: string;
+  inviter_name: string;
+  member_count: number;
+  expires_at: string;
+  /** Why the caller can't join, or null. */
+  blocked: string | null;
+};
+
+export function useInvitePreview(code: string | null) {
+  return useQuery({
+    queryKey: ['invite-preview', code],
+    enabled: !!code,
+    retry: false,
+    gcTime: 0,
+    queryFn: () => callHerd<InvitePreview>({ action: 'preview_invite', code }, 'Could not open this invite.'),
+  });
+}
+
+/**
+ * Joining, leaving and being removed change whose data every screen shows, so
+ * each resets the whole cache: every query drops its data and refetches.
+ */
+function useResetAll() {
+  const queryClient = useQueryClient();
+  return () => queryClient.resetQueries();
+}
+
+export function useJoinHerd() {
+  const resetAll = useResetAll();
+
+  return useMutation({
+    mutationFn: (input: { code: string; privateAccountIds: string[] }) =>
+      callHerd<{ herd_id: string; hidden_account_ids: string[] }>(
+        { action: 'join', code: input.code, private_account_ids: input.privateAccountIds },
+        'Could not join the herd.',
+      ),
+    onSuccess: () => resetAll(),
+  });
+}
+
+export function useLeaveHerd() {
+  const resetAll = useResetAll();
+
+  return useMutation({
+    mutationFn: () => callHerd({ action: 'leave' }, 'Could not leave the herd.'),
+    onSuccess: () => resetAll(),
+  });
+}
+
+export function useRemoveMember() {
+  const resetAll = useResetAll();
+
+  return useMutation({
+    mutationFn: (userId: string) =>
+      callHerd({ action: 'remove_member', user_id: userId }, 'Could not remove them.'),
+    onSuccess: () => resetAll(),
+  });
+}
+
+/**
+ * Make an account private (visible to you alone) or shared with the herd. Only
+ * its connector may; a trigger refuses anyone else. Optimistic on the bank
+ * screen, like hiding.
+ */
+export function useSetAccountPrivate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ accountId, isPrivate }: { accountId: string; itemId: string; isPrivate: boolean }) => {
+      const { error } = await supabase.from('accounts').update({ is_private: isPrivate }).eq('id', accountId);
+      if (error) throw error;
+    },
+    onMutate: async ({ accountId, itemId, isPrivate }) => {
+      const key = ['accounts', itemId];
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Account[]>(key);
+      queryClient.setQueryData<Account[]>(key, (old) =>
+        old?.map((a) => (a.id === accountId ? { ...a, is_private: isPrivate } : a)),
+      );
+      return { previous };
+    },
+    onError: (_err, { itemId }, context) => {
+      if (context?.previous) queryClient.setQueryData(['accounts', itemId], context.previous);
+    },
+    onSettled: () => {
+      for (const queryKey of HIDDEN_DEPENDENT_KEYS) queryClient.invalidateQueries({ queryKey });
+    },
   });
 }

@@ -5,7 +5,7 @@ Approved plan/phases: see README Status (Phases 0–6 done; Phase 6's final step
 on Pedro's go-ahead — see its spec, `docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md`).
 Phases 7 (categories) and 8 (transaction review) are merged. Now: Phase 9 — names, herds (shared
 households), who paid, production project — `docs/superpowers/specs/2026-09-25-phase-9-herds-design.md`,
-milestones 9a → 9d plus Track P. Latest handoff: `docs/superpowers/plans/2026-09-25-phase-8-handoff.md`.
+milestones 9a → 9d plus Track P. Latest handoff: `docs/superpowers/plans/2026-09-27-phase-9c-handoff.md`.
 
 ## Layout
 
@@ -122,9 +122,23 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     `category_in_herd` refuses a category from another herd, which an FK check would allow because it
     bypasses RLS.
   - **Edge Functions** scope with `getCallerHerd` (`_shared/lib.ts`).
+  - **Membership (9c).** Every membership change goes through the `herd` function (logic in
+    `_shared/herd.ts`), which calls `merge_into_herd` (join) and `leave_herd` (leave and remove). Only
+    service_role may execute them, so each runs in one transaction. A join moves everything the joiner
+    has; where both sides set the same override or rule, or the herd already has budgets, the herd wins.
+    A leaver takes the banks they connected; the herd keeps config, and custom categories on the leaver's
+    rows fall back to their group first. Invites are single-use 8-character Crockford codes, 7 days,
+    max 6 members. `accounts.is_private` is changed only by the account's connector
+    (`accounts_private_by_connector` trigger). Herd mates see each other's profiles. The app resets its
+    whole query cache after a join, leave or removal.
+  - **The app hides connector-only actions**: reconnect, disconnect, the Private switch and the sandbox
+    tools show only when `item.user_id` is the signed-in user.
   - **`node scripts/rls-check.mjs`** proves every member sees exactly their herd minus others' private
     accounts, and that forbidden writes fail. It runs as each user inside a rolled-back block, with no
     credentials. Run it after any migration that touches RLS, grants or views.
+    `--join <joiner> <host>` and `--join-leave <joiner> <host>` first rehearse a membership change in
+    the same rolled-back block (the joiner's first account made private), so two-member visibility is
+    tested without committing anything.
 - New tables: enable RLS, add herd policies (above), then grant `authenticated`
   exactly what the app uses — **a new table is unreachable from the app until you do**. Since Phase 6
   (`20260924120100_phase6_revoke_default_grants.sql`) `postgres`'s default privileges in `public` give
@@ -224,3 +238,5 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   AI usage, never transaction pulls. Any tier limit is enforced in an Edge Function, never the client,
   for the same reason `plaid_tokens` is server-only.
 - Sandbox login inside Plaid Link: `user_good` / `pass_good`. Test app user: `ph.leao2099+tuskytest@gmail.com` (email confirmation is ON for new signups; confirm via admin API or dashboard).
+  Second test user for herd tests (9c): "Kel Test", `ph.leao2099+tuskyherd@gmail.com`
+  (`706f7db5-…`), no banks, alone in its own herd.

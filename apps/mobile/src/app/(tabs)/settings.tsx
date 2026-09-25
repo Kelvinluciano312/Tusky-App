@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { ChevronRight, Landmark, Store, Tags, UserRound } from 'lucide-react-native';
+import { ChevronRight, Landmark, Store, Tags, UserRound, Users } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,7 +12,7 @@ import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useConnectBank } from '@/lib/plaid';
-import { type PlaidItem, usePlaidItems, useProfile, useSetDisplayName } from '@/lib/queries';
+import { type PlaidItem, useHerd, usePlaidItems, useProfile, useSetDisplayName } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { supabase } from '@/lib/supabase';
 
@@ -22,6 +22,7 @@ export default function SettingsScreen() {
   const { session } = useSession();
   const queryClient = useQueryClient();
   const { data: profile } = useProfile(session?.user.id);
+  const { data: herd } = useHerd();
   const setName = useSetDisplayName();
   const [naming, setNaming] = useState(false);
   const { data: items = [] } = usePlaidItems();
@@ -30,8 +31,13 @@ export default function SettingsScreen() {
   const live = items.filter((item) => item.status !== 'archived');
   const archived = items.filter((item) => item.status === 'archived');
 
+  const connectorName = (userId: string) =>
+    herd?.members.find((m) => m.user_id === userId)?.display_name ?? 'A former member';
+
   const bankRow = (item: PlaidItem) => {
     const broken = item.status === 'login_required';
+    // Only the member who connected a bank can repair it (Phase 9c).
+    const mine = item.user_id === session?.user.id;
     return (
       <Pressable
         key={item.id}
@@ -52,15 +58,19 @@ export default function SettingsScreen() {
           <AppText variant="label">{item.institution_name ?? 'Bank'}</AppText>
           {broken ? (
             <AppText variant="caption" tone="negative">
-              Sign-in expired
+              {mine ? 'Sign-in expired' : `Sign-in expired · ${connectorName(item.user_id)} can reconnect`}
             </AppText>
           ) : item.status === 'archived' ? (
             <AppText variant="caption" tone="dim">
               History kept
             </AppText>
+          ) : !mine ? (
+            <AppText variant="caption" tone="dim">
+              Connected by {connectorName(item.user_id)}
+            </AppText>
           ) : null}
         </View>
-        {broken ? (
+        {broken && mine ? (
           /* Update mode: repairs this Item in place rather than creating a
              duplicate connection. */
           <Button
@@ -101,6 +111,26 @@ export default function SettingsScreen() {
             <AppText variant="label">{profile?.display_name ?? ' '}</AppText>
             <AppText variant="caption" tone="dim">
               Your name in Tusky
+            </AppText>
+          </View>
+          <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
+        </Pressable>
+        <Pressable
+          onPress={() => router.push('/herd')}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: Spacing.sm,
+            paddingVertical: Spacing.xs,
+            backgroundColor: pressed ? colors.elevated : 'transparent',
+          })}>
+          <Users size={20} color={colors.brand} strokeWidth={1.75} />
+          <View style={{ flex: 1 }}>
+            <AppText variant="label">{herd?.name ?? ' '}</AppText>
+            <AppText variant="caption" tone="dim">
+              {!herd || herd.members.length === 1
+                ? 'Your herd · share Tusky with others'
+                : herd.members.map((m) => m.display_name).join(', ')}
             </AppText>
           </View>
           <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
