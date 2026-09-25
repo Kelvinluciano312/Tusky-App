@@ -183,13 +183,15 @@ export type Transaction = {
   pending: boolean;
   category_id: string | null;
   category_is_manual: boolean;
+  /** The user's memo (Phase 8); null when none. */
+  notes: string | null;
 };
 
 const PAGE_SIZE = 50;
 type PageCursor = { date: string; id: string } | null;
 
 const TRANSACTION_COLUMNS =
-  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual';
+  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, notes';
 
 /**
  * Keyset pagination on (date, id), NOT offset. Sync inserts rows while the user
@@ -636,6 +638,94 @@ export function useTransaction(id: string) {
       if (error) throw error;
       return data as unknown as TransactionDetail;
     },
+  });
+}
+
+// The review queue (Phase 8): unreviewed, posted rows on shown accounts. Pending
+// rows post under a new id, so they wait. Both queries below use this filter.
+
+/** How many transactions wait for review. Under ['transactions'], so syncs and edits refresh it. */
+export function useReviewCount() {
+  return useQuery({
+    queryKey: ['transactions', 'review-count'],
+    queryFn: async (): Promise<number> => {
+      const { count, error } = await supabase
+        .from('transactions')
+        .select('id, accounts!inner(hidden)', { count: 'exact', head: true })
+        .is('reviewed_at', null)
+        .eq('pending', false)
+        .eq('accounts.hidden', false);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+}
+
+const REVIEW_BATCH = 200;
+
+/**
+ * The queue's ids, oldest first, snapshotted once per visit. Deliberately NOT
+ * under ['transactions']: marking a card reviewed invalidates that key, and a
+ * live queue would drop the card being swiped. Cards read their row through
+ * useTransaction, which does stay live.
+ */
+export function useReviewQueue() {
+  return useQuery({
+    queryKey: ['review-queue'],
+    staleTime: Infinity,
+    gcTime: 0,
+    queryFn: async (): Promise<string[]> => {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('id, accounts!inner(hidden)')
+        .is('reviewed_at', null)
+        .eq('pending', false)
+        .eq('accounts.hidden', false)
+        .order('date', { ascending: true })
+        .order('id', { ascending: true })
+        .limit(REVIEW_BATCH);
+      if (error) throw error;
+      return data.map((r) => r.id);
+    },
+  });
+}
+
+export function useMarkReviewed() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (transactionId: string) => {
+      const { error } = await supabase
+        .from('transactions')
+        .update({ reviewed_at: new Date().toISOString() })
+        .eq('id', transactionId);
+      if (error) throw error;
+    },
+    // Only the count shows review state; refetching the feed per swipe is waste.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['transactions', 'review-count'] }),
+  });
+}
+
+export function useSetTransactionNotes() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ transactionId, notes }: { transactionId: string; notes: string | null }) => {
+      const { error } = await supabase.from('transactions').update({ notes }).eq('id', transactionId);
+      if (error) throw error;
+    },
+    onMutate: async ({ transactionId, notes }) => {
+      const queryKey = ['transactions', 'detail', transactionId];
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<TransactionDetail>(queryKey);
+      if (previous) queryClient.setQueryData<TransactionDetail>(queryKey, { ...previous, notes });
+      return { previous };
+    },
+    onError: (_err, { transactionId }, context) => {
+      if (context?.previous) queryClient.setQueryData(['transactions', 'detail', transactionId], context.previous);
+    },
+    onSettled: (_data, _err, { transactionId }) =>
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'detail', transactionId] }),
   });
 }
 

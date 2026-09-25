@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
-import { Landmark } from 'lucide-react-native';
+import { ChevronRight, Landmark, ListChecks } from 'lucide-react-native';
 import { useMemo } from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AccountRow, signedBalance } from '@/components/account-row';
@@ -13,7 +13,7 @@ import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { UpcomingCard } from '@/components/upcoming-card';
-import { useAccounts, useCategories, useNetWorthHistory, useRecurringStreams } from '@/lib/queries';
+import { useAccounts, useCategories, useNetWorthHistory, useRecurringStreams, useReviewCount } from '@/lib/queries';
 import { todayLocal } from '@/lib/recurring';
 import { useSession } from '@/lib/session';
 
@@ -50,6 +50,7 @@ export default function HomeScreen() {
 
   const { data: history = [], refetch: refetchHistory } = useNetWorthHistory(from, to);
   const { data: streams = [], refetch: refetchStreams } = useRecurringStreams();
+  const { data: toReview = 0, refetch: refetchReview } = useReviewCount();
   const { data: categories = [] } = useCategories();
   const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const today = todayLocal();
@@ -67,6 +68,7 @@ export default function HomeScreen() {
             refetch();
             refetchHistory();
             refetchStreams();
+            refetchReview();
           }}
           tintColor={colors.textDim}
         />
@@ -105,6 +107,23 @@ export default function HomeScreen() {
             : 'Nothing tracked yet — your trend line starts at your first connection.'}
         </AppText>
       </Card>
+
+      {toReview > 0 ? (
+        <Pressable onPress={() => router.push('/review')} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+          <Card style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+            <ListChecks size={22} color={colors.brand} strokeWidth={1.75} />
+            <View style={{ flex: 1 }}>
+              <AppText variant="title">
+                {toReview} to review
+              </AppText>
+              <AppText variant="caption" tone="dim">
+                New transactions since your last look
+              </AppText>
+            </View>
+            <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
+          </Card>
+        </Pressable>
+      ) : null}
 
       <UpcomingCard streams={streams} categoriesById={categoriesById} today={today} />
 

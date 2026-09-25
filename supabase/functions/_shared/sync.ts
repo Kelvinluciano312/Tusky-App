@@ -4,6 +4,7 @@ import type { PlaidApi } from 'npm:plaid@30';
 import { buildSnapshotRows, syncAccounts } from './accounts.ts';
 import { type CategoryMap, pickCategoryId, resolveCategoryId, toSignedAmount } from './categorize.ts';
 import { ignoredCategoryIds, normalizeMerchant, refreshRecurring } from './recurring.ts';
+import { carryForward, type ExistingRow } from './review.ts';
 
 const PAGE_SIZE = 500;
 const FIRST_SYNC_DAYS = 90;
@@ -225,14 +226,18 @@ export async function syncItem(
       if (ruleError) throw ruleError;
       const ruleByMerchant = new Map((ruleRows ?? []).map((r) => [r.merchant_key, r.category_id as string]));
 
-      // Read existing rows so a manual override survives re-sync.
-      const ids = upserts.map((t) => t.transaction_id);
+      // Read existing rows, and the pending rows these post from, so a manual
+      // category or memo survives re-sync and pending → posted (carryForward).
+      const ids = [...new Set(upserts.flatMap((t) =>
+        t.pending_transaction_id ? [t.transaction_id, t.pending_transaction_id] : [t.transaction_id]
+      ))];
       const { data: existingRows } = await admin
         .from('transactions')
-        .select('plaid_transaction_id, category_id, category_is_manual')
+        .select('plaid_transaction_id, category_id, category_is_manual, notes')
         .in('plaid_transaction_id', ids);
-      const existingByPlaidId = new Map(
-        (existingRows ?? []).map((r) => [r.plaid_transaction_id, r]),
+      const { existingFor, notes: carriedNotes } = carryForward(
+        upserts,
+        new Map(((existingRows ?? []) as ExistingRow[]).map((r) => [r.plaid_transaction_id, r])),
       );
 
       const rows = upserts
@@ -247,7 +252,7 @@ export async function syncItem(
             { detailed: detailedMap, primary: categoryMap },
             fallbackId,
           );
-          const existing = existingByPlaidId.get(t.transaction_id) ?? null;
+          const existing = existingFor.get(t.transaction_id) ?? null;
           return {
             user_id: item.user_id,
             account_id: accountByPlaidId.get(t.account_id)!,
@@ -275,6 +280,13 @@ export async function syncItem(
       if (rows.length > 0) {
         const { error } = await admin
           .from('transactions').upsert(rows, { onConflict: 'plaid_transaction_id' });
+        if (error) throw error;
+      }
+      // One small update per carried memo, and never over a memo already there.
+      for (const c of carriedNotes) {
+        const { error } = await admin
+          .from('transactions').update({ notes: c.notes })
+          .eq('plaid_transaction_id', c.plaid_transaction_id).is('notes', null);
         if (error) throw error;
       }
     }

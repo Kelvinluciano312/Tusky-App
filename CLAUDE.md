@@ -3,8 +3,9 @@
 Monarch-Money-style personal finance mobile app. Expo (React Native) + Supabase + Plaid Sandbox.
 Approved plan/phases: see README Status (Phases 0–6 done; Phase 6's final step, the Plaid key switch, waits
 on Pedro's go-ahead — see its spec, `docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md`).
-Now: Phase 7 — categories — `docs/superpowers/specs/2026-09-24-phase-7-categories-design.md`, built as milestones
-7a/7b/7c, all built. Latest handoff: `docs/superpowers/plans/2026-09-25-phase-7c-handoff.md`; specs in `docs/superpowers/specs/`.
+Phase 7 (categories, 7a/7b/7c) is merged. Now: Phase 8 — transaction review —
+`docs/superpowers/specs/2026-09-25-phase-8-transaction-review-design.md`, built. Latest handoff:
+`docs/superpowers/plans/2026-09-25-phase-8-handoff.md`; specs in `docs/superpowers/specs/`.
 
 ## Layout
 
@@ -31,6 +32,13 @@ centers as text, `tap "<label>"` taps by text, `logs` shows JS errors/crashes si
 Prefer `ui` over `shot`; a screenshot costs ~1.5k tokens, only take one when visual layout is the
 question. JS edits hot-reload via Metro — never rebuild for them.
 
+**Pedro's phone, remotely (Pixel 10 Pro, arm64, wireless adb):**
+- The phone reaches this PC's Metro over Tailscale. The PC's Tailscale IP is `100.108.96.124`, and a firewall rule "Metro over Tailscale" allows port 8081 on that interface only.
+- Start Metro with `$env:REACT_NATIVE_PACKAGER_HOSTNAME='100.108.96.124'; npx expo start --dev-client`.
+- The phone then opens `http://100.108.96.124:8081`. When wireless adb is up, `adb shell am start -a android.intent.action.VIEW -d "exp+tusky://expo-development-client/?url=http%3A%2F%2F100.108.96.124%3A8081" com.tusky.app` opens it for him.
+- A white screen with no bundle request in Metro means the phone cannot reach the PC: check the firewall and Tailscale.
+- A native rebuild needs wireless adb, which works only on the same Wi-Fi: `npx expo run:android --device Pixel_10_Pro`. Expo matches the model name, not the adb serial.
+
 ## Hard-won gotchas
 
 - **Expo Go cannot run this app** (native Plaid SDK). Dev builds only.
@@ -53,7 +61,9 @@ question. JS edits hot-reload via Metro — never rebuild for them.
 - **Android builds need JDK 17, not whatever Android Studio bundles.** Android Studio's `jbr` became
   JDK 25, and on it `configureCMakeDebug` fails for react-native-screens/worklets with only
   `WARNING: A restricted method in java.lang.System has been called`. Point `JAVA_HOME` at a JDK 17 for
-  the build (Gradle's own download lives under `~/.gradle/jdks/eclipse_adoptium-17-*`).
+  the build (Gradle's own download lives under `~/.gradle/jdks/eclipse_adoptium-17-*`; on Pedro's PC use
+  `eclipse_adoptium-17-amd64-windows.2`. The folder without `.2` nests the JDK one level deeper, and
+  pointing `JAVA_HOME` at it fails with "JAVA_HOME is set to an invalid directory").
 - `android/` and `ios/` are gitignored; `expo run:android` regenerates them via prebuild. Never hand-edit them — native config belongs in `app.json` under `expo-build-properties` (that is where `minSdkVersion: 26`, required by Plaid SDK 6.0, lives), or it is wiped on the next prebuild.
 
 ## First run on a fresh clone
@@ -145,6 +155,11 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   `./x.ts` path (`allowImportingTsExtensions` is on). A `@/` alias or a React Native import breaks
   the run. TS 6 no longer auto-includes `@types`, so each test file starts with
   `/// <reference types="node" />`.
+- **Transaction review** (Phase 8). `reviewed_at` null means "in the queue" (posted rows only), and
+  `notes` holds the memo. Both are user-owned: sync's upsert must never include them. A bulk upsert sends
+  the union of the rows' keys, so a key on only some rows nulls it on the rest. `carryForward`
+  (`_shared/review.ts`) moves a pending row's memo and manual category onto the posted row that replaces
+  it. The `/review` queue is a per-visit id snapshot kept outside `['transactions']` on purpose.
 - Recurring streams are derived: detection (`_shared/recurring.ts`) runs at the end of every sync and
   owns every column except `dismissed`, which only the user writes. Never add `dismissed` to its
   upsert payload.
