@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { ChevronRight, Landmark, Tags } from 'lucide-react-native';
+import { ChevronRight, Landmark, Store, Tags } from 'lucide-react-native';
 import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -128,6 +128,21 @@ export default function SettingsScreen() {
           <Tags size={20} color={colors.brand} strokeWidth={1.75} />
           <AppText variant="label" style={{ flex: 1 }}>
             Rename, hide or add categories
+          </AppText>
+          <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
+        </Pressable>
+        <Pressable
+          onPress={() => router.push('/rules')}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: Spacing.sm,
+            paddingVertical: Spacing.xs,
+            backgroundColor: pressed ? colors.elevated : 'transparent',
+          })}>
+          <Store size={20} color={colors.brand} strokeWidth={1.75} />
+          <AppText variant="label" style={{ flex: 1 }}>
+            Merchant rules and renames
           </AppText>
           <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
         </Pressable>

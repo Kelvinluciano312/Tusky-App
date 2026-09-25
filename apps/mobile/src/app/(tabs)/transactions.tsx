@@ -1,9 +1,9 @@
+import { router } from 'expo-router';
 import { ArrowLeftRight } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { ActivityIndicator, RefreshControl, SectionList, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { CategoryPicker } from '@/components/category-picker';
 import { TransactionRow } from '@/components/transaction-row';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSyncTransactions } from '@/lib/plaid';
-import { type Transaction, useCategories, useSetTransactionCategory, useTransactions } from '@/lib/queries';
+import { type Transaction, useCategories, useTransactions } from '@/lib/queries';
 
 function formatSectionDate(iso: string): string {
   const date = new Date(`${iso}T00:00:00`);
@@ -36,8 +36,6 @@ export default function TransactionsScreen() {
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useTransactions();
   const { data: categories = [] } = useCategories();
   const { sync, isSyncing, error: syncError } = useSyncTransactions();
-  const setCategory = useSetTransactionCategory();
-  const [editing, setEditing] = useState<Transaction | null>(null);
 
   const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
@@ -119,7 +117,7 @@ export default function TransactionsScreen() {
           <TransactionRow
             transaction={item}
             category={item.category_id ? categoriesById.get(item.category_id) : undefined}
-            onPress={() => setEditing(item)}
+            onPress={() => router.push({ pathname: '/transaction/[id]', params: { id: item.id } })}
           />
         )}
         ListFooterComponent={
@@ -129,16 +127,6 @@ export default function TransactionsScreen() {
             <View style={{ height: Spacing.xxl }} />
           )
         }
-      />
-
-      <CategoryPicker
-        visible={editing !== null}
-        selectedId={editing?.category_id ?? null}
-        onClose={() => setEditing(null)}
-        onSelect={(category) => {
-          if (editing) setCategory.mutate({ transactionId: editing.id, categoryId: category.id });
-          setEditing(null);
-        }}
       />
     </View>
   );

@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { type MerchantRules, streamName, transactionName } from './merchants.ts';
+import { type MerchantRules, streamName, transactionName, validateDisplayName } from './merchants.ts';
 
 const rules: MerchantRules = new Map([
   ['uber', { merchant_key: 'uber', category_id: null, display_name: 'Uber Rides' }],
@@ -24,4 +24,11 @@ test('transactionName tolerates a row with no key (older cache)', () => {
 test('streamName prefers the rename, then the stream name', () => {
   assert.equal(streamName({ merchant_key: 'uber', name: 'Uber' }, rules), 'Uber Rides');
   assert.equal(streamName({ merchant_key: 'lyft', name: 'Lyft' }, rules), 'Lyft');
+});
+
+test('validateDisplayName trims and allows 1–60 characters, as the server does', () => {
+  assert.equal(validateDisplayName('  Uber Rides '), 'Uber Rides');
+  assert.equal(validateDisplayName('   '), null);
+  assert.equal(validateDisplayName('x'.repeat(60)), 'x'.repeat(60));
+  assert.equal(validateDisplayName('x'.repeat(61)), null);
 });

@@ -98,6 +98,9 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="bank/[id]" options={{ headerShown: true, title: '' }} />
         {/* Pushed from Settings. */}
         <Stack.Screen name="categories" options={{ headerShown: true, title: 'Categories' }} />
+        <Stack.Screen name="rules" options={{ headerShown: true, title: 'Merchant rules' }} />
+        {/* Pushed from the feed; the page sets its own title. */}
+        <Stack.Screen name="transaction/[id]" options={{ headerShown: true, title: '' }} />
       </Stack.Protected>
       <Stack.Protected guard={session === null}>
         <Stack.Screen name="(auth)" />

@@ -24,3 +24,9 @@ export function transactionName(
 export function streamName(s: { merchant_key: string; name: string }, rules: MerchantRules): string {
   return rules.get(s.merchant_key)?.display_name ?? s.name;
 }
+
+/** A rename as stored: trimmed, 1–60 characters (set-merchant-rule checks the same). Null when invalid. */
+export function validateDisplayName(raw: string): string | null {
+  const name = raw.trim();
+  return name.length >= 1 && name.length <= 60 ? name : null;
+}
