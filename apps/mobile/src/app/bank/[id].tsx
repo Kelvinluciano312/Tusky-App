@@ -10,7 +10,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useConnectBank, useDisconnectBank, useSandboxTools } from '@/lib/plaid';
-import { useItemAccounts, usePlaidItems, useSetAccountHidden } from '@/lib/queries';
+import { useHerd, useItemAccounts, usePlaidItems, useSetAccountHidden, useSetAccountPrivate } from '@/lib/queries';
+import { useSession } from '@/lib/session';
 
 function connectedOn(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -19,14 +20,18 @@ function connectedOn(iso: string) {
 /**
  * One bank: its accounts with a show/hide switch each — the only place hidden
  * accounts are listed, so the only place they can be unhidden — and the way
- * to disconnect it.
+ * to disconnect it. In a herd (Phase 9c), only the member who connected the
+ * bank can make its accounts private, reconnect it or disconnect it.
  */
 export default function BankScreen() {
   const colors = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { session } = useSession();
   const { data: items = [], isLoading } = usePlaidItems();
   const { data: accounts = [] } = useItemAccounts(id);
+  const { data: herd } = useHerd();
   const setHidden = useSetAccountHidden();
+  const setPrivate = useSetAccountPrivate();
   const { disconnect, isDisconnecting, error: disconnectError } = useDisconnectBank();
   const { connectBank, isConnecting, error: connectError } = useConnectBank();
   const { resetLogin, fireWebhook, isBusy } = useSandboxTools();
@@ -50,6 +55,8 @@ export default function BankScreen() {
 
   const name = item.institution_name ?? 'Bank';
   const archived = item.status === 'archived';
+  const mine = item.user_id === session?.user.id;
+  const connector = herd?.members.find((m) => m.user_id === item.user_id)?.display_name ?? 'The member who connected it';
   const error = disconnectError ?? connectError;
   const n = accounts.length;
   const loss = `Deletes its ${n} account${n === 1 ? '' : 's'} and all their transactions. This can't be undone.`;
@@ -95,7 +102,12 @@ export default function BankScreen() {
               ? 'Sign-in expired'
               : 'Disconnected · history kept'}
         </AppText>
-        {item.status === 'login_required' ? (
+        {mine ? null : (
+          <AppText variant="caption" tone="dim">
+            Connected by {connector}. Only they can reconnect or disconnect it.
+          </AppText>
+        )}
+        {item.status === 'login_required' && mine ? (
           /* Update mode: repairs this Item in place rather than creating a
              duplicate connection. */
           <Button
@@ -139,7 +151,49 @@ export default function BankScreen() {
         </AppText>
       </Card>
 
-      {__DEV__ && !archived ? (
+      {mine ? (
+        <Card>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: Spacing.xs }}>
+            <AppText variant="section" tone="dim">
+              Who sees it
+            </AppText>
+            <AppText variant="caption" tone="dim">
+              Private
+            </AppText>
+          </View>
+          {accounts.map((account) => (
+            <View
+              key={account.id}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingVertical: Spacing.sm,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+              }}>
+              <View style={{ flex: 1 }}>
+                <AppText variant="label">{account.name}</AppText>
+                <AppText variant="caption" tone="dim">
+                  {account.is_private ? 'Only you' : 'Everyone in your herd'}
+                </AppText>
+              </View>
+              <Switch
+                value={account.is_private}
+                accessibilityLabel={`Keep ${account.name} private`}
+                trackColor={{ false: colors.elevated, true: colors.brand }}
+                onValueChange={(isPrivate) =>
+                  setPrivate.mutate({ accountId: account.id, itemId: item.id, isPrivate })
+                }
+              />
+            </View>
+          ))}
+          <AppText variant="caption" tone="dim" style={{ marginTop: Spacing.sm }}>
+            A private account, with its transactions and balances, is visible to you alone.
+          </AppText>
+        </Card>
+      ) : null}
+
+      {__DEV__ && !archived && mine ? (
         /* Dev builds only — never ships. Break forces a real
            ITEM_LOGIN_REQUIRED (reconnect path); Webhook makes Plaid fire
            SYNC_UPDATES_AVAILABLE (webhook sync path). */
@@ -155,7 +209,7 @@ export default function BankScreen() {
         </AppText>
       ) : null}
 
-      {archived ? (
+      {!mine ? null : archived ? (
         <Button title="Delete history" variant="secondary" loading={isDisconnecting} onPress={confirmDeleteHistory} />
       ) : (
         <Button title="Disconnect bank" variant="secondary" loading={isDisconnecting} onPress={confirmDisconnect} />

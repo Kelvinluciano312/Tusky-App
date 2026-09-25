@@ -103,6 +103,10 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="transaction/[id]" options={{ headerShown: true, title: '' }} />
         {/* Pushed from Home's review card; the page sets "3 of 12" as its title. */}
         <Stack.Screen name="review" options={{ headerShown: true, title: 'Review' }} />
+        {/* Pushed from Settings; /join/[code] also opens from a tusky:///join/<code> invite link. */}
+        <Stack.Screen name="herd" options={{ headerShown: true, title: 'Herd' }} />
+        <Stack.Screen name="join-herd" options={{ headerShown: true, title: 'Join a herd' }} />
+        <Stack.Screen name="join/[code]" options={{ headerShown: true, title: 'Invite' }} />
       </Stack.Protected>
       <Stack.Protected guard={session === null}>
         <Stack.Screen name="(auth)" />

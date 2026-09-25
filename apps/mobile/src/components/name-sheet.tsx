@@ -13,12 +13,23 @@ type Props = {
   visible: boolean;
   current: string;
   isSaving?: boolean;
+  /** Default to the person's own name; the herd screen reuses the sheet for the herd's. */
+  title?: string;
+  caption?: string;
   onSave: (name: string) => void;
   onClose: () => void;
 };
 
-/** Change your display name: what Home greets you by and what your herd sees. */
-export function NameSheet({ visible, current, isSaving, onSave, onClose }: Props) {
+/** Change your display name (what Home greets you by and what your herd sees), or the herd's. */
+export function NameSheet({
+  visible,
+  current,
+  isSaving,
+  title = 'Your name',
+  caption = 'Shown on Home, and to the people you share Tusky with.',
+  onSave,
+  onClose,
+}: Props) {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
   // Seeded once per mount; the screen keys this sheet by visibility.
@@ -40,7 +51,7 @@ export function NameSheet({ visible, current, isSaving, onSave, onClose }: Props
             paddingBottom: insets.bottom + Spacing.md,
             gap: Spacing.md,
           }}>
-          <AppText variant="title">Your name</AppText>
+          <AppText variant="title">{title}</AppText>
           <TextField
             label="Name"
             value={value}
@@ -53,7 +64,7 @@ export function NameSheet({ visible, current, isSaving, onSave, onClose }: Props
             autoFocus
           />
           <AppText variant="caption" tone="dim">
-            Shown on Home, and to the people you share Tusky with.
+            {caption}
           </AppText>
           <Button
             title="Save"
