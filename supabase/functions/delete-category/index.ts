@@ -48,6 +48,15 @@ Deno.serve(async (req) => {
       .eq('category_id', categoryId);
     if (streamError) throw streamError;
 
+    // Rules follow the category to its group. merchant_rules.category_id has no
+    // cascade, so if this step were ever skipped the delete below would fail.
+    const { error: ruleError } = await admin
+      .from('merchant_rules')
+      .update({ category_id: plan.moveTo })
+      .eq('user_id', user.id)
+      .eq('category_id', categoryId);
+    if (ruleError) throw ruleError;
+
     const { error: budgetError } = await admin
       .from('budgets')
       .delete()

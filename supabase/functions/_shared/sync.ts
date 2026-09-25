@@ -3,7 +3,7 @@ import type { PlaidApi } from 'npm:plaid@30';
 
 import { buildSnapshotRows, syncAccounts } from './accounts.ts';
 import { type CategoryMap, pickCategoryId, resolveCategoryId, toSignedAmount } from './categorize.ts';
-import { ignoredCategoryIds, refreshRecurring } from './recurring.ts';
+import { ignoredCategoryIds, normalizeMerchant, refreshRecurring } from './recurring.ts';
 
 const PAGE_SIZE = 500;
 const FIRST_SYNC_DAYS = 90;
@@ -45,8 +45,13 @@ export function describeError(err: unknown): string {
 /** Marker so an already-recorded failure isn't recorded twice by the catch. */
 const HANDLED = '__handled__';
 
-/** Loads the taxonomy once per invocation. Throws if it cannot. */
-export async function loadSyncContext(admin: SupabaseClient, plaid: PlaidApi): Promise<SyncContext> {
+/**
+ * Plaid code → category maps plus the fallback: everything resolveCategoryId
+ * needs. Shared by sync and set-merchant-rule, so both resolve identically.
+ */
+export async function loadCategoryMaps(
+  admin: SupabaseClient,
+): Promise<{ categoryMap: CategoryMap; detailedMap: CategoryMap; fallbackId: string }> {
   const { data: mapRows, error: mapError } = await admin
     .from('plaid_category_map')
     .select('pfc_primary, category_id');
@@ -68,6 +73,12 @@ export async function loadSyncContext(admin: SupabaseClient, plaid: PlaidApi): P
   if (fallbackError || !fallback) {
     throw new Error(`uncategorized category missing: ${fallbackError?.message ?? 'no row'}`);
   }
+  return { categoryMap, detailedMap, fallbackId: fallback.id };
+}
+
+/** Loads the taxonomy once per invocation. Throws if it cannot. */
+export async function loadSyncContext(admin: SupabaseClient, plaid: PlaidApi): Promise<SyncContext> {
+  const { categoryMap, detailedMap, fallbackId } = await loadCategoryMaps(admin);
 
   const { data: categoryRows, error: categoryError } = await admin
     .from('categories').select('id, kind, slug').is('user_id', null);
@@ -78,7 +89,7 @@ export async function loadSyncContext(admin: SupabaseClient, plaid: PlaidApi): P
     plaid,
     categoryMap,
     detailedMap,
-    fallbackId: fallback.id,
+    fallbackId,
     transferCategoryIds: ignoredCategoryIds(categoryRows ?? []),
   };
 }
@@ -204,6 +215,16 @@ export async function syncItem(
 
     const upserts = [...added, ...modified];
     if (upserts.length > 0) {
+      // The owner's merchant rules outrank Plaid (a manual choice still wins,
+      // in pickCategoryId). Keyed like transactions.merchant_key.
+      const { data: ruleRows, error: ruleError } = await admin
+        .from('merchant_rules')
+        .select('merchant_key, category_id')
+        .eq('user_id', item.user_id)
+        .not('category_id', 'is', null);
+      if (ruleError) throw ruleError;
+      const ruleByMerchant = new Map((ruleRows ?? []).map((r) => [r.merchant_key, r.category_id as string]));
+
       // Read existing rows so a manual override survives re-sync.
       const ids = upserts.map((t) => t.transaction_id);
       const { data: existingRows } = await admin
@@ -219,6 +240,7 @@ export async function syncItem(
         .map((t) => {
           const incoming = resolveCategoryId(
             {
+              rule: ruleByMerchant.get(normalizeMerchant(t.merchant_name ?? t.name)),
               detailed: t.personal_finance_category?.detailed,
               primary: t.personal_finance_category?.primary,
             },
