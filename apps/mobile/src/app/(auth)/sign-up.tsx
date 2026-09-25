@@ -8,21 +8,30 @@ import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { NAME_MAX, validatePersonName } from '@/lib/profile';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 export default function SignUpScreen() {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
 
+  const validName = validatePersonName(name);
+
   const signUp = async () => {
     setError(null);
     setSubmitting(true);
-    const { data, error: signUpError } = await supabase.auth.signUp({ email: email.trim(), password });
+    // The signup trigger turns display_name into the profile (profiles.display_name).
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: { data: { display_name: validName } },
+    });
     setSubmitting(false);
     if (signUpError) {
       setError(signUpError.message);
@@ -68,6 +77,15 @@ export default function SignUpScreen() {
         ) : (
           <View style={{ gap: Spacing.md }}>
             <TextField
+              label="Your name"
+              value={name}
+              onChangeText={setName}
+              maxLength={NAME_MAX}
+              autoCapitalize="words"
+              autoComplete="name"
+              placeholder="What should Tusky call you?"
+            />
+            <TextField
               label="Email"
               value={email}
               onChangeText={setEmail}
@@ -101,7 +119,7 @@ export default function SignUpScreen() {
               title="Create account"
               onPress={signUp}
               loading={submitting}
-              disabled={!isSupabaseConfigured || !email || password.length < 6}
+              disabled={!isSupabaseConfigured || !validName || !email || password.length < 6}
             />
 
             <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: Spacing.sm, gap: Spacing.xs }}>

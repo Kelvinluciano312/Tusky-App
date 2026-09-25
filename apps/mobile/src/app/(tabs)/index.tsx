@@ -13,7 +13,15 @@ import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { UpcomingCard } from '@/components/upcoming-card';
-import { useAccounts, useCategories, useNetWorthHistory, useRecurringStreams, useReviewCount } from '@/lib/queries';
+import { firstName } from '@/lib/profile';
+import {
+  useAccounts,
+  useCategories,
+  useNetWorthHistory,
+  useProfile,
+  useRecurringStreams,
+  useReviewCount,
+} from '@/lib/queries';
 import { todayLocal } from '@/lib/recurring';
 import { useSession } from '@/lib/session';
 
@@ -32,7 +40,8 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { session } = useSession();
   const { data: accounts = [], isRefetching, refetch } = useAccounts();
-  const firstName = session?.user.email?.split('@')[0] ?? 'there';
+  const { data: profile } = useProfile(session?.user.id);
+  const greetName = profile ? firstName(profile.display_name) : '';
 
   const visibleAccounts = accounts.filter((a) => !a.hidden);
   const netWorth = visibleAccounts.reduce((sum, a) => sum + signedBalance(a), 0);
@@ -77,7 +86,7 @@ export default function HomeScreen() {
         <AppText tone="dim" variant="caption">
           {greeting()},
         </AppText>
-        <AppText variant="display">{firstName}</AppText>
+        <AppText variant="display">{greetName}</AppText>
       </View>
 
       {/* Net worth hero — the ledger voice, oversized */}
