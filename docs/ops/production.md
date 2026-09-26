@@ -54,5 +54,7 @@ Restart Metro after editing `.env`.
 
 - All 18 migrations (through 9d) are applied.
 - The three Plaid secrets are set.
-- **The functions are NOT deployed yet.** Claude's permission check blocks production deploys, so Pedro runs the command above.
+- 8 functions are deployed, all except `plaid-sandbox`.
+  - Checked without a session: `herd` and `plaid-create-link-token` answer 401, `plaid-webhook` refuses an unsigned call, and `plaid-sandbox` is 404.
+  - Claude's auto mode blocks production deploys unless Pedro allows `npx -y supabase@2.118.0 functions deploy` in `/permissions`.
 - No users yet.
