@@ -75,6 +75,10 @@ const setup = !scenario
     select id from public.transactions where user_id = '${joiner}' order by id limit 1);
   update public.accounts set owner_id = '${joiner}' where id = (
     select id from public.accounts where user_id = '${host}' order by id limit 1);
+  -- Splits naming both (11b), on each side's banks: none may name a non-member after.
+  update public.transactions set split = jsonb_build_object('${host}', 50, '${joiner}', 50) where id in (
+    (select id from public.transactions where user_id = '${host}' order by id limit 1),
+    (select id from public.transactions where user_id = '${joiner}' order by id limit 1));
   perform public.leave_herd('${joiner}');`
     : ''}`;
 
@@ -115,8 +119,15 @@ const counts = [
   ],
   [
     'monthly_person_totals',
-    `select count(*) from (select 1 from public.transactions t join public.accounts a on a.id = t.account_id where t.account_id = any (v) and not a.hidden group by date_trunc('month', t.date::timestamp), t.paid_by, t.category_id, t.iso_currency_code) x`,
+    // A split row (11b) counts once per person in it.
+    `select count(*) from (select 1 from public.transactions t join public.accounts a on a.id = t.account_id left join lateral jsonb_each(t.split) s on true where t.account_id = any (v) and not a.hidden group by date_trunc('month', t.date::timestamp), coalesce(s.key::uuid, t.paid_by), t.category_id, t.iso_currency_code) x`,
     `select count(*) from public.monthly_person_totals`,
+  ],
+  ['settlements', `select count(*) from public.settlements where herd_id = h`, `select count(*) from public.settlements`],
+  [
+    'shared_lines',
+    `select count(*) from public.transactions t join public.accounts a on a.id = t.account_id left join public.categories c on c.id = t.category_id where t.account_id = any (v) and not t.pending and not a.is_private and not a.hidden and coalesce(c.kind, 'expense') = 'expense' and (t.split is not null or a.owner_id is distinct from t.paid_by)`,
+    `select count(*) from public.shared_lines`,
   ],
   [
     'daily_net_worth',
@@ -144,6 +155,7 @@ declare
   r text;
   mate_account uuid;
   outsider uuid;
+  mate uuid;
 begin
   ${setup}
   select herd_id, role into h, r from public.herd_members where user_id = u;
@@ -164,6 +176,11 @@ begin
     + (select count(*) from public.transactions t where t.herd_id = h and t.paid_by is not null
        and not exists (select 1 from public.herd_members m where m.herd_id = h and m.user_id = t.paid_by)));
   select user_id into outsider from public.herd_members where herd_id <> h limit 1;
+  select user_id into mate from public.herd_members where herd_id = h and user_id <> u limit 1;
+  -- Invariant (11b): everyone named in a split is in the row's herd.
+  w := w || jsonb_build_object('splits_outside_herd',
+    (select count(*) from public.transactions t cross join lateral jsonb_each(t.split) s where t.herd_id = h
+       and not exists (select 1 from public.herd_members m where m.herd_id = h and m.user_id::text = s.key)));
   ${expected}
 
   perform set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated')::text, true);
@@ -219,6 +236,47 @@ begin
       not exists (select 1 from public.transactions where account_id = mate_account
                   and not paid_by_is_manual and paid_by is distinct from u));
   end if;
+  -- Splits (11b): herd members only, adding up to 100; a valid one makes the row nobody's alone.
+  if own_tx is not null and outsider is not null then
+    begin
+      update public.transactions set split = jsonb_build_object(u::text, 50, outsider::text, 50) where id = own_tx;
+      w := w || jsonb_build_object('split_outside_herd', 'allowed');
+    exception when check_violation then
+      w := w || jsonb_build_object('split_outside_herd', 'denied');
+    end;
+  end if;
+  if own_tx is not null and mate is not null then
+    begin
+      update public.transactions set split = jsonb_build_object(u::text, 60, mate::text, 30) where id = own_tx;
+      w := w || jsonb_build_object('split_not_100', 'allowed');
+    exception when check_violation then
+      w := w || jsonb_build_object('split_not_100', 'denied');
+    end;
+    update public.transactions set split = jsonb_build_object(u::text, 60, mate::text, 40) where id = own_tx;
+    w := w || jsonb_build_object('split_clears_payer',
+      (select paid_by is null and paid_by_is_manual from public.transactions where id = own_tx));
+  end if;
+  -- Settlements (11b): between herd members, in your own herd.
+  if outsider is not null then
+    begin
+      insert into public.settlements (from_user, to_user, amount) values (u, outsider, 1);
+      w := w || jsonb_build_object('settle_with_outsider', 'allowed');
+    exception when check_violation then
+      w := w || jsonb_build_object('settle_with_outsider', 'denied');
+    end;
+  end if;
+  if other_herd is not null and mate is not null then
+    begin
+      insert into public.settlements (herd_id, from_user, to_user, amount) values (other_herd, u, mate, 1);
+      w := w || jsonb_build_object('settle_in_other_herd', 'allowed');
+    exception when insufficient_privilege or check_violation then
+      w := w || jsonb_build_object('settle_in_other_herd', 'denied');
+    end;
+  end if;
+  if mate is not null then
+    insert into public.settlements (from_user, to_user, amount) values (mate, u, 1);
+    w := w || jsonb_build_object('settle_with_mate_visible', (select count(*) = 1 from public.settlements where from_user = mate and to_user = u and amount = 1));
+  end if;
   -- Only the owner renames the herd.
   update public.herds set name = name where id = h;
   get diagnostics n = row_count;
@@ -247,6 +305,13 @@ const WRITE_EXPECT = {
   owners_payers_outside_herd: 0,
   payer_outside_herd: 'denied',
   owner_change_followed: true,
+  splits_outside_herd: 0,
+  split_outside_herd: 'denied',
+  split_not_100: 'denied',
+  split_clears_payer: true,
+  settle_with_outsider: 'denied',
+  settle_in_other_herd: 'denied',
+  settle_with_mate_visible: true,
 };
 
 let failures = 0;

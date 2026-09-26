@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { ChevronRight, Landmark, ListChecks } from 'lucide-react-native';
+import { ChevronRight, HandCoins, Landmark, ListChecks } from 'lucide-react-native';
 import { useMemo } from 'react';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
+import { transferLabel, useSettleUp } from '@/hooks/use-settle-up';
 import { useTheme } from '@/hooks/use-theme';
 import { UpcomingCard } from '@/components/upcoming-card';
 import { GROUP_LABEL, groupAccounts, netWorth } from '@/lib/accounts';
@@ -40,6 +41,7 @@ export default function HomeScreen() {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
   const { session } = useSession();
+  const settle = useSettleUp();
   const { data: accounts = [], isRefetching, refetch } = useAccounts();
   const { data: profile } = useProfile(session?.user.id);
   const greetName = profile ? firstName(profile.display_name) : '';
@@ -132,6 +134,26 @@ export default function HomeScreen() {
               </AppText>
               <AppText variant="caption" tone="dim">
                 New transactions since your last look
+              </AppText>
+            </View>
+            <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
+          </Card>
+        </Pressable>
+      ) : null}
+
+      {settle.mine.length > 0 ? (
+        /* Settle up (11b): only when you owe or are owed. */
+        <Pressable onPress={() => router.push('/settle')} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+          <Card style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+            <HandCoins size={22} color={colors.brand} strokeWidth={1.75} />
+            <View style={{ flex: 1 }}>
+              {settle.mine.map((t) => (
+                <AppText key={`${t.from}-${t.to}`} variant="title">
+                  {transferLabel(t, settle.me, settle.name)} <Amount value={t.amount} size={17} />
+                </AppText>
+              ))}
+              <AppText variant="caption" tone="dim">
+                Tap to settle up
               </AppText>
             </View>
             <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />

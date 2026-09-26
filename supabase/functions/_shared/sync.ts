@@ -4,7 +4,7 @@ import type { PlaidApi } from 'npm:plaid@30';
 import { buildSnapshotRows, syncAccounts } from './accounts.ts';
 import { type CategoryMap, pickCategoryId, resolveCategoryId, toSignedAmount } from './categorize.ts';
 import { ignoredCategoryIds, normalizeMerchant, refreshRecurring } from './recurring.ts';
-import { carryForward, type ExistingRow } from './review.ts';
+import { type CarriedPayer, carryForward, type ExistingRow } from './review.ts';
 
 const PAGE_SIZE = 500;
 const FIRST_SYNC_DAYS = 90;
@@ -233,7 +233,7 @@ export async function syncItem(
       ))];
       const { data: existingRows } = await admin
         .from('transactions')
-        .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual')
+        .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split')
         .in('plaid_transaction_id', ids);
       const { existingFor, notes: carriedNotes, payers: carriedPayers } = carryForward(
         upserts,
@@ -292,7 +292,8 @@ export async function syncItem(
       // Who paid (9d): the database gave each new row its account's owner; a
       // payer picked by hand on the pending row replaces it, never over one
       // already picked on the posted row. A payer who has left the herd is not
-      // carried: the payer trigger would refuse it and fail the whole sync.
+      // carried, and neither is a split (11b) naming one: the payer and split
+      // triggers would refuse it and fail the whole sync.
       let members = new Set<string>();
       if (carriedPayers.length > 0) {
         const { data: memberRows, error: memberError } = await admin
@@ -300,9 +301,12 @@ export async function syncItem(
         if (memberError) throw memberError;
         members = new Set((memberRows ?? []).map((m) => m.user_id as string));
       }
-      for (const p of carriedPayers.filter((p) => p.paid_by === null || members.has(p.paid_by))) {
+      const stillMembers = (p: CarriedPayer) =>
+        (p.paid_by === null || members.has(p.paid_by)) &&
+        (p.split === null || Object.keys(p.split).every((id) => members.has(id)));
+      for (const p of carriedPayers.filter(stillMembers)) {
         const { error } = await admin
-          .from('transactions').update({ paid_by: p.paid_by, paid_by_is_manual: true })
+          .from('transactions').update({ paid_by: p.paid_by, paid_by_is_manual: true, split: p.split })
           .eq('plaid_transaction_id', p.plaid_transaction_id).eq('paid_by_is_manual', false);
         if (error) throw error;
       }

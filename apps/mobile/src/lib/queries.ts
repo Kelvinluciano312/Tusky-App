@@ -2,6 +2,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 
 import { readFunctionError } from '@/lib/functions';
 import type { MerchantRule, MerchantRules } from '@/lib/merchants';
+import type { SharedLine } from '@/lib/settle';
 import { supabase } from '@/lib/supabase';
 
 export type Account = {
@@ -84,7 +85,7 @@ export function useItemAccounts(itemId: string) {
  * Hiding an account, connecting or disconnecting a bank, and syncing must
  * refetch all of them, or one screen goes stale while the rest move.
  */
-export const HIDDEN_DEPENDENT_KEYS = [['accounts'], ['transactions'], ['reports'], ['net_worth'], ['recurring']];
+export const HIDDEN_DEPENDENT_KEYS = [['accounts'], ['transactions'], ['reports'], ['net_worth'], ['recurring'], ['settle']];
 
 /**
  * Hide or unhide one account. Optimistic on the bank screen's list, because a
@@ -226,9 +227,14 @@ export type Transaction = {
   category_is_manual: boolean;
   /** The user's memo (Phase 8); null when none. */
   notes: string | null;
-  /** Who paid (Phase 9d); null = Joint. Follows the account's owner until set by hand. */
+  /**
+   * Whose expense it was (9d; since 11b the account's owner is who paid). Null =
+   * Joint, shared equally. Follows the account's owner until set by hand.
+   */
   paid_by: string | null;
   paid_by_is_manual: boolean;
+  /** A custom split (11b), member id -> percent; `paid_by` is then null. Null = none. */
+  split: Record<string, number> | null;
   /** When it left the review queue (Phase 8); null = waiting. Pending rows are never queued. */
   reviewed_at: string | null;
 };
@@ -237,7 +243,7 @@ const PAGE_SIZE = 50;
 type PageCursor = { date: string; id: string } | null;
 
 const TRANSACTION_COLUMNS =
-  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, reviewed_at';
+  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split, reviewed_at';
 
 /**
  * Keyset pagination on (date, id), NOT offset. Sync inserts rows while the user
@@ -318,6 +324,8 @@ export function useSetTransactionCategory() {
       // Budgets and reports read the same rows through a view; without this a
       // recategorized transaction moves the feed and leaves the budget bar stale.
       queryClient.invalidateQueries({ queryKey: ['reports'] });
+      // Only expenses count toward settle-up (11b), so a category can move a balance.
+      queryClient.invalidateQueries({ queryKey: ['settle'] });
     },
   });
 }
@@ -692,7 +700,9 @@ export function useSetMerchantRule() {
   });
 }
 
-export type TransactionDetail = Transaction & { accounts: { name: string; mask: string | null } | null };
+export type TransactionDetail = Transaction & {
+  accounts: { name: string; mask: string | null; owner_id: string | null; is_private: boolean; hidden: boolean } | null;
+};
 
 /** One transaction, with its account, for the detail screen. Under ['transactions'], so every feed invalidation refreshes it. */
 export function useTransaction(id: string) {
@@ -701,7 +711,7 @@ export function useTransaction(id: string) {
     queryFn: async (): Promise<TransactionDetail> => {
       const { data, error } = await supabase
         .from('transactions')
-        .select(`${TRANSACTION_COLUMNS}, accounts(name, mask)`)
+        .select(`${TRANSACTION_COLUMNS}, accounts(name, mask, owner_id, is_private, hidden)`)
         .eq('id', id)
         .single();
       if (error) throw error;
@@ -1028,43 +1038,136 @@ export function useSetAccountOwner() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      // A new owner re-applies to the account's rows (9d), which moves spending by person.
+      // A new owner re-applies to the account's rows (9d), which moves spending
+      // by person, and is who paid for them (11b), which moves balances.
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['reports'] });
+      queryClient.invalidateQueries({ queryKey: ['settle'] });
     },
   });
 }
 
-/** Who paid for one transaction, set by hand: it no longer follows the account's owner. */
+/**
+ * Who one transaction was for, set by hand: a person, Joint (`paidBy` null), or
+ * a custom split (`split`, 11b). It no longer follows the account's owner.
+ * Choosing a person or Joint clears any split; saving a split makes `paid_by`
+ * null (the database does too).
+ */
 export function useSetPaidBy() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ transactionId, paidBy }: { transactionId: string; paidBy: string | null }) => {
+    mutationFn: async ({ transactionId, paidBy, split = null }: PaidByChoice) => {
       const { error } = await supabase
         .from('transactions')
-        .update({ paid_by: paidBy, paid_by_is_manual: true })
+        .update({ paid_by: split ? null : paidBy, paid_by_is_manual: true, split })
         .eq('id', transactionId);
       if (error) throw error;
     },
-    onMutate: async ({ transactionId, paidBy }) => {
+    onMutate: async ({ transactionId, paidBy, split = null }) => {
       const queryKey = ['transactions', 'detail', transactionId];
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<TransactionDetail>(queryKey);
       if (previous) {
-        queryClient.setQueryData<TransactionDetail>(queryKey, { ...previous, paid_by: paidBy, paid_by_is_manual: true });
+        queryClient.setQueryData<TransactionDetail>(queryKey, {
+          ...previous,
+          paid_by: split ? null : paidBy,
+          paid_by_is_manual: true,
+          split,
+        });
       }
       return { previous };
     },
     onError: (_err, { transactionId }, context) => {
       if (context?.previous) queryClient.setQueryData(['transactions', 'detail', transactionId], context.previous);
     },
-    // The whole prefix, not just the detail: the feed filters by payer and
-    // Reports totals by person (11a), and both read the same row.
+    // The whole prefix, not just the detail: the feed filters by payer, Reports
+    // totals by person (11a), and balances follow it (11b).
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['reports'] });
+      queryClient.invalidateQueries({ queryKey: ['settle'] });
     },
+  });
+}
+
+type PaidByChoice = { transactionId: string; paidBy: string | null; split?: Record<string, number> | null };
+
+// Settle-up (11b). Everything lives under ['settle'], which every mutation that
+// can move a balance invalidates: who a purchase was for, an account's owner,
+// hiding or privacy, a category, and settlements themselves.
+
+/** A `shared_lines` row: one purchase that makes someone owe someone. */
+export type SharedLineDetail = SharedLine & {
+  category_id: string | null;
+  merchant_name: string | null;
+  name: string;
+};
+
+export function useSharedLines(enabled = true) {
+  return useQuery({
+    queryKey: ['settle', 'lines'],
+    enabled,
+    queryFn: async (): Promise<SharedLineDetail[]> => {
+      const { data, error } = await supabase
+        .from('shared_lines')
+        .select('id, date, amount, funded_by, paid_by, split, category_id, merchant_name, name')
+        .order('date', { ascending: false })
+        .order('id', { ascending: false });
+      if (error) throw error;
+      return data as SharedLineDetail[];
+    },
+  });
+}
+
+export type SettlementRow = {
+  id: string;
+  from_user: string;
+  to_user: string;
+  amount: number;
+  date: string;
+  note: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+export function useSettlements(enabled = true) {
+  return useQuery({
+    queryKey: ['settle', 'settlements'],
+    enabled,
+    queryFn: async (): Promise<SettlementRow[]> => {
+      const { data, error } = await supabase
+        .from('settlements')
+        .select('id, from_user, to_user, amount, date, note, created_by, created_at')
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+/** Record a payment between two members: it moves the balance by its amount. */
+export function useRecordSettlement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (s: { from_user: string; to_user: string; amount: number; note: string | null }) => {
+      const { error } = await supabase.from('settlements').insert(s);
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['settle'] }),
+  });
+}
+
+/** Undo a recorded payment. */
+export function useDeleteSettlement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('settlements').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['settle'] }),
   });
 }
 
