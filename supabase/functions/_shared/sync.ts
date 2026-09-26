@@ -2,7 +2,8 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import type { PlaidApi } from 'npm:plaid@30';
 
 import { buildSnapshotRows, syncAccounts } from './accounts.ts';
-import { type CategoryMap, pickCategoryId, resolveCategoryId, toSignedAmount } from './categorize.ts';
+import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from './categorize.ts';
+import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
 import { ignoredCategoryIds, normalizeMerchant, refreshRecurring } from './recurring.ts';
 import { type CarriedPayer, carryForward, type ExistingRow } from './review.ts';
 
@@ -47,7 +48,7 @@ export function describeError(err: unknown): string {
 const HANDLED = '__handled__';
 
 /**
- * Plaid code → category maps plus the fallback: everything resolveCategoryId
+ * Plaid code → category maps plus the fallback: everything resolveCategory
  * needs. Shared by sync and set-merchant-rule, so both resolve identically.
  */
 export async function loadCategoryMaps(
@@ -75,6 +76,51 @@ export async function loadCategoryMaps(
     throw new Error(`uncategorized category missing: ${fallbackError?.message ?? 'no row'}`);
   }
   return { categoryMap, detailedMap, fallbackId: fallback.id };
+}
+
+/** Merchant keys per labels query: keeps the PostgREST URL short. */
+/**
+ * Merchant keys per merchant_labels call. Each key returns at most
+ * 2 × LEARN.RECENT rows (both directions), so 40 keys stay under PostgREST's
+ * max_rows (1000), which would otherwise cut the answer silently.
+ */
+const LABEL_KEY_CHUNK = 40;
+
+/**
+ * The herd's labels (12a) for these merchants, keyed by merchant_key: rows
+ * categorized by hand, and guesses accepted in review, the most recent
+ * LEARN.RECENT per merchant and direction (the merchant_labels SQL function).
+ * Shared by sync, set-merchant-rule and apply-learning, so all three learn
+ * identically.
+ */
+export async function loadLabels(
+  admin: SupabaseClient,
+  herdId: string,
+  merchantKeys: string[],
+): Promise<Map<string, Label[]>> {
+  const byMerchant = new Map<string, Label[]>();
+  // A name with no letters has an empty key: it takes no rule, and teaches nothing.
+  const keys = [...new Set(merchantKeys.filter(Boolean))];
+  for (let i = 0; i < keys.length; i += LABEL_KEY_CHUNK) {
+    const { data, error } = await admin.rpc('merchant_labels', {
+      p_herd: herdId,
+      p_keys: keys.slice(i, i + LABEL_KEY_CHUNK),
+      p_limit: LEARN.RECENT,
+    });
+    if (error) throw new Error(`failed to load labels: ${error.message}`);
+    for (const r of (data ?? []) as (Omit<Label, 'amount'> & { merchant_key: string; amount: number | string })[]) {
+      const list = byMerchant.get(r.merchant_key) ?? [];
+      list.push({
+        amount: Number(r.amount),
+        category_id: r.category_id,
+        date: r.date,
+        user_id: r.user_id,
+        is_private: r.is_private,
+      });
+      byMerchant.set(r.merchant_key, list);
+    }
+  }
+  return byMerchant;
 }
 
 /** Loads the taxonomy once per invocation. Throws if it cannot. */
@@ -160,9 +206,13 @@ export async function syncItem(
     }
 
     const { data: accountRows } = await admin
-      .from('accounts').select('id, plaid_account_id').eq('item_id', item.id);
+      .from('accounts').select('id, plaid_account_id, is_private').eq('item_id', item.id);
     const accountByPlaidId = new Map<string, string>(
       (accountRows ?? []).map((a) => [a.plaid_account_id, a.id]),
+    );
+    // Which private labels may teach a row depends on its account (12a).
+    const privateByPlaidId = new Map<string, boolean>(
+      (accountRows ?? []).map((a) => [a.plaid_account_id, a.is_private === true]),
     );
 
     // deno-lint-ignore no-explicit-any
@@ -186,7 +236,7 @@ export async function syncItem(
             // NOTE: options.transactions_url_taxonomy is NOT supported by the
             // Plaid-Version that plaid@30 pins — the API rejects it with
             // UNKNOWN_FIELDS. The account's default PFC taxonomy applies, so
-            // resolveCategoryId's uncategorized fallback is what protects us
+            // resolveCategory's uncategorized fallback is what protects us
             // if a primary we don't map shows up.
             ...(cursor ? {} : { options: { days_requested: FIRST_SYNC_DAYS } }),
             // deno-lint-ignore no-explicit-any
@@ -226,6 +276,11 @@ export async function syncItem(
       if (ruleError) throw ruleError;
       const ruleByMerchant = new Map((ruleRows ?? []).map((r) => [r.merchant_key, r.category_id as string]));
 
+      // The herd's own fixes (12a) for the merchants in this batch.
+      // deno-lint-ignore no-explicit-any
+      const merchantKeyOf = (t: any) => normalizeMerchant(t.merchant_name ?? t.name);
+      const labelsByMerchant = await loadLabels(admin, item.herd_id, upserts.map(merchantKeyOf));
+
       // Read existing rows, and the pending rows these post from, so a manual
       // category or memo survives re-sync and pending → posted (carryForward).
       const ids = [...new Set(upserts.flatMap((t) =>
@@ -233,7 +288,7 @@ export async function syncItem(
       ))];
       const { data: existingRows } = await admin
         .from('transactions')
-        .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split')
+        .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split, corrected_from')
         .in('plaid_transaction_id', ids);
       const { existingFor, notes: carriedNotes, payers: carriedPayers } = carryForward(
         upserts,
@@ -243,16 +298,26 @@ export async function syncItem(
       const rows = upserts
         .filter((t) => accountByPlaidId.has(t.account_id))
         .map((t) => {
-          const incoming = resolveCategoryId(
+          const existing = existingFor.get(t.transaction_id) ?? null;
+          const merchantKey = merchantKeyOf(t);
+          const category = pickCategory(existing, resolveCategory(
             {
-              rule: ruleByMerchant.get(normalizeMerchant(t.merchant_name ?? t.name)),
+              rule: ruleByMerchant.get(merchantKey),
+              // Only labels this row may learn from (private accounts).
+              learned: learnedCategory(
+                usableLabels(
+                  labelsByMerchant.get(merchantKey) ?? [],
+                  item.user_id,
+                  privateByPlaidId.get(t.account_id) ?? false,
+                ),
+                toSignedAmount(t.amount),
+              ),
               detailed: t.personal_finance_category?.detailed,
               primary: t.personal_finance_category?.primary,
             },
             { detailed: detailedMap, primary: categoryMap },
             fallbackId,
-          );
-          const existing = existingFor.get(t.transaction_id) ?? null;
+          ));
           return {
             user_id: item.user_id,
             account_id: accountByPlaidId.get(t.account_id)!,
@@ -272,7 +337,11 @@ export async function syncItem(
             pfc_primary: t.personal_finance_category?.primary ?? null,
             pfc_detailed: t.personal_finance_category?.detailed ?? null,
             pfc_confidence: t.personal_finance_category?.confidence_level ?? null,
-            category_id: pickCategoryId(existing, incoming),
+            category_id: category.categoryId,
+            // Every row carries it: a bulk upsert sends the union of the rows' keys.
+            category_source: category.source,
+            // A fix made while pending still counts once posted (cat-quality.mjs).
+            corrected_from: existing?.corrected_from ?? null,
             category_is_manual: existing?.category_is_manual ?? false,
           };
         });

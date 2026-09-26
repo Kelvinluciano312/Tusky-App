@@ -10,6 +10,7 @@ const row = (id: string, over: Partial<ExistingRow> = {}): ExistingRow => ({
   paid_by: 'owner',
   paid_by_is_manual: false,
   split: null,
+  corrected_from: null,
   ...over,
 });
 
@@ -99,4 +100,12 @@ Deno.test('carryForward: no predecessor, or one already gone, means nothing to k
   );
   assertEquals([...existingFor.values()], [null, null, null]);
   assertEquals(notes, []);
+});
+
+Deno.test('carryForward: a fixed pending row hands the posted row which source it corrected', () => {
+  const { existingFor } = carryForward(
+    [{ transaction_id: 'posted1', pending_transaction_id: 'p1' }],
+    new Map([['p1', row('p1', { category_id: 'cat-mine', category_is_manual: true, corrected_from: 'plaid' })]]),
+  );
+  assertEquals(existingFor.get('posted1')?.corrected_from, 'plaid');
 });

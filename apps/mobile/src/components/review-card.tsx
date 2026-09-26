@@ -15,6 +15,7 @@ import { WhoPaid } from '@/components/who-paid';
 import { Radius, Spacing } from '@/constants/theme';
 import { useCategoryChoice } from '@/hooks/use-category-choice';
 import { useTheme } from '@/hooks/use-theme';
+import { guessHint } from '@/lib/category-source';
 import { transactionName } from '@/lib/merchants';
 import {
   useCategories,
@@ -145,6 +146,11 @@ export function ReviewCard({ id }: { id: string }) {
           <AppText variant="label">{category?.name ?? 'Uncategorized'}</AppText>
           <ChevronDown size={16} color={colors.textDim} strokeWidth={2} />
         </Pressable>
+        {guessHint(t.category_source) ? (
+          <AppText variant="caption" tone="dim" style={{ textAlign: 'center' }}>
+            Tusky guessed this {guessHint(t.category_source)}
+          </AppText>
+        ) : null}
         {rule?.category_id ? (
           <AppText variant="caption" tone="dim" style={{ textAlign: 'center' }}>
             {name} is always {categories.find((c) => c.id === rule.category_id)?.name ?? 'set by a rule'}

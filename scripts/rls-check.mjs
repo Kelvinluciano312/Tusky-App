@@ -156,6 +156,9 @@ declare
   mate_account uuid;
   outsider uuid;
   mate uuid;
+  auto_tx uuid;
+  auto_src text;
+  other_cat uuid;
 begin
   ${setup}
   select herd_id, role into h, r from public.herd_members where user_id = u;
@@ -177,6 +180,13 @@ begin
        and not exists (select 1 from public.herd_members m where m.herd_id = h and m.user_id = t.paid_by)));
   select user_id into outsider from public.herd_members where herd_id <> h limit 1;
   select user_id into mate from public.herd_members where herd_id = h and user_id <> u limit 1;
+  -- Phase 12a: a row Tusky categorized, and a built-in category it is not in.
+  select id, category_source into auto_tx, auto_src from public.transactions
+    where account_id = any (v) and not category_is_manual limit 1;
+  select c.id into other_cat from public.categories c
+    where c.herd_id is null and c.parent_id is null
+      and c.id is distinct from (select category_id from public.transactions where id = auto_tx)
+    limit 1;
   -- Invariant (11b): everyone named in a split is in the row's herd.
   w := w || jsonb_build_object('splits_outside_herd',
     (select count(*) from public.transactions t cross join lateral jsonb_each(t.split) s where t.herd_id = h
@@ -277,6 +287,21 @@ begin
     insert into public.settlements (from_user, to_user, amount) values (mate, u, 1);
     w := w || jsonb_build_object('settle_with_mate_visible', (select count(*) = 1 from public.settlements where from_user = mate and to_user = u and amount = 1));
   end if;
+  -- Phase 12a: only the trigger writes where a category came from.
+  if own_tx is not null then
+    begin
+      update public.transactions set category_source = 'ai' where id = own_tx;
+      w := w || jsonb_build_object('update_category_source', 'allowed');
+    exception when insufficient_privilege then
+      w := w || jsonb_build_object('update_category_source', 'denied');
+    end;
+  end if;
+  -- A hand-picked category is stamped manual, and remembers which source it corrected.
+  if auto_tx is not null and other_cat is not null then
+    update public.transactions set category_id = other_cat, category_is_manual = true where id = auto_tx;
+    w := w || jsonb_build_object('correction_recorded',
+      (select category_source = 'manual' and corrected_from = auto_src from public.transactions where id = auto_tx));
+  end if;
   -- Only the owner renames the herd.
   update public.herds set name = name where id = h;
   get diagnostics n = row_count;
@@ -312,6 +337,8 @@ const WRITE_EXPECT = {
   settle_with_outsider: 'denied',
   settle_in_other_herd: 'denied',
   settle_with_mate_visible: true,
+  update_category_source: 'denied',
+  correction_recorded: true,
 };
 
 let failures = 0;

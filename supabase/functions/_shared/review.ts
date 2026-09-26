@@ -15,6 +15,8 @@ export type ExistingRow = {
   paid_by_is_manual: boolean;
   /** A custom split (Phase 11b): member id → percent. Null = none. */
   split: Record<string, number> | null;
+  /** Which source a hand-picked category corrected (Phase 12a); null = none. */
+  corrected_from: string | null;
 };
 
 /** Who a purchase was for, as picked by hand: a person, Joint (null), or a split. */
