@@ -8,6 +8,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { AppState, useColorScheme } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { RealDataBanner } from '@/components/real-data-banner';
 import { Palette } from '@/constants/theme';
@@ -64,6 +65,8 @@ export default function RootLayout() {
   });
 
   return (
+    // Gestures anywhere in the app (the review deck's swipes) need this at the root.
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
         <ThemeProvider value={scheme === 'light' ? navThemes.light : navThemes.dark}>
@@ -73,6 +76,7 @@ export default function RootLayout() {
         </ThemeProvider>
       </SessionProvider>
     </QueryClientProvider>
+    </GestureHandlerRootView>
   );
 }
 

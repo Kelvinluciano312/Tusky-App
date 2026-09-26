@@ -216,6 +216,10 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   the union of the rows' keys, so a key on only some rows nulls it on the rest. `carryForward`
   (`_shared/review.ts`) moves a pending row's memo and manual category onto the posted row that replaces
   it. The `/review` queue is a per-visit id snapshot kept outside `['transactions']` on purpose.
+  Since Phase 10 it is a deck of cards:
+  - Swipe right to accept, left to skip to the back; Undo reverses the last move.
+  - The deck logic is pure (`deckReducer`/`topCard` in `lib/review.ts`); the gestures use Reanimated 4 and Gesture Handler (`GestureHandlerRootView` wraps the root layout).
+  - Write shared values with `.set()` and read them with `.get()`, never `.value`: the React Compiler lint rejects `.value` writes.
 - Recurring streams are derived: detection (`_shared/recurring.ts`) runs at the end of every sync and
   owns every column except `dismissed`, which only the user writes. Never add `dismissed` to its
   upsert payload.
