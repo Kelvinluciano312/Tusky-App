@@ -21,6 +21,7 @@ import {
   useCategories,
   useMerchantRules,
   useSetMerchantRule,
+  useSetReviewed,
   useSetTransactionNotes,
   useTransaction,
 } from '@/lib/queries';
@@ -34,6 +35,11 @@ function formatDate(iso: string): string {
   });
 }
 
+/** "Sep 25": when a transaction was reviewed (a timestamp, unlike the transaction's own date). */
+function shortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 /** One transaction: rename its merchant, recategorize it (once or always), and see where it came from. */
 export default function TransactionScreen() {
   const colors = useTheme();
@@ -45,6 +51,7 @@ export default function TransactionScreen() {
   const chooseCategory = useCategoryChoice();
   const setRule = useSetMerchantRule();
   const setNotes = useSetTransactionNotes();
+  const setReviewed = useSetReviewed();
   const [picking, setPicking] = useState(false);
   const [addTarget, setAddTarget] = useState<SheetTarget | null>(null);
   const [renaming, setRenaming] = useState(false);
@@ -106,6 +113,23 @@ export default function TransactionScreen() {
           ) : null}
           <Line label="Memo" value={t.notes ?? 'Add a memo'} dim={!t.notes} onPress={() => setNoting(true)} />
           <WhoPaid transaction={t} />
+          <Line
+            label="Review"
+            value={
+              t.pending
+                ? 'Can be reviewed once it posts'
+                : t.reviewed_at
+                  ? `Reviewed ${shortDate(t.reviewed_at)} · tap to undo`
+                  : 'Not reviewed · tap to mark reviewed'
+            }
+            dim={t.pending || !t.reviewed_at}
+            onPress={
+              t.pending
+                ? undefined
+                : () =>
+                    setReviewed.mutate({ transactionId: t.id, reviewed: !t.reviewed_at }, { onError: failed })
+            }
+          />
           <Line
             label="Account"
             value={`${t.accounts?.name ?? 'Account'}${t.accounts?.mask ? ` ···· ${t.accounts.mask}` : ''}`}
