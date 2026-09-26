@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AccountRow, signedBalance } from '@/components/account-row';
+import { AccountRow } from '@/components/account-row';
 import { Sparkline } from '@/components/charts/sparkline';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { UpcomingCard } from '@/components/upcoming-card';
+import { GROUP_LABEL, groupAccounts, netWorth } from '@/lib/accounts';
 import { firstName } from '@/lib/profile';
 import {
   useAccounts,
@@ -44,7 +45,9 @@ export default function HomeScreen() {
   const greetName = profile ? firstName(profile.display_name) : '';
 
   const visibleAccounts = accounts.filter((a) => !a.hidden);
-  const netWorth = visibleAccounts.reduce((sum, a) => sum + signedBalance(a), 0);
+  const counted = visibleAccounts.filter((a) => a.in_totals).length;
+  const total = netWorth(accounts);
+  const groups = groupAccounts(accounts);
   const hasAccounts = visibleAccounts.length > 0;
 
   // Derived per render, NOT memoized with []: a memo froze the window at mount,
@@ -94,7 +97,7 @@ export default function HomeScreen() {
         <AppText variant="caption" tone="dim" style={{ textTransform: 'uppercase', letterSpacing: 1.2 }}>
           Net worth
         </AppText>
-        <Amount value={netWorth} size={44} />
+        <Amount value={total} size={44} />
 
         {/* Below two points there is no line to draw, and the copy below already
             explains why. History only starts at the first sync. */}
@@ -112,7 +115,9 @@ export default function HomeScreen() {
 
         <AppText variant="caption" tone="dim">
           {hasAccounts
-            ? `Across ${visibleAccounts.length} account${visibleAccounts.length === 1 ? '' : 's'}`
+            ? `Across ${counted} account${counted === 1 ? '' : 's'}${
+                counted < visibleAccounts.length ? ` · ${visibleAccounts.length - counted} not counted` : ''
+              }`
             : 'Nothing tracked yet — your trend line starts at your first connection.'}
         </AppText>
       </Card>
@@ -137,16 +142,26 @@ export default function HomeScreen() {
       <UpcomingCard streams={streams} categoriesById={categoriesById} today={today} />
 
       {hasAccounts ? (
-        <Card>
-          <AppText variant="section" tone="dim" style={{ marginBottom: Spacing.xs }}>
-            Accounts
-          </AppText>
-          {visibleAccounts.map((account) => (
-            <AccountRow
-              key={account.id}
-              account={account}
-              onPress={() => router.push({ pathname: '/bank/[id]', params: { id: account.item_id } })}
-            />
+        /* By kind of money (Phase 10): each group with its subtotal, which, like
+           the headline, leaves out accounts not counted in totals. */
+        <Card style={{ gap: Spacing.md }}>
+          {groups.map(({ group, accounts: members, total: subtotal }) => (
+            <View key={group}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xs }}>
+                <AppText variant="section" tone="dim">
+                  {GROUP_LABEL[group]}
+                </AppText>
+                <Amount value={subtotal} size={14} />
+              </View>
+              {members.map((account) => (
+                <AccountRow
+                  key={account.id}
+                  account={account}
+                  dimmed={!account.in_totals}
+                  onPress={() => router.push({ pathname: '/bank/[id]', params: { id: account.item_id } })}
+                />
+              ))}
+            </View>
           ))}
         </Card>
       ) : (

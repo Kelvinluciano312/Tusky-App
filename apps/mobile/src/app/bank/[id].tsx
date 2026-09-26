@@ -17,6 +17,7 @@ import {
   useItemAccounts,
   usePlaidItems,
   useSetAccountHidden,
+  useSetAccountInTotals,
   useSetAccountOwner,
   useSetAccountPrivate,
 } from '@/lib/queries';
@@ -42,6 +43,7 @@ export default function BankScreen() {
   const setHidden = useSetAccountHidden();
   const setPrivate = useSetAccountPrivate();
   const setOwner = useSetAccountOwner();
+  const setInTotals = useSetAccountInTotals();
   const { disconnect, isDisconnecting, error: disconnectError } = useDisconnectBank();
   const { connectBank, isConnecting, error: connectError } = useConnectBank();
   const { resetLogin, fireWebhook, isBusy } = useSandboxTools();
@@ -158,6 +160,44 @@ export default function BankScreen() {
         ))}
         <AppText variant="caption" tone="dim" style={{ marginTop: Spacing.sm }}>
           Hidden accounts leave net worth, transactions, budgets, reports and bills. Nothing is deleted.
+        </AppText>
+      </Card>
+
+      {/* Phase 10: a 401k or brokerage can stay visible without mixing into the
+          net worth headline. Any member may set it, like hiding. */}
+      <Card>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: Spacing.xs }}>
+          <AppText variant="section" tone="dim">
+            Count in totals
+          </AppText>
+        </View>
+        {accounts.map((account) => (
+          <View
+            key={account.id}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingVertical: Spacing.sm,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}>
+            <View style={{ flex: 1 }}>
+              <AppText variant="label">{account.name}</AppText>
+              <AppText variant="caption" tone="dim">
+                {account.in_totals ? 'Counts in net worth' : 'Shown, but left out of net worth'}
+              </AppText>
+            </View>
+            <Switch
+              value={account.in_totals}
+              accessibilityLabel={`Count ${account.name} in totals`}
+              trackColor={{ false: colors.elevated, true: colors.brand }}
+              onValueChange={(inTotals) => setInTotals.mutate({ accountId: account.id, itemId: item.id, inTotals })}
+            />
+          </View>
+        ))}
+        <AppText variant="caption" tone="dim" style={{ marginTop: Spacing.sm }}>
+          For retirement or brokerage accounts you want to see, but not add to your everyday money. Their
+          transactions still show.
         </AppText>
       </Card>
 
