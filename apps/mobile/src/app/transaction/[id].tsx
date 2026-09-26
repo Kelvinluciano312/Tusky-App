@@ -15,6 +15,7 @@ import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { useCategoryChoice } from '@/hooks/use-category-choice';
 import { useTheme } from '@/hooks/use-theme';
+import { setBy } from '@/lib/category-source';
 import { transactionName } from '@/lib/merchants';
 import {
   type Category,
@@ -111,6 +112,7 @@ export default function TransactionScreen() {
               {t.category_is_manual ? ', but this one was set by hand' : ''}.
             </AppText>
           ) : null}
+          <Line label="Set by" value={setBy(t.category_source)} dim />
           <Line label="Memo" value={t.notes ?? 'Add a memo'} dim={!t.notes} onPress={() => setNoting(true)} />
           <WhoPaid transaction={t} />
           <Line

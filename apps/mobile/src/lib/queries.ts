@@ -225,6 +225,8 @@ export type Transaction = {
   pending: boolean;
   category_id: string | null;
   category_is_manual: boolean;
+  /** Where the category came from (Phase 12): manual, rule, learned, community, ai, plaid or fallback. */
+  category_source: string;
   /** The user's memo (Phase 8); null when none. */
   notes: string | null;
   /**
@@ -243,7 +245,7 @@ const PAGE_SIZE = 50;
 type PageCursor = { date: string; id: string } | null;
 
 const TRANSACTION_COLUMNS =
-  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split, reviewed_at';
+  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, category_source, notes, paid_by, paid_by_is_manual, split, reviewed_at';
 
 /**
  * Keyset pagination on (date, id), NOT offset. Sync inserts rows while the user
@@ -300,6 +302,12 @@ export function useSetTransactionCategory() {
         .update({ category_id: categoryId, category_is_manual: true })
         .eq('id', transactionId);
       if (error) throw error;
+      // Phase 12a: teach the merchant's other unreviewed rows. Best effort: the
+      // choice itself is saved, and the next sync learns from it anyway.
+      const { error: learnError } = await supabase.functions.invoke('apply-learning', {
+        body: { transaction_id: transactionId },
+      });
+      if (learnError) console.warn('apply-learning failed', (await readFunctionError(learnError)).message);
     },
     onMutate: async ({ transactionId, categoryId }) => {
       await queryClient.cancelQueries({ queryKey: ['transactions'] });
@@ -309,7 +317,9 @@ export function useSetTransactionCategory() {
           ...old,
           pages: old.pages.map((page) =>
             page.map((t) =>
-              t.id === transactionId ? { ...t, category_id: categoryId, category_is_manual: true } : t,
+              t.id === transactionId
+                ? { ...t, category_id: categoryId, category_is_manual: true, category_source: 'manual' }
+                : t,
             ),
           ),
         },
