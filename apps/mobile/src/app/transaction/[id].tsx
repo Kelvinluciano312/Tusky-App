@@ -115,20 +115,9 @@ export default function TransactionScreen() {
           <WhoPaid transaction={t} />
           <Line
             label="Review"
-            value={
-              t.pending
-                ? 'Can be reviewed once it posts'
-                : t.reviewed_at
-                  ? `Reviewed ${shortDate(t.reviewed_at)} · tap to undo`
-                  : 'Not reviewed · tap to mark reviewed'
-            }
-            dim={t.pending || !t.reviewed_at}
-            onPress={
-              t.pending
-                ? undefined
-                : () =>
-                    setReviewed.mutate({ transactionId: t.id, reviewed: !t.reviewed_at }, { onError: failed })
-            }
+            value={t.reviewed_at ? `Reviewed ${shortDate(t.reviewed_at)} · tap to undo` : 'Not reviewed · tap to mark reviewed'}
+            dim={!t.reviewed_at}
+            onPress={() => setReviewed.mutate({ transactionId: t.id, reviewed: !t.reviewed_at }, { onError: failed })}
           />
           <Line
             label="Account"

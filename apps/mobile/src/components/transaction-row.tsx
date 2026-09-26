@@ -60,9 +60,8 @@ export function TransactionRow({ transaction, category, onPress }: Props) {
             {category?.name ?? 'Uncategorized'}
             {transaction.pending ? ' · Pending' : ''}
           </AppText>
-          {transaction.reviewed_at && !transaction.pending ? (
+          {transaction.reviewed_at ? (
             // Faint on purpose: most of the feed is reviewed, so the mark must not shout.
-            // Never on a pending row: it posts under a new id and is reviewed then.
             <Check size={12} color={colors.textDim} strokeWidth={2.25} accessibilityLabel="Reviewed" />
           ) : null}
         </View>
