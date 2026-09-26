@@ -7,6 +7,10 @@ Phases 7 (categories) and 8 (transaction review) are merged. Now: Phase 9 — na
 households), who paid, production project — `docs/superpowers/specs/2026-09-25-phase-9-herds-design.md`,
 milestones 9a → 9d plus Track P. Latest handoff: `docs/superpowers/plans/2026-09-28-phase-9d-handoff.md`.
 
+**Production project** (real banks): `awiwcgrisyzimzxgddxu`. Read `docs/ops/production.md` before
+touching it. The CLI stays linked to dev; production commands name `--project-ref`, and each one waits
+for Pedro's go-ahead.
+
 ## Layout
 
 - `apps/mobile/` — Expo SDK 57 app (expo-router, file routes in `src/app/`). **Read `apps/mobile/AGENTS.md` before writing Expo code** — SDK 57 APIs differ from training data.

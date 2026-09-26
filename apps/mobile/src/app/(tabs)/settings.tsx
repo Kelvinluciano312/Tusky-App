@@ -6,6 +6,7 @@ import { Alert, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NameSheet } from '@/components/name-sheet';
+import { Chips } from '@/components/ui/chips';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -14,7 +15,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { useConnectBank } from '@/lib/plaid';
 import { type PlaidItem, useHerd, usePlaidItems, useProfile, useSetDisplayName } from '@/lib/queries';
 import { useSession } from '@/lib/session';
-import { supabase } from '@/lib/supabase';
+import { type Backend, backendLabel } from '@/lib/environment';
+import { backend, realConfigured, supabase, switchBackend } from '@/lib/supabase';
 
 export default function SettingsScreen() {
   const colors = useTheme();
@@ -226,8 +228,38 @@ export default function SettingsScreen() {
         />
       </Card>
 
+      {__DEV__ && realConfigured ? (
+        /* Dev builds only: release builds are always real data. Each side
+           keeps its own sign-in, so switching never signs you out. */
+        <Card style={{ gap: Spacing.sm }}>
+          <AppText variant="section" tone="dim">
+            Data (dev build)
+          </AppText>
+          <Chips
+            accessibilityLabel="Data source"
+            options={[
+              { value: 'sandbox' as Backend, label: 'Sandbox' },
+              { value: 'real' as Backend, label: 'Real data' },
+            ]}
+            selected={backend}
+            onSelect={(next) =>
+              Alert.alert(
+                next === 'real' ? 'Switch to real data?' : 'Switch to Sandbox?',
+                next === 'real'
+                  ? 'Tusky restarts on the production project, where banks are real. You sign in there separately.'
+                  : 'Tusky restarts on the Sandbox project with its test banks.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Switch', onPress: () => switchBackend(next) },
+                ],
+              )
+            }
+          />
+        </Card>
+      ) : null}
+
       <AppText variant="caption" tone="dim" style={{ textAlign: 'center' }}>
-        Tusky v0.1.0 · Plaid Sandbox
+        Tusky v0.1.0 · {backendLabel(backend)}
       </AppText>
 
       {profile ? (

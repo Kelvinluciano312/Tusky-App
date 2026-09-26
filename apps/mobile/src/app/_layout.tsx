@@ -9,6 +9,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { AppState, useColorScheme } from 'react-native';
 
+import { RealDataBanner } from '@/components/real-data-banner';
 import { Palette } from '@/constants/theme';
 import { SessionProvider, useSession } from '@/lib/session';
 
@@ -68,6 +69,7 @@ export default function RootLayout() {
         <ThemeProvider value={scheme === 'light' ? navThemes.light : navThemes.dark}>
           <StatusBar style={scheme === 'light' ? 'dark' : 'light'} />
           <RootNavigator fontsLoaded={fontsLoaded} />
+          <RealDataBanner />
         </ThemeProvider>
       </SessionProvider>
     </QueryClientProvider>
