@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { expiresIn, formatCode, initials, inviteMessage, normalizeCode, payerLabel } from './herd.ts';
+import { expiresIn, formatCode, initials, inviteMessage, isShared, normalizeCode, payerLabel } from './herd.ts';
 
 test('payerLabel names a member by first name, null as Joint, anyone else as Former member', () => {
   const members = [
@@ -48,4 +48,10 @@ test('expiresIn counts days left, rounding up', () => {
   assert.equal(expiresIn('2026-10-04T11:59:58Z', now), 'in 7 days');
   assert.equal(expiresIn('2026-09-29T13:00:00Z', now), 'in 3 days');
   assert.equal(expiresIn('2026-09-28T11:00:00Z', now), 'within a day');
+});
+
+test('isShared: only a herd of two or more has anyone to share with', () => {
+  assert.equal(isShared(undefined), false);
+  assert.equal(isShared({ members: [{}] }), false);
+  assert.equal(isShared({ members: [{}, {}] }), true);
 });

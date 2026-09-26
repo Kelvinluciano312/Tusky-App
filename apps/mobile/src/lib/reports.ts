@@ -1,6 +1,7 @@
-import type { MonthlyTotal } from '@/lib/queries';
+import type { MonthlyPersonTotal, MonthlyTotal } from '@/lib/queries';
 
 import { type CategoriesById, groupIdOf } from './categories.ts';
+import { payerLabel } from './herd.ts';
 
 export type { CategoriesById };
 
@@ -163,4 +164,47 @@ export function buildGroupBreakdown(
 
   const total = parts.reduce((sum, part) => sum + part.spent, 0);
   return total === 0 ? parts : parts.map((part) => ({ ...part, share: part.spent / total }));
+}
+
+export type PersonSpending = {
+  /** A member's user id, or 'joint', or 'former' for everyone who has left. */
+  key: string;
+  label: string;
+  spent: number;
+  /** Fraction of the month's spend, 0–1. A net refund counts as 0. */
+  share: number;
+};
+
+/**
+ * One month's spend by whose expense it was (Phase 11a), for the Reports "By
+ * person" card. Same kind rule as the donut: income and transfers are left out,
+ * and a row with no category counts as spend. Every current member is listed,
+ * even at zero, so a herd of two always shows both people; Joint and Former
+ * member appear only when they have something. Biggest first.
+ */
+export function buildPersonSpending(
+  rows: MonthlyPersonTotal[],
+  categoriesById: CategoriesById,
+  members: { user_id: string; display_name: string }[],
+): PersonSpending[] {
+  const spentByKey = new Map<string, number>(members.map((m) => [m.user_id, 0]));
+  for (const row of rows) {
+    const category = row.category_id ? categoriesById.get(row.category_id) : undefined;
+    if (category && category.kind !== 'expense') continue;
+    const key = row.paid_by === null ? 'joint' : spentByKey.has(row.paid_by) ? row.paid_by : 'former';
+    spentByKey.set(key, (spentByKey.get(key) ?? 0) + spentFor(row.total));
+  }
+
+  const people = [...spentByKey]
+    .filter(([key, spent]) => spent !== 0 || (key !== 'joint' && key !== 'former'))
+    .map(([key, spent]) => ({
+      key,
+      label: key === 'joint' ? 'Joint' : key === 'former' ? 'Former member' : payerLabel(key, members),
+      spent,
+      share: 0,
+    }))
+    .sort((a, b) => b.spent - a.spent);
+
+  const total = people.reduce((sum, person) => sum + Math.max(person.spent, 0), 0);
+  return total === 0 ? people : people.map((p) => ({ ...p, share: Math.max(p.spent, 0) / total }));
 }
