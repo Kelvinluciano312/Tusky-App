@@ -3,7 +3,8 @@
  * into the stored rule, and work out which transactions the change moves.
  * The handler, set-merchant-rule, does the I/O.
  */
-import { type CategoryMap, resolveCategory } from './categorize.ts';
+import { type CategoryMap, type CategorySource, resolveCategory } from './categorize.ts';
+import { type Label, learnedCategory, usableLabels } from './learn.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** What normalizeMerchant produces, minus the empty string: a name with no letters takes no rule. */
@@ -60,29 +61,43 @@ export type ReresolveRow = {
   pfc_detailed: string | null;
   pfc_primary: string | null;
   category_id: string | null;
+  category_source: string;
+  /** Signed: positive = money in. What learning compares. */
+  amount: number;
+  /** Who connected the account: decides which private labels may teach it. */
+  user_id: string;
 };
 
 /**
- * The caller's non-manual rows for one merchant, re-resolved with the rule's
- * category (null: no rule, so Plaid's again). Same resolver as sync, so a rule
- * applied then removed lands every row exactly where sync would put it.
- * Returns only the rows that change, grouped by their new category.
+ * One merchant's non-manual rows, re-resolved with the rule's category (null:
+ * no rule) and the herd's labels for that merchant. Same resolver as sync, so
+ * a rule applied then removed lands every row exactly where sync would put it.
+ * Returns only the rows whose category or source changes, grouped by both.
  */
 export function planReresolve(
   rows: ReresolveRow[],
   ruleCategoryId: string | null,
+  labels: Label[],
   maps: { detailed: CategoryMap; primary: CategoryMap },
   fallbackId: string,
-): { category_id: string; ids: string[] }[] {
-  const byCategory = new Map<string, string[]>();
+): { category_id: string; category_source: CategorySource; ids: string[] }[] {
+  const groups = new Map<string, { category_id: string; category_source: CategorySource; ids: string[] }>();
   for (const row of rows) {
     const next = resolveCategory(
-      { rule: ruleCategoryId, detailed: row.pfc_detailed, primary: row.pfc_primary },
+      {
+        rule: ruleCategoryId,
+        learned: learnedCategory(usableLabels(labels, row.user_id), row.amount),
+        detailed: row.pfc_detailed,
+        primary: row.pfc_primary,
+      },
       maps,
       fallbackId,
-    ).categoryId;
-    if (next === row.category_id) continue;
-    byCategory.set(next, [...(byCategory.get(next) ?? []), row.id]);
+    );
+    if (next.categoryId === row.category_id && next.source === row.category_source) continue;
+    const key = `${next.categoryId}|${next.source}`;
+    const group = groups.get(key) ?? { category_id: next.categoryId, category_source: next.source, ids: [] };
+    group.ids.push(row.id);
+    groups.set(key, group);
   }
-  return [...byCategory].map(([category_id, ids]) => ({ category_id, ids }));
+  return [...groups.values()];
 }
