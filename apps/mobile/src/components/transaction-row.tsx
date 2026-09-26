@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { Check } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
 import { Amount } from '@/components/ui/amount';
@@ -55,10 +56,14 @@ export function TransactionRow({ transaction, category, onPress }: Props) {
         </AppText>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.xs }}>
           <View style={{ width: 7, height: 7, borderRadius: Radius.full, backgroundColor: tint }} />
-          <AppText variant="caption" tone="dim" numberOfLines={1}>
+          <AppText variant="caption" tone="dim" numberOfLines={1} style={{ flexShrink: 1 }}>
             {category?.name ?? 'Uncategorized'}
             {transaction.pending ? ' · Pending' : ''}
           </AppText>
+          {transaction.reviewed_at ? (
+            // Faint on purpose: most of the feed is reviewed, so the mark must not shout.
+            <Check size={12} color={colors.textDim} strokeWidth={2.25} accessibilityLabel="Reviewed" />
+          ) : null}
         </View>
       </View>
 

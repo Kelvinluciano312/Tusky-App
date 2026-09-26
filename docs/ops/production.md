@@ -54,5 +54,18 @@ Restart Metro after editing `.env`.
 
 - All 18 migrations (through 9d) are applied.
 - The three Plaid secrets are set.
-- **The functions are NOT deployed yet.** Claude's permission check blocks production deploys, so Pedro runs the command above.
-- No users yet.
+- 8 functions are deployed, all except `plaid-sandbox`.
+  - Checked without a session: `herd` and `plaid-create-link-token` answer 401, `plaid-webhook` refuses an unsigned call, and `plaid-sandbox` is 404.
+  - Claude's auto mode blocks production deploys unless Pedro allows `npx -y supabase@2.118.0 functions deploy` in `/permissions`.
+- Pedro is signed up. His email was confirmed by SQL: the confirmation email arrived without a usable link.
+- First real bank: Bread Savings, active, synced.
+
+## Known issues
+
+- **OAuth banks can return to a white screen (Android).** When Link hands off to the browser (the bank's own login) and comes back, Tusky showed a blank white screen, and no Item was saved. A second attempt connected at once, likely because the browser still held the approval and skipped the hop. Metro logged several fresh bundle loads during the attempt, which hints the app was restarted. Suspects:
+  - Android killed Tusky while it was backgrounded, losing the Link session;
+  - expo-router treats the return intent as a deep link to an unknown route.
+
+  Diagnose with `adb logcat` on the phone (wireless adb, same Wi-Fi) during an OAuth link.
+- **The confirmation email has no usable link.** Check Authentication → Email Templates (Confirm signup should contain `{{ .ConfirmationURL }}`) and the Site URL before Kelvyn signs up. Until then, confirm by SQL: `update auth.users set email_confirmed_at = now() where email = '…' and email_confirmed_at is null;`.
+- **The default Supabase email only delivers to the org's team members.** Custom SMTP is needed before anyone else joins.

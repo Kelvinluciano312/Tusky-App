@@ -196,13 +196,15 @@ export type Transaction = {
   /** Who paid (Phase 9d); null = Joint. Follows the account's owner until set by hand. */
   paid_by: string | null;
   paid_by_is_manual: boolean;
+  /** When it left the review queue (Phase 8); null = waiting. Pending rows are never queued. */
+  reviewed_at: string | null;
 };
 
 const PAGE_SIZE = 50;
 type PageCursor = { date: string; id: string } | null;
 
 const TRANSACTION_COLUMNS =
-  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, notes, paid_by, paid_by_is_manual';
+  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, reviewed_at';
 
 /**
  * Keyset pagination on (date, id), NOT offset. Sync inserts rows while the user
@@ -714,6 +716,25 @@ export function useMarkReviewed() {
     },
     // Only the count shows review state; refetching the feed per swipe is waste.
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['transactions', 'review-count'] }),
+  });
+}
+
+/**
+ * Review or un-review one transaction from its own screen. Un-reviewing puts it
+ * back in the queue. Refreshes the feed (its check marks) and the count.
+ */
+export function useSetReviewed() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ transactionId, reviewed }: { transactionId: string; reviewed: boolean }) => {
+      const { error } = await supabase
+        .from('transactions')
+        .update({ reviewed_at: reviewed ? new Date().toISOString() : null })
+        .eq('id', transactionId);
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['transactions'] }),
   });
 }
 
