@@ -3,7 +3,7 @@ import type { PlaidApi } from 'npm:plaid@30';
 
 import { buildSnapshotRows, syncAccounts } from './accounts.ts';
 import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from './categorize.ts';
-import { GUESSED_SOURCES, type Label, learnedCategory, usableLabels } from './learn.ts';
+import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
 import { ignoredCategoryIds, normalizeMerchant, refreshRecurring } from './recurring.ts';
 import { type CarriedPayer, carryForward, type ExistingRow } from './review.ts';
 
@@ -79,12 +79,19 @@ export async function loadCategoryMaps(
 }
 
 /** Merchant keys per labels query: keeps the PostgREST URL short. */
-const LABEL_KEY_CHUNK = 100;
+/**
+ * Merchant keys per merchant_labels call. Each key returns at most
+ * 2 × LEARN.RECENT rows (both directions), so 40 keys stay under PostgREST's
+ * max_rows (1000), which would otherwise cut the answer silently.
+ */
+const LABEL_KEY_CHUNK = 40;
 
 /**
  * The herd's labels (12a) for these merchants, keyed by merchant_key: rows
- * categorized by hand, and guesses accepted in review. Shared by sync,
- * set-merchant-rule and apply-learning, so all three learn identically.
+ * categorized by hand, and guesses accepted in review, the most recent
+ * LEARN.RECENT per merchant and direction (the merchant_labels SQL function).
+ * Shared by sync, set-merchant-rule and apply-learning, so all three learn
+ * identically.
  */
 export async function loadLabels(
   admin: SupabaseClient,
@@ -95,22 +102,20 @@ export async function loadLabels(
   // A name with no letters has an empty key: it takes no rule, and teaches nothing.
   const keys = [...new Set(merchantKeys.filter(Boolean))];
   for (let i = 0; i < keys.length; i += LABEL_KEY_CHUNK) {
-    const { data, error } = await admin
-      .from('transactions')
-      .select('merchant_key, amount, category_id, date, user_id, accounts!inner(is_private)')
-      .eq('herd_id', herdId)
-      .in('merchant_key', keys.slice(i, i + LABEL_KEY_CHUNK))
-      .not('category_id', 'is', null)
-      .or(`category_is_manual.eq.true,and(category_source.in.(${GUESSED_SOURCES.join(',')}),reviewed_at.not.is.null)`);
+    const { data, error } = await admin.rpc('merchant_labels', {
+      p_herd: herdId,
+      p_keys: keys.slice(i, i + LABEL_KEY_CHUNK),
+      p_limit: LEARN.RECENT,
+    });
     if (error) throw new Error(`failed to load labels: ${error.message}`);
-    for (const r of data ?? []) {
+    for (const r of (data ?? []) as (Omit<Label, 'amount'> & { merchant_key: string; amount: number | string })[]) {
       const list = byMerchant.get(r.merchant_key) ?? [];
       list.push({
         amount: Number(r.amount),
         category_id: r.category_id,
         date: r.date,
         user_id: r.user_id,
-        is_private: (r.accounts as unknown as { is_private: boolean }).is_private,
+        is_private: r.is_private,
       });
       byMerchant.set(r.merchant_key, list);
     }
