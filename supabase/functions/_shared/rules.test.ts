@@ -48,7 +48,7 @@ Deno.test('mergeRule returns null when nothing is left, meaning delete the rule'
 const MAPS = { detailed: { TRANSPORTATION_TAXIS_AND_RIDE_SHARES: 'cat-rideshare' }, primary: { TRANSPORTATION: 'cat-transport' } };
 
 const row = (id: string, pfc_detailed: string | null, pfc_primary: string | null, category_id: string, category_source = 'plaid') =>
-  ({ id, pfc_detailed, pfc_primary, category_id, category_source, amount: -20, user_id: 'u1' });
+  ({ id, pfc_detailed, pfc_primary, category_id, category_source, amount: -20, user_id: 'u1', is_private: false });
 const learnedLabels: Label[] = [
   { amount: -20, category_id: 'cat-learned', date: '2026-09-01', user_id: 'u1', is_private: false },
   { amount: -22, category_id: 'cat-learned', date: '2026-09-02', user_id: 'u1', is_private: false },
@@ -84,6 +84,15 @@ Deno.test('planReresolve: a rule beats learning, and removing it falls back to l
     { category_id: 'cat-rule', category_source: 'rule', ids: ['t1'] },
   ]);
   assertEquals(planReresolve(rows, null, learnedLabels, MAPS, 'cat-none'), [
+    { category_id: 'cat-learned', category_source: 'learned', ids: ['t1'] },
+  ]);
+});
+
+Deno.test('planReresolve: private labels never teach a shared row, even its connector\'s', () => {
+  const privateLabels = learnedLabels.map((l) => ({ ...l, is_private: true }));
+  const shared = row('t1', null, 'TRANSPORTATION', 'cat-transport');
+  assertEquals(planReresolve([shared], null, privateLabels, MAPS, 'cat-none'), []);
+  assertEquals(planReresolve([{ ...shared, is_private: true }], null, privateLabels, MAPS, 'cat-none'), [
     { category_id: 'cat-learned', category_source: 'learned', ids: ['t1'] },
   ]);
 });

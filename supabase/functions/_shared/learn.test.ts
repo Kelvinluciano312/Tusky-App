@@ -47,10 +47,16 @@ Deno.test('learnedCategory uses only the 10 most recent labels', () => {
   assertEquals(learnedCategory([...old, ...recent], -5), 'food');
 });
 
-Deno.test('usableLabels drops another member\'s private-account labels, keeps your own', () => {
+Deno.test('usableLabels: a private label teaches only its connector\'s private rows', () => {
   const shared = label(-5, 'a', { user_id: 'mate' });
   const matePrivate = label(-5, 'b', { user_id: 'mate', is_private: true });
   const minePrivate = label(-5, 'c', { user_id: 'me', is_private: true });
-  assertEquals(usableLabels([shared, matePrivate, minePrivate], 'me'), [shared, minePrivate]);
-  assertEquals(usableLabels([shared, matePrivate, minePrivate], 'mate'), [shared, matePrivate]);
+  const all = [shared, matePrivate, minePrivate];
+  // A private row learns from shared labels and its own connector's private ones.
+  assertEquals(usableLabels(all, 'me', true), [shared, minePrivate]);
+  assertEquals(usableLabels(all, 'mate', true), [shared, matePrivate]);
+  // A shared row is visible to the herd: a guess there must not reveal anyone's private fixes,
+  // not even its own connector's.
+  assertEquals(usableLabels(all, 'mate', false), [shared]);
+  assertEquals(usableLabels(all, 'me', false), [shared]);
 });

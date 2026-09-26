@@ -39,11 +39,11 @@ export type Label = {
 
 /**
  * The labels that may teach a row connected by `connectorId`. A member's
- * private-account fixes only teach their own rows: a herd mate must not be able
- * to infer them from a guess.
+ * private-account fixes teach only their own private rows: a guess on a shared
+ * row is visible to the whole herd, so a herd mate could infer them from it.
  */
-export function usableLabels(labels: Label[], connectorId: string): Label[] {
-  return labels.filter((l) => !l.is_private || l.user_id === connectorId);
+export function usableLabels(labels: Label[], connectorId: string, rowIsPrivate: boolean): Label[] {
+  return labels.filter((l) => !l.is_private || (rowIsPrivate && l.user_id === connectorId));
 }
 
 const size = (amount: number) => Math.log1p(Math.abs(amount));

@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
     if (before !== after) {
       const { data: rows, error: rowsError } = await admin
         .from('transactions')
-        .select('id, pfc_detailed, pfc_primary, category_id, category_source, amount, user_id')
+        .select('id, pfc_detailed, pfc_primary, category_id, category_source, amount, user_id, accounts!inner(is_private)')
         .eq('herd_id', herdId)
         .eq('merchant_key', input.merchant_key)
         .eq('category_is_manual', false);
@@ -81,7 +81,11 @@ Deno.serve(async (req) => {
       // Without a rule, the herd's own fixes (12a) come before Plaid again.
       const labels = (await loadLabels(admin, herdId, [input.merchant_key])).get(input.merchant_key) ?? [];
       const plan = planReresolve(
-        (rows ?? []).map((r) => ({ ...r, amount: Number(r.amount) })),
+        (rows ?? []).map(({ accounts, ...r }) => ({
+          ...r,
+          amount: Number(r.amount),
+          is_private: (accounts as unknown as { is_private: boolean }).is_private,
+        })),
         after,
         labels,
         { detailed: maps.detailedMap, primary: maps.categoryMap },

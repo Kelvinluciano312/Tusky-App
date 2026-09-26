@@ -64,8 +64,9 @@ export type ReresolveRow = {
   category_source: string;
   /** Signed: positive = money in. What learning compares. */
   amount: number;
-  /** Who connected the account: decides which private labels may teach it. */
+  /** Who connected the account, and whether it is private: decide which private labels may teach it. */
   user_id: string;
+  is_private: boolean;
 };
 
 /**
@@ -86,7 +87,7 @@ export function planReresolve(
     const next = resolveCategory(
       {
         rule: ruleCategoryId,
-        learned: learnedCategory(usableLabels(labels, row.user_id), row.amount),
+        learned: learnedCategory(usableLabels(labels, row.user_id, row.is_private), row.amount),
         detailed: row.pfc_detailed,
         primary: row.pfc_primary,
       },

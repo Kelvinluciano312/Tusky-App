@@ -201,9 +201,13 @@ export async function syncItem(
     }
 
     const { data: accountRows } = await admin
-      .from('accounts').select('id, plaid_account_id').eq('item_id', item.id);
+      .from('accounts').select('id, plaid_account_id, is_private').eq('item_id', item.id);
     const accountByPlaidId = new Map<string, string>(
       (accountRows ?? []).map((a) => [a.plaid_account_id, a.id]),
+    );
+    // Which private labels may teach a row depends on its account (12a).
+    const privateByPlaidId = new Map<string, boolean>(
+      (accountRows ?? []).map((a) => [a.plaid_account_id, a.is_private === true]),
     );
 
     // deno-lint-ignore no-explicit-any
@@ -294,9 +298,13 @@ export async function syncItem(
           const category = pickCategory(existing, resolveCategory(
             {
               rule: ruleByMerchant.get(merchantKey),
-              // Only labels this Item's connector may learn from (private accounts).
+              // Only labels this row may learn from (private accounts).
               learned: learnedCategory(
-                usableLabels(labelsByMerchant.get(merchantKey) ?? [], item.user_id),
+                usableLabels(
+                  labelsByMerchant.get(merchantKey) ?? [],
+                  item.user_id,
+                  privateByPlaidId.get(t.account_id) ?? false,
+                ),
                 toSignedAmount(t.amount),
               ),
               detailed: t.personal_finance_category?.detailed,

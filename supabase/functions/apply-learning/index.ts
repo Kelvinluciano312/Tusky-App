@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
 
     const { data: rows, error: rowsError } = await admin
       .from('transactions')
-      .select('id, pfc_detailed, pfc_primary, category_id, category_source, amount, user_id')
+      .select('id, pfc_detailed, pfc_primary, category_id, category_source, amount, user_id, accounts!inner(is_private)')
       .eq('herd_id', herdId)
       .eq('merchant_key', merchantKey)
       .eq('category_is_manual', false)
@@ -55,7 +55,11 @@ Deno.serve(async (req) => {
     const maps = await loadCategoryMaps(admin);
     const labels = (await loadLabels(admin, herdId, [merchantKey])).get(merchantKey) ?? [];
     const plan = planReresolve(
-      (rows ?? []).map((r) => ({ ...r, amount: Number(r.amount) })),
+      (rows ?? []).map(({ accounts, ...r }) => ({
+        ...r,
+        amount: Number(r.amount),
+        is_private: (accounts as unknown as { is_private: boolean }).is_private,
+      })),
       rule?.category_id ?? null,
       labels,
       { detailed: maps.detailedMap, primary: maps.categoryMap },
