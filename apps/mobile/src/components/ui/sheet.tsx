@@ -53,7 +53,11 @@ export function Sheet({ visible, onClose, avoidKeyboard, style, children }: Shee
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }).start();
-    } else {
+    } else if (mounted) {
+      // Only close what is open. A closed sheet that ran this anyway called
+      // setMounted(false) on false: React queues that no-op update, and when the
+      // sheet next opened it rebased onto it and dropped the render-phase
+      // setMounted(true) above, so the sheet never appeared.
       Animated.timing(progress, {
         toValue: 0,
         duration: CLOSE_DURATION,
@@ -63,7 +67,7 @@ export function Sheet({ visible, onClose, avoidKeyboard, style, children }: Shee
         if (finished) setMounted(false);
       });
     }
-  }, [visible, progress]);
+  }, [visible, mounted, progress]);
 
   if (!mounted) return null;
 
