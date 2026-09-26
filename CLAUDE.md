@@ -31,6 +31,10 @@ npx supabase secrets set --env-file supabase/functions/.env   # NOT YET: the fil
 npx -y deno test supabase/functions/_shared/    # Edge Function unit tests; Deno need not be installed
 ```
 
+**Review queue for demos:** `node scripts/seed-review.mjs [count]` puts the test user's latest posted
+transactions (25 by default) back in the review queue. It works on dev only, and refuses to run if the
+CLI is linked to any other project.
+
 **Driving the emulator (agents):** use `node scripts/emu.mjs` — `ui` prints visible labels with tap
 centers as text, `tap "<label>"` taps by text, `logs` shows JS errors/crashes since the last call.
 Prefer `ui` over `shot`; a screenshot costs ~1.5k tokens, only take one when visual layout is the
@@ -212,6 +216,10 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   the union of the rows' keys, so a key on only some rows nulls it on the rest. `carryForward`
   (`_shared/review.ts`) moves a pending row's memo and manual category onto the posted row that replaces
   it. The `/review` queue is a per-visit id snapshot kept outside `['transactions']` on purpose.
+  Since Phase 10 it is a deck of cards:
+  - Swipe right to accept, left to skip to the back; Undo reverses the last move.
+  - The deck logic is pure (`deckReducer`/`topCard` in `lib/review.ts`); the gestures use Reanimated 4 and Gesture Handler (`GestureHandlerRootView` wraps the root layout).
+  - Write shared values with `.set()` and read them with `.get()`, never `.value`: the React Compiler lint rejects `.value` writes.
 - Recurring streams are derived: detection (`_shared/recurring.ts`) runs at the end of every sync and
   owns every column except `dismissed`, which only the user writes. Never add `dismissed` to its
   upsert payload.
