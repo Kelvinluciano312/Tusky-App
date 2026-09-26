@@ -3,7 +3,7 @@ import type { PlaidApi } from 'npm:plaid@30';
 
 import { buildSnapshotRows, syncAccounts } from './accounts.ts';
 import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from './categorize.ts';
-import { GUESSED_SOURCES, type Label } from './learn.ts';
+import { GUESSED_SOURCES, type Label, learnedCategory, usableLabels } from './learn.ts';
 import { ignoredCategoryIds, normalizeMerchant, refreshRecurring } from './recurring.ts';
 import { type CarriedPayer, carryForward, type ExistingRow } from './review.ts';
 
@@ -267,6 +267,11 @@ export async function syncItem(
       if (ruleError) throw ruleError;
       const ruleByMerchant = new Map((ruleRows ?? []).map((r) => [r.merchant_key, r.category_id as string]));
 
+      // The herd's own fixes (12a) for the merchants in this batch.
+      // deno-lint-ignore no-explicit-any
+      const merchantKeyOf = (t: any) => normalizeMerchant(t.merchant_name ?? t.name);
+      const labelsByMerchant = await loadLabels(admin, item.herd_id, upserts.map(merchantKeyOf));
+
       // Read existing rows, and the pending rows these post from, so a manual
       // category or memo survives re-sync and pending → posted (carryForward).
       const ids = [...new Set(upserts.flatMap((t) =>
@@ -285,9 +290,15 @@ export async function syncItem(
         .filter((t) => accountByPlaidId.has(t.account_id))
         .map((t) => {
           const existing = existingFor.get(t.transaction_id) ?? null;
+          const merchantKey = merchantKeyOf(t);
           const category = pickCategory(existing, resolveCategory(
             {
-              rule: ruleByMerchant.get(normalizeMerchant(t.merchant_name ?? t.name)),
+              rule: ruleByMerchant.get(merchantKey),
+              // Only labels this Item's connector may learn from (private accounts).
+              learned: learnedCategory(
+                usableLabels(labelsByMerchant.get(merchantKey) ?? [], item.user_id),
+                toSignedAmount(t.amount),
+              ),
               detailed: t.personal_finance_category?.detailed,
               primary: t.personal_finance_category?.primary,
             },
