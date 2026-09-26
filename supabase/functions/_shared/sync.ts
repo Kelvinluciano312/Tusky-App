@@ -288,7 +288,7 @@ export async function syncItem(
       ))];
       const { data: existingRows } = await admin
         .from('transactions')
-        .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split')
+        .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split, corrected_from')
         .in('plaid_transaction_id', ids);
       const { existingFor, notes: carriedNotes, payers: carriedPayers } = carryForward(
         upserts,
@@ -340,6 +340,8 @@ export async function syncItem(
             category_id: category.categoryId,
             // Every row carries it: a bulk upsert sends the union of the rows' keys.
             category_source: category.source,
+            // A fix made while pending still counts once posted (cat-quality.mjs).
+            corrected_from: existing?.corrected_from ?? null,
             category_is_manual: existing?.category_is_manual ?? false,
           };
         });
