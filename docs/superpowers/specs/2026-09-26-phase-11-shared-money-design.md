@@ -28,7 +28,7 @@ These features build on Phase 9d's who paid: spending by person, a who-paid filt
 
 **Freshness.** Setting a payer, or an account's owner, now refreshes the whole `['transactions']` prefix and `['reports']`. Before, only the transaction's detail screen refreshed.
 
-## 11b: splits and settle-up (next PR)
+## 11b: splits and settle-up
 
 **Splits.** `transactions.split jsonb` holds `{ user_id: percent }`.
 - A trigger checks it: at least 2 members, each in the herd, each percent above 0, totalling 100.
@@ -49,6 +49,12 @@ Private accounts are left out, so every member computes the same balance from ro
 - `benefitShares` and `fundingShares` work out each person's part of a row. Joint is split equally among the members who had joined by the row's date.
 - `balances` nets everything per person, with each recorded settlement moving money back.
 - `settleTransfers` finds the fewest payments that square everyone.
+
+**Leaving.** `leave_herd` makes sure no split ever names someone outside its herd:
+- splits on the leaver's own banks end, because they name people the leaver no longer shares with;
+- a split that stays behind but names the leaver becomes Joint.
+
+**Money in whole cents.** Each purchase settles in whole cents: an odd cent goes to its largest share, so every purchase nets to exactly zero. That way, recording the amount shown squares the balance exactly: a Joint $6.33 is $3.17 either way, never $3.16 against $3.17.
 
 **UI.**
 - The chips gain a "Paid from X's account · Y owes X $Z" caption and a Split… sheet.

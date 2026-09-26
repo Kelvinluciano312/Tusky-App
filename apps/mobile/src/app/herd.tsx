@@ -1,14 +1,16 @@
 import { router } from 'expo-router';
-import { ChevronRight, UserPlus } from 'lucide-react-native';
+import { ChevronRight, HandCoins, UserPlus } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, Share, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NameSheet } from '@/components/name-sheet';
+import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Radius, Spacing, Type } from '@/constants/theme';
+import { transferLabel, useSettleUp } from '@/hooks/use-settle-up';
 import { useTheme } from '@/hooks/use-theme';
 import { expiresIn, formatCode, initials, inviteMessage } from '@/lib/herd';
 import {
@@ -40,6 +42,7 @@ export default function HerdScreen() {
   const leave = useLeaveHerd();
   const remove = useRemoveMember();
   const [naming, setNaming] = useState(false);
+  const settle = useSettleUp();
 
   if (!herd) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
 
@@ -81,10 +84,15 @@ export default function HerdScreen() {
       ],
     );
 
+  // Leaving doesn't carry a balance with it (11b), so say it first.
+  const balanceNote = settle.mine
+    .map((t) => `${transferLabel(t, me ?? null, settle.name)} $${t.amount.toFixed(2)}.`)
+    .join(' ');
   const confirmLeave = () =>
     Alert.alert(
       `Leave ${herd.name}?`,
-      "The banks you connected leave with you, into a new herd of your own. This herd keeps its budgets, categories and rules.",
+      "The banks you connected leave with you, into a new herd of your own. This herd keeps its budgets, categories and rules." +
+        (balanceNote ? `\n\n${balanceNote} Settle up first: balances don't follow you out.` : ''),
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -169,6 +177,27 @@ export default function HerdScreen() {
       ) : null}
 
       <Card style={{ paddingVertical: Spacing.xs }}>{herd.members.map(memberRow)}</Card>
+
+      {alone ? null : (
+        <Pressable onPress={() => router.push('/settle')} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+          <Card style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+            <HandCoins size={20} color={colors.brand} strokeWidth={1.75} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <AppText variant="label">Settle up</AppText>
+              <AppText variant="caption" tone="dim">
+                {settle.mine.length > 0
+                  ? settle.mine.map((t) => (
+                      <AppText key={`${t.from}-${t.to}`} variant="caption" tone="dim">
+                        {transferLabel(t, me ?? null, settle.name)} <Amount value={t.amount} size={12} />{' '}
+                      </AppText>
+                    ))
+                  : "You're all square"}
+              </AppText>
+            </View>
+            <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
+          </Card>
+        </Pressable>
+      )}
 
       {isOwner ? (
         <Card style={{ gap: Spacing.sm }}>

@@ -154,6 +154,16 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     paid. The app gates every shared feature on `isShared(herd)` (`lib/herd.ts`). `monthly_person_totals`
     is `monthly_category_totals` split by `paid_by`. A payer or owner change must refresh `['transactions']`
     and `['reports']`, because the feed filters by payer and Reports totals by person.
+  - **Splits and settle-up (11b).**
+    - A debt exists where "for" differs from who paid: `paid_by` or a `split` against the account's owner.
+    - `transactions.split` (`{ user_id: percent }`) is validated by `ac_transactions_split`: two or more
+      members, totalling 100. Setting a split nulls `paid_by`; choosing a person clears the split.
+    - `carryForward` moves a split from pending to posted, like a payer.
+    - `shared_lines` lists every row that can create a debt; private accounts are left out, so every member
+      sees the same balance. `settlements` holds recorded payments.
+    - The math is `lib/settle.ts`, kept in whole cents per purchase so the balance squares exactly.
+    - Anything that can move a balance must invalidate `['settle']`: payer, split, owner, hidden, private,
+      category.
   - **The app hides connector-only actions**: reconnect, disconnect, the Private switch and the sandbox
     tools show only when `item.user_id` is the signed-in user.
   - **`node scripts/rls-check.mjs`** proves every member sees exactly their herd minus others' private

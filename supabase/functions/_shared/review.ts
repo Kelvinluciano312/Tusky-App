@@ -13,9 +13,16 @@ export type ExistingRow = {
   /** Who paid (Phase 9d); null = Joint. */
   paid_by: string | null;
   paid_by_is_manual: boolean;
+  /** A custom split (Phase 11b): member id → percent. Null = none. */
+  split: Record<string, number> | null;
 };
 
-export type CarriedPayer = { plaid_transaction_id: string; paid_by: string | null };
+/** Who a purchase was for, as picked by hand: a person, Joint (null), or a split. */
+export type CarriedPayer = {
+  plaid_transaction_id: string;
+  paid_by: string | null;
+  split: Record<string, number> | null;
+};
 
 export type IncomingTxn = { transaction_id: string; pending_transaction_id?: string | null };
 
@@ -47,7 +54,7 @@ export function carryForward(
     existingFor.set(t.transaction_id, predecessor ?? null);
     if (predecessor?.notes) notes.push({ plaid_transaction_id: t.transaction_id, notes: predecessor.notes });
     if (predecessor?.paid_by_is_manual) {
-      payers.push({ plaid_transaction_id: t.transaction_id, paid_by: predecessor.paid_by });
+      payers.push({ plaid_transaction_id: t.transaction_id, paid_by: predecessor.paid_by, split: predecessor.split });
     }
   }
   return { existingFor, notes, payers };

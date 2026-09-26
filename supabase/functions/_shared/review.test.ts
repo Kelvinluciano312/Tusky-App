@@ -9,6 +9,7 @@ const row = (id: string, over: Partial<ExistingRow> = {}): ExistingRow => ({
   notes: null,
   paid_by: 'owner',
   paid_by_is_manual: false,
+  split: null,
   ...over,
 });
 
@@ -24,9 +25,17 @@ Deno.test('carryForward: a hand-picked payer, Joint included, moves to the poste
     ]),
   );
   assertEquals(payers, [
-    { plaid_transaction_id: 'posted1', paid_by: 'kelvyn' },
-    { plaid_transaction_id: 'posted2', paid_by: null },
+    { plaid_transaction_id: 'posted1', paid_by: 'kelvyn', split: null },
+    { plaid_transaction_id: 'posted2', paid_by: null, split: null },
   ]);
+});
+
+Deno.test('carryForward: a custom split moves to the posted row', () => {
+  const { payers } = carryForward(
+    [{ transaction_id: 'posted1', pending_transaction_id: 'p1' }],
+    new Map([['p1', row('p1', { paid_by: null, paid_by_is_manual: true, split: { pedro: 70, kelvyn: 30 } })]]),
+  );
+  assertEquals(payers, [{ plaid_transaction_id: 'posted1', paid_by: null, split: { pedro: 70, kelvyn: 30 } }]);
 });
 
 Deno.test("carryForward: a payer from the account's owner is not carried; the database sets it", () => {
