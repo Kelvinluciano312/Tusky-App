@@ -94,7 +94,7 @@ Accepting a guess is therefore a label, and no extra table is needed.
 3. Take the K = 5 labels nearest the row's amount by distance on `log(1 + |amount|)`. Distance means
    a $4 coffee sits near a $6 one and far from a $60 fill-up.
 4. The category with the most of those labels wins, if it has at least 2 votes and at least ⅔ of the
-   neighbours. Otherwise there is no answer. A tie goes to the most recent label.
+   neighbours. Otherwise there is no answer. Labels further than 3× (or ⅓) the amount do not vote, so a far-off amount gets no guess. The ⅔ share means a tie never wins.
 5. All the constants sit together at the top of the file.
 
 This one rule covers the gas-station case: snacks and fuel at the same merchant separate by amount,
@@ -115,7 +115,7 @@ that merchant that are non-manual and **not yet reviewed**, and writes the categ
 - The review card (`review-card.tsx`) shows "Tusky guessed" under the category chip when the source
   is `learned`, `community` or `ai`. The hint names where it came from: "from your past choices",
   "from other Tusky users" or "by AI".
-- The transaction screen (`app/transaction/[id].tsx`) shows "Categorized by …" for every source. It
+- The transaction screen (`app/transaction/[id].tsx`) shows "Set by …" for every source (the label column is narrow). It
   already has a line for manual rows.
 
 **The quality measure.** `scripts/cat-quality.mjs` is read-only and targets dev, like `seed-review`.

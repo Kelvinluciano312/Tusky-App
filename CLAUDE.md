@@ -6,8 +6,10 @@ on Pedro's go-ahead — see its spec, `docs/superpowers/specs/2026-09-23-phase-6
 Phases 7 (categories) and 8 (transaction review) are merged. Now: Phase 9 — names, herds (shared
 households), who paid, production project — `docs/superpowers/specs/2026-09-25-phase-9-herds-design.md`,
 milestones 9a → 9d plus Track P. Latest handoff: `docs/superpowers/plans/2026-09-28-phase-9d-handoff.md`.
-Phase 10 (review deck, accounts by type) is merged. Now: Phase 11, shared money (spending by person, a
-payer filter, splits and settle-up): `docs/superpowers/specs/2026-09-26-phase-11-shared-money-design.md`.
+Phase 10 (review deck, accounts by type) and Phase 11 (shared money:
+`docs/superpowers/specs/2026-09-26-phase-11-shared-money-design.md`) are merged. Now: Phase 12, the
+categorization engine (12a learning from fixes, 12b AI fallback, 12c crowd labels):
+`docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md`. Preset budgets (Phase 13) follow 12a.
 
 **Production project** (real banks): `awiwcgrisyzimzxgddxu`. Read `docs/ops/production.md` before
 touching it. The CLI stays linked to dev; production commands name `--project-ref`, and each one waits
@@ -31,6 +33,7 @@ npx supabase db push
 npx supabase functions deploy <name> --use-api   # omit <name> to deploy all; reads config.toml
 npx supabase secrets set --env-file supabase/functions/.env   # NOT YET: the file holds the pending new Plaid keys (see Phase 6 spec, final step)
 npx -y deno test supabase/functions/_shared/    # Edge Function unit tests; Deno need not be installed
+node scripts/cat-quality.mjs                    # dev: each category source's correction rate
 ```
 
 **Review queue for demos:** `node scripts/seed-review.mjs [count]` puts the test user's latest posted
@@ -195,9 +198,9 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   live Item. Archived Items never block a relink.
 - **Categories are two levels** (Phase 7a). The 16 original rows are the groups (`parent_id` null) and
   keep their ids; 61 children hang off them. `categories_enforce_tree` allows a parent only if it is a
-  built-in group, and copies the group's `kind` onto the child. Sync resolves **manual > rule (7c) >
+  built-in group, and copies the group's `kind` onto the child. Sync resolves **manual > rule (7c) > learned (12a) >
   Plaid detailed (`plaid_detailed_map`) > Plaid primary (`plaid_category_map`, whose entries are
-  groups) > uncategorized**: `resolveCategoryId` in `_shared/categorize.ts`, with `pickCategoryId` on
+  groups) > uncategorized**: `resolveCategory` in `_shared/categorize.ts`, with `pickCategory` on
   top. `credit_card_payment` is transfer-kind, so it leaves spending and cash flow, but
   `ignoredCategoryIds` keeps it in recurring detection: a card bill still has a due date. Rollups go
   through `lib/categories.ts` (`groupIdOf`, `rollupByGroup`), and a group and its children are never
@@ -214,11 +217,22 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   transfer categories per Item before recurring detection.
 - **Merchant rules** (Phase 7c). `merchant_rules` (one per herd and `merchant_key`) holds a category, a
   display name, or both. Clients only read it; every write goes through `set-merchant-rule`, which
-  re-resolves the merchant's non-manual rows with `resolveCategoryId` whenever the category part
-  changes, so removing a rule puts Plaid's category back. Sync loads the Item's herd's rules and passes
+  re-resolves the merchant's non-manual rows with `resolveCategory` whenever the category part
+  changes, so removing a rule puts back what learning (12a) or Plaid says. Sync loads the Item's herd's rules and passes
   `rule:` to the same resolver. Renames apply only when data is read (`lib/merchants.ts`). Rows read the
   rules themselves (`useMerchantRules`), so every surface shows the same name. `delete-category` moves
   rules to the group before its delete: the rules FK has no cascade, on purpose.
+- **Learning from fixes** (Phase 12a). `transactions.category_source` records where each category came
+  from (`manual | rule | learned | community | ai | plaid | fallback`), and `corrected_from` which
+  source a hand-picked category replaced. The `ad_transactions_category_source` trigger stamps both;
+  the client never writes them. Labels are a merchant's manual rows plus accepted guesses
+  (`_shared/learn.ts`), loaded by `loadLabels`; a member's private-account labels teach only their
+  own rows. Sync, `set-merchant-rule` and `apply-learning` all re-resolve through `planReresolve`,
+  and `apply-learning` touches only unreviewed rows. `node scripts/cat-quality.mjs` prints each
+  source's correction rate. Spec: `docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md`.
+- **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op
+  `setMounted(false)` on a closed sheet made React drop the render-phase `setMounted(true)` on the
+  next open, and no Sheet-based picker ever appeared. Keep the `else if (mounted)`.
 - **Bottom sheets need `KeyboardAvoidingView behavior="padding"` on Android too.** A `Modal` is its own
   window: the activity's resize for the keyboard never reaches it, and a text field there has the whole
   sheet covered by the keyboard (`budget-sheet.tsx` and `category-sheet.tsx` are the reference).
