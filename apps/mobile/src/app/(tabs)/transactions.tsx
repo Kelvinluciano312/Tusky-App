@@ -94,16 +94,22 @@ export default function TransactionsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
-      <AppText variant="display" style={{ paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm }}>
+      <AppText
+        variant="display"
+        style={{ paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, paddingBottom: Spacing.md }}>
         Transactions
       </AppText>
 
+      {/* Extra top margin: Expo's dev-client menu bubble sits fixed in this
+          corner during development, and would otherwise steal the filter
+          icon's taps. */}
       <View
         style={{
           flexDirection: 'row',
           alignItems: 'center',
           gap: Spacing.sm,
           marginHorizontal: Spacing.md,
+          marginTop: Spacing.sm,
           marginBottom: Spacing.sm,
           height: 44,
           paddingHorizontal: Spacing.sm + 2,
