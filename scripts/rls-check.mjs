@@ -115,7 +115,7 @@ const counts = [
   ],
   [
     'daily_net_worth',
-    `select count(distinct s.date) from public.balance_snapshots s join public.accounts a on a.id = s.account_id where s.account_id = any (v) and not a.hidden`,
+    `select count(distinct s.date) from public.balance_snapshots s join public.accounts a on a.id = s.account_id where s.account_id = any (v) and not a.hidden and a.in_totals`,
     `select count(*) from public.daily_net_worth`,
   ],
 ];

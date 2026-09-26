@@ -22,10 +22,12 @@ export type Account = {
   user_id: string;
   /** Whose account it is (Phase 9d), the default payer of its transactions; null = Joint. */
   owner_id: string | null;
+  /** Counts in net worth (Phase 10). Off keeps the account visible but out of the totals, unlike hidden. */
+  in_totals: boolean;
 };
 
 const ACCOUNT_COLUMNS =
-  'id, item_id, user_id, owner_id, name, official_name, mask, type, subtype, current_balance, available_balance, iso_currency_code, hidden, is_private';
+  'id, item_id, user_id, owner_id, name, official_name, mask, type, subtype, current_balance, available_balance, iso_currency_code, hidden, is_private, in_totals';
 
 
 /**
@@ -114,7 +116,38 @@ export function useSetAccountHidden() {
   });
 }
 
-export type ItemStatus = 'active' | 'login_required' | 'archived';
+/**
+ * Count an account in net worth, or not (Phase 10). Optimistic like hiding;
+ * Home's total and the history chart refetch.
+ */
+export function useSetAccountInTotals() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ accountId, inTotals }: { accountId: string; itemId: string; inTotals: boolean }) => {
+      const { error } = await supabase.from('accounts').update({ in_totals: inTotals }).eq('id', accountId);
+      if (error) throw error;
+    },
+    onMutate: async ({ accountId, itemId, inTotals }) => {
+      const key = ['accounts', itemId];
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Account[]>(key);
+      queryClient.setQueryData<Account[]>(key, (old) =>
+        old?.map((a) => (a.id === accountId ? { ...a, in_totals: inTotals } : a)),
+      );
+      return { previous };
+    },
+    onError: (_err, { itemId }, context) => {
+      if (context?.previous) queryClient.setQueryData(['accounts', itemId], context.previous);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['net_worth'] });
+    },
+  });
+}
+
+export type ItemStatus ='active' | 'login_required' | 'archived';
 
 export type PlaidItem = {
   id: string;
