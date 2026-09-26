@@ -31,6 +31,10 @@ npx supabase secrets set --env-file supabase/functions/.env   # NOT YET: the fil
 npx -y deno test supabase/functions/_shared/    # Edge Function unit tests; Deno need not be installed
 ```
 
+**Review queue for demos:** `node scripts/seed-review.mjs [count]` puts the test user's latest posted
+transactions (25 by default) back in the review queue. It works on dev only, and refuses to run if the
+CLI is linked to any other project.
+
 **Driving the emulator (agents):** use `node scripts/emu.mjs` — `ui` prints visible labels with tap
 centers as text, `tap "<label>"` taps by text, `logs` shows JS errors/crashes since the last call.
 Prefer `ui` over `shot`; a screenshot costs ~1.5k tokens, only take one when visual layout is the
