@@ -6,6 +6,8 @@ on Pedro's go-ahead — see its spec, `docs/superpowers/specs/2026-09-23-phase-6
 Phases 7 (categories) and 8 (transaction review) are merged. Now: Phase 9 — names, herds (shared
 households), who paid, production project — `docs/superpowers/specs/2026-09-25-phase-9-herds-design.md`,
 milestones 9a → 9d plus Track P. Latest handoff: `docs/superpowers/plans/2026-09-28-phase-9d-handoff.md`.
+Phase 10 (review deck, accounts by type) is merged. Now: Phase 11, shared money (spending by person, a
+payer filter, splits and settle-up): `docs/superpowers/specs/2026-09-26-phase-11-shared-money-design.md`.
 
 **Production project** (real banks): `awiwcgrisyzimzxgddxu`. Read `docs/ops/production.md` before
 touching it. The CLI stays linked to dev; production commands name `--project-ref`, and each one waits
@@ -148,6 +150,10 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     posted (`carryForward`), except for a payer who has since left. Leaving hands the leaver's banks to
     them as owner and payer, and makes accounts they owned on others' banks Joint. The app shows who-paid
     UI only in herds of two or more.
+  - **Shared money (11).** Since Phase 11, `paid_by` means "whose expense", and the account's owner is who
+    paid. The app gates every shared feature on `isShared(herd)` (`lib/herd.ts`). `monthly_person_totals`
+    is `monthly_category_totals` split by `paid_by`. A payer or owner change must refresh `['transactions']`
+    and `['reports']`, because the feed filters by payer and Reports totals by person.
   - **The app hides connector-only actions**: reconnect, disconnect, the Private switch and the sandbox
     tools show only when `item.user_id` is the signed-in user.
   - **`node scripts/rls-check.mjs`** proves every member sees exactly their herd minus others' private

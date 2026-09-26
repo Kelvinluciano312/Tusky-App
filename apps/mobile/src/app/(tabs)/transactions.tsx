@@ -8,11 +8,16 @@ import { TransactionRow } from '@/components/transaction-row';
 import { TransactionSortSheet, type TransactionSort } from '@/components/transaction-sort-sheet';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
+import { type Chip, Chips } from '@/components/ui/chips';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Radius, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { isShared, payerLabel } from '@/lib/herd';
 import { useSyncTransactions } from '@/lib/plaid';
-import { type Transaction, useCategories, useTransactions } from '@/lib/queries';
+import { type Transaction, useCategories, useHerd, useTransactions } from '@/lib/queries';
+
+/** The feed's who-paid filter (11a): everyone, one member, or Joint (null). */
+type PayerFilter = string | null | 'all';
 
 function compareByDate(a: Transaction, b: Transaction): number {
   if (a.date !== b.date) return a.date < b.date ? -1 : 1;
@@ -22,6 +27,13 @@ function compareByDate(a: Transaction, b: Transaction): number {
 function matchesSearch(transaction: Transaction, query: string): boolean {
   const haystack = `${transaction.merchant_name ?? ''} ${transaction.name}`.toLowerCase();
   return haystack.includes(query);
+}
+
+/** The empty state under a search, a who-paid filter, or both. */
+function noMatchMessage(search: string, payer: string | null): string {
+  if (search && payer) return `No ${payer} transactions match "${search}".`;
+  if (payer) return payer === 'Joint' ? 'No Joint transactions yet.' : `No transactions for ${payer} yet.`;
+  return `No transactions match "${search}".`;
 }
 
 function formatSectionDate(iso: string): string {
@@ -50,6 +62,25 @@ export default function TransactionsScreen() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<TransactionSort>('newest');
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const { data: herd } = useHerd();
+  const shared = isShared(herd);
+  const [payerChoice, setPayer] = useState<PayerFilter>('all');
+  // Back to everyone once the herd is down to one, or the chosen member left.
+  const payer =
+    !shared || (payerChoice !== 'all' && payerChoice !== null && !herd?.members.some((m) => m.user_id === payerChoice))
+      ? 'all'
+      : payerChoice;
+  const payerOptions = useMemo<Chip<PayerFilter>[]>(
+    () =>
+      herd
+        ? [
+            { value: 'all', label: 'Everyone' },
+            ...herd.members.map((m) => ({ value: m.user_id, label: payerLabel(m.user_id, herd.members) })),
+            { value: null, label: 'Joint' },
+          ]
+        : [],
+    [herd],
+  );
 
   const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
@@ -57,7 +88,7 @@ export default function TransactionsScreen() {
   // A search or a non-default sort needs to see the whole history, not just the
   // pages scrolled into view so far — so once either is active, keep pulling
   // pages until the server says there are none left.
-  const isFiltering = query !== '' || sort !== 'newest';
+  const isFiltering = query !== '' || sort !== 'newest' || payer !== 'all';
   useEffect(() => {
     if (isFiltering && hasNextPage && !isFetchingNextPage) fetchNextPage();
   }, [isFiltering, hasNextPage, isFetchingNextPage, fetchNextPage]);
@@ -65,8 +96,11 @@ export default function TransactionsScreen() {
 
   const allLoaded = useMemo(() => data?.pages.flat() ?? [], [data]);
   const filtered = useMemo(
-    () => (query ? allLoaded.filter((t) => matchesSearch(t, query)) : allLoaded),
-    [allLoaded, query],
+    () =>
+      query || payer !== 'all'
+        ? allLoaded.filter((t) => (!query || matchesSearch(t, query)) && (payer === 'all' || t.paid_by === payer))
+        : allLoaded,
+    [allLoaded, query, payer],
   );
 
   const sorted = useMemo(() => {
@@ -131,6 +165,12 @@ export default function TransactionsScreen() {
         </Pressable>
       </View>
 
+      {shared ? (
+        <View style={{ paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm }}>
+          <Chips options={payerOptions} selected={payer} onSelect={setPayer} accessibilityLabel="Whose expense" />
+        </View>
+      ) : null}
+
       {syncError ? (
         <AppText
           variant="caption"
@@ -176,7 +216,7 @@ export default function TransactionsScreen() {
             <EmptyState
               icon={Search}
               title="No matches"
-              message={`No transactions match "${search.trim()}".`}
+              message={noMatchMessage(search.trim(), payer === 'all' ? null : payerLabel(payer, herd?.members ?? []))}
             />
           )
         }

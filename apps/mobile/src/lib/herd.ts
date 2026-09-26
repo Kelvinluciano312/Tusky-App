@@ -42,6 +42,11 @@ export function payerLabel(userId: string | null, members: { user_id: string; di
   return member.display_name.trim().split(/\s+/)[0] || member.display_name;
 }
 
+/** Whether who-paid features apply: a herd of one has nobody to share with. */
+export function isShared(herd: { members: unknown[] } | undefined): boolean {
+  return (herd?.members.length ?? 0) > 1;
+}
+
 /** Up to two initials for a member's avatar. */
 export function initials(displayName: string): string {
   const words = displayName.trim().split(/\s+/).filter(Boolean);

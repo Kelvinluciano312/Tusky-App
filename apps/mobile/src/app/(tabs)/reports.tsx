@@ -1,3 +1,4 @@
+import { UserX, Users } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,9 +12,16 @@ import { Card } from '@/components/ui/card';
 import { CategoryIcon } from '@/components/ui/category-icon';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { initials, isShared } from '@/lib/herd';
 import { currentMonthStart, monthsEndingAt } from '@/lib/month';
-import { useCategories, useMonthlyTotals } from '@/lib/queries';
-import { buildCashFlow, buildCategorySlices, buildGroupBreakdown } from '@/lib/reports';
+import { useCategories, useHerd, useMonthlyPersonTotals, useMonthlyTotals } from '@/lib/queries';
+import {
+  buildCashFlow,
+  buildCategorySlices,
+  buildGroupBreakdown,
+  buildPersonSpending,
+  type PersonSpending,
+} from '@/lib/reports';
 
 /** Months of history in the cash-flow chart, and the range the donut can browse. */
 const WINDOW = 6;
@@ -50,6 +58,18 @@ export default function ReportsScreen() {
         ? buildGroupBreakdown(totals.filter((t) => t.month === month), openGroup, categoriesById)
         : [],
     [openGroup, totals, month, categoriesById],
+  );
+
+  // By person (11a): only a herd of two or more has anyone to compare.
+  const { data: herd } = useHerd();
+  const shared = isShared(herd);
+  const { data: personTotals = [] } = useMonthlyPersonTotals(months[0], months[months.length - 1], shared);
+  const people = useMemo(
+    () =>
+      shared && herd
+        ? buildPersonSpending(personTotals.filter((t) => t.month === month), categoriesById, herd.members)
+        : [],
+    [shared, herd, personTotals, month, categoriesById],
   );
 
   const selected = cashFlow.find((m) => m.month === month);
@@ -188,6 +208,26 @@ export default function ReportsScreen() {
                 </AppText>
               </Card>
             )}
+
+            {slices.length > 0 && people.length > 0 ? (
+              <Card style={{ gap: Spacing.md }}>
+                <View>
+                  <AppText variant="caption" tone="dim" style={sectionLabel}>
+                    By person
+                  </AppText>
+                  <AppText variant="caption" tone="dim">
+                    Whose expense it was, as set on each transaction.
+                  </AppText>
+                </View>
+                {people.map((person) => (
+                  <PersonRow
+                    key={person.key}
+                    person={person}
+                    fullName={herd?.members.find((m) => m.user_id === person.key)?.display_name ?? person.label}
+                  />
+                ))}
+              </Card>
+            ) : null}
           </>
         ) : (
           <Card style={{ alignItems: 'center', gap: Spacing.sm }}>
@@ -200,6 +240,52 @@ export default function ReportsScreen() {
 
         <View style={{ height: Spacing.xxl }} />
       </ScrollView>
+    </View>
+  );
+}
+
+/** `fullName` gives the avatar both initials; the label is a first name. */
+function PersonRow({ person, fullName }: { person: PersonSpending; fullName: string }) {
+  const colors = useTheme();
+  const Icon = person.key === 'joint' ? Users : person.key === 'former' ? UserX : null;
+  return (
+    <View style={{ gap: Spacing.xs }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm + 2 }}>
+        <View
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: Radius.full,
+            backgroundColor: colors.elevated,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+          {Icon ? (
+            <Icon size={15} color={colors.brand} />
+          ) : (
+            <AppText variant="caption" tone="brand">
+              {initials(fullName)}
+            </AppText>
+          )}
+        </View>
+        <AppText variant="label" style={{ flex: 1 }}>
+          {person.label}
+        </AppText>
+        <AppText variant="caption" tone="dim" style={{ width: 42, textAlign: 'right' }}>
+          {Math.round(person.share * 100)}%
+        </AppText>
+        <Amount value={person.spent} size={14} />
+      </View>
+      <View
+        style={{
+          marginLeft: 30 + Spacing.sm + 2,
+          height: 4,
+          borderRadius: Radius.full,
+          backgroundColor: colors.elevated,
+          overflow: 'hidden',
+        }}>
+        <View style={{ width: `${person.share * 100}%`, height: '100%', backgroundColor: colors.brand }} />
+      </View>
     </View>
   );
 }

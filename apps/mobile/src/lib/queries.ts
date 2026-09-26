@@ -355,6 +355,29 @@ export function useMonthlyTotals(from: string, to: string) {
   });
 }
 
+/** A `monthly_person_totals` row (Phase 11a): monthly_category_totals, split by whose expense it was. */
+export type MonthlyPersonTotal = MonthlyTotal & {
+  /** Null = Joint. */
+  paid_by: string | null;
+};
+
+/** Monthly spend per person and category, for Reports' "By person" card. Under `'reports'`, like the above. */
+export function useMonthlyPersonTotals(from: string, to: string, enabled = true) {
+  return useQuery({
+    queryKey: ['reports', 'person', from, to],
+    enabled,
+    queryFn: async (): Promise<MonthlyPersonTotal[]> => {
+      const { data, error } = await supabase
+        .from('monthly_person_totals')
+        .select('month, paid_by, category_id, iso_currency_code, total, transaction_count')
+        .gte('month', from)
+        .lte('month', to);
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
 export type Budget = {
   id: string;
   category_id: string;
@@ -1005,7 +1028,9 @@ export function useSetAccountOwner() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      // A new owner re-applies to the account's rows (9d), which moves spending by person.
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
     },
   });
 }
@@ -1034,8 +1059,12 @@ export function useSetPaidBy() {
     onError: (_err, { transactionId }, context) => {
       if (context?.previous) queryClient.setQueryData(['transactions', 'detail', transactionId], context.previous);
     },
-    onSettled: (_data, _err, { transactionId }) =>
-      queryClient.invalidateQueries({ queryKey: ['transactions', 'detail', transactionId] }),
+    // The whole prefix, not just the detail: the feed filters by payer and
+    // Reports totals by person (11a), and both read the same row.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+    },
   });
 }
 

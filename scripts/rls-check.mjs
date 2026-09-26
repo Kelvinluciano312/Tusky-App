@@ -114,6 +114,11 @@ const counts = [
     `select count(*) from public.monthly_category_totals`,
   ],
   [
+    'monthly_person_totals',
+    `select count(*) from (select 1 from public.transactions t join public.accounts a on a.id = t.account_id where t.account_id = any (v) and not a.hidden group by date_trunc('month', t.date::timestamp), t.paid_by, t.category_id, t.iso_currency_code) x`,
+    `select count(*) from public.monthly_person_totals`,
+  ],
+  [
     'daily_net_worth',
     `select count(distinct s.date) from public.balance_snapshots s join public.accounts a on a.id = s.account_id where s.account_id = any (v) and not a.hidden and a.in_totals`,
     `select count(*) from public.daily_net_worth`,
