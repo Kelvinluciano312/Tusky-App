@@ -3,7 +3,7 @@
  * into the stored rule, and work out which transactions the change moves.
  * The handler, set-merchant-rule, does the I/O.
  */
-import { type CategoryMap, resolveCategoryId } from './categorize.ts';
+import { type CategoryMap, resolveCategory } from './categorize.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** What normalizeMerchant produces, minus the empty string: a name with no letters takes no rule. */
@@ -76,11 +76,11 @@ export function planReresolve(
 ): { category_id: string; ids: string[] }[] {
   const byCategory = new Map<string, string[]>();
   for (const row of rows) {
-    const next = resolveCategoryId(
+    const next = resolveCategory(
       { rule: ruleCategoryId, detailed: row.pfc_detailed, primary: row.pfc_primary },
       maps,
       fallbackId,
-    );
+    ).categoryId;
     if (next === row.category_id) continue;
     byCategory.set(next, [...(byCategory.get(next) ?? []), row.id]);
   }

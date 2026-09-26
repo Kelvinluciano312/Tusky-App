@@ -2,7 +2,7 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import type { PlaidApi } from 'npm:plaid@30';
 
 import { buildSnapshotRows, syncAccounts } from './accounts.ts';
-import { type CategoryMap, pickCategoryId, resolveCategoryId, toSignedAmount } from './categorize.ts';
+import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from './categorize.ts';
 import { ignoredCategoryIds, normalizeMerchant, refreshRecurring } from './recurring.ts';
 import { type CarriedPayer, carryForward, type ExistingRow } from './review.ts';
 
@@ -47,7 +47,7 @@ export function describeError(err: unknown): string {
 const HANDLED = '__handled__';
 
 /**
- * Plaid code → category maps plus the fallback: everything resolveCategoryId
+ * Plaid code → category maps plus the fallback: everything resolveCategory
  * needs. Shared by sync and set-merchant-rule, so both resolve identically.
  */
 export async function loadCategoryMaps(
@@ -186,7 +186,7 @@ export async function syncItem(
             // NOTE: options.transactions_url_taxonomy is NOT supported by the
             // Plaid-Version that plaid@30 pins — the API rejects it with
             // UNKNOWN_FIELDS. The account's default PFC taxonomy applies, so
-            // resolveCategoryId's uncategorized fallback is what protects us
+            // resolveCategory's uncategorized fallback is what protects us
             // if a primary we don't map shows up.
             ...(cursor ? {} : { options: { days_requested: FIRST_SYNC_DAYS } }),
             // deno-lint-ignore no-explicit-any
@@ -243,7 +243,8 @@ export async function syncItem(
       const rows = upserts
         .filter((t) => accountByPlaidId.has(t.account_id))
         .map((t) => {
-          const incoming = resolveCategoryId(
+          const existing = existingFor.get(t.transaction_id) ?? null;
+          const category = pickCategory(existing, resolveCategory(
             {
               rule: ruleByMerchant.get(normalizeMerchant(t.merchant_name ?? t.name)),
               detailed: t.personal_finance_category?.detailed,
@@ -251,8 +252,7 @@ export async function syncItem(
             },
             { detailed: detailedMap, primary: categoryMap },
             fallbackId,
-          );
-          const existing = existingFor.get(t.transaction_id) ?? null;
+          ));
           return {
             user_id: item.user_id,
             account_id: accountByPlaidId.get(t.account_id)!,
@@ -272,7 +272,9 @@ export async function syncItem(
             pfc_primary: t.personal_finance_category?.primary ?? null,
             pfc_detailed: t.personal_finance_category?.detailed ?? null,
             pfc_confidence: t.personal_finance_category?.confidence_level ?? null,
-            category_id: pickCategoryId(existing, incoming),
+            category_id: category.categoryId,
+            // Every row carries it: a bulk upsert sends the union of the rows' keys.
+            category_source: category.source,
             category_is_manual: existing?.category_is_manual ?? false,
           };
         });
