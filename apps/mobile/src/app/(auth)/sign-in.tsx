@@ -1,6 +1,6 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { backendLabel } from '@/lib/environment';
+import { backend, isSupabaseConfigured, realConfigured, supabase, switchBackend } from '@/lib/supabase';
 
 export default function SignInScreen() {
   const colors = useTheme();
@@ -101,6 +102,18 @@ export default function SignInScreen() {
             </AppText>
           </Link>
         </View>
+
+        {__DEV__ && realConfigured ? (
+          /* Dev builds only. Signed out there is no Settings, so the
+             Sandbox / Real data switch lives here too. */
+          <Pressable
+            onPress={() => switchBackend(backend === 'real' ? 'sandbox' : 'real')}
+            style={{ alignSelf: 'center', marginTop: Spacing.lg, padding: Spacing.sm }}>
+            <AppText variant="caption" tone="dim">
+              {backendLabel(backend)} (dev) · Switch to {backend === 'real' ? 'Sandbox' : 'Real data'}
+            </AppText>
+          </Pressable>
+        ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );
