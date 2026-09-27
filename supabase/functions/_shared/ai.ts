@@ -11,6 +11,7 @@
 import Anthropic from 'npm:@anthropic-ai/sdk@0.128.0';
 import { z } from 'npm:zod@4.6.5';
 import { zodOutputFormat } from 'npm:@anthropic-ai/sdk@0.128.0/helpers/zod';
+import { amountBand } from './crowd.ts';
 
 /** Classification needs no reasoning and Haiku 4.5 rejects `effort`. */
 const MODEL = 'claude-haiku-4-5';
@@ -24,8 +25,6 @@ export const AI_MAX_PER_SYNC = 50;
 export const AI_CLIENT = { timeout: 20_000, maxRetries: 1 };
 /** Rows per `in (...)` when writing answers back. Matches set-merchant-rule. */
 export const AI_UPDATE_CHUNK = 200;
-/** The bands the cache key uses, shared with 12c's crowd labels. */
-const BANDS = [5, 15, 50, 150, 500];
 
 export type AiRow = {
   id: string;
@@ -55,12 +54,6 @@ export function aiAllowed(_herdId: string): boolean {
   return true;
 }
 
-const bandOf = (amount: number): string => {
-  const magnitude = Math.abs(amount);
-  const index = BANDS.findIndex((edge) => magnitude < edge);
-  return index === -1 ? String(BANDS.length) : String(index);
-};
-
 /**
  * What one answer covers: a merchant, a direction and an amount band. A row
  * with no merchant key falls back to its raw description, so two unrelated
@@ -68,7 +61,7 @@ const bandOf = (amount: number): string => {
  */
 export function cacheKeyFor(row: AiRow): string {
   const merchant = row.merchant_key || `raw:${row.name.trim().toLowerCase()}`;
-  return `${merchant}|${row.amount > 0 ? 'in' : 'out'}|${bandOf(row.amount)}`;
+  return `${merchant}|${row.amount > 0 ? 'in' : 'out'}|${amountBand(row.amount)}`;
 }
 
 /**
