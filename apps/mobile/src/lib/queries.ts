@@ -359,8 +359,11 @@ export type MonthlyTotal = {
  * bearing: `invalidateQueries({ queryKey: ['reports'] })` then covers every range
  * any screen has cached, which is what keeps budgets in step with the feed.
  */
-export function useMonthlyTotals(from: string, to: string) {
+export function useMonthlyTotals(from: string, to: string, enabled = true) {
   return useQuery({
+    // A caller that is mounted but not showing (the preset sheet) passes false,
+    // so its window is fetched when it opens rather than on every visit.
+    enabled,
     queryKey: ['reports', from, to],
     queryFn: async (): Promise<MonthlyTotal[]> => {
       const { data, error } = await supabase
@@ -474,6 +477,9 @@ export function useReplaceBudgets() {
       });
       if (error) throw error;
     },
+    // onSettled, not onSuccess: a failed replace may still have deleted before
+    // it failed to insert (the transaction protects the database, not this
+    // cache), so refetching after an error is what keeps the screen honest.
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
       queryClient.invalidateQueries({ queryKey: ['reports'] });

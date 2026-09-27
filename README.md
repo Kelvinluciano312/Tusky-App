@@ -16,10 +16,10 @@ A personal finance app — connect your banks, see your net worth, track spendin
   - ✅ **7a** — the 16 categories become groups over 61 finer ones from Plaid's detailed codes; budgets on a group or a category; Reports by group with a drill-in; card payments are transfers but stay on the bills radar
   - ✅ **7b** — rename, recolour and hide the built-in categories; add your own under any group, and delete them (their transactions move to the group); a Categories screen in Settings
   - ✅ **7c** — merchant rules ("always categorize this merchant as X", past and future, never over a manual choice) and merchant renames that show everywhere; a transaction screen and a rules screen
-- ✅ **Phase 13** — preset budgets: a whole budget in one tap from your own income and spending (Match my spending, 50/30/20, 70/20/10) — [spec](docs/superpowers/specs/2026-09-26-phase-13-preset-budgets-design.md)
 - 🚧 **Phase 12** — the categorization engine — [spec](docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md)
   - ✅ **12a** — Tusky learns each merchant's category from your fixes (split by amount), flags its guesses in review, and records where every category came from
   - 12b (AI fallback, on credits) and 12c (opt-in crowd labels) are next
+- ✅ **Phase 13** — preset budgets: a whole budget in one tap from your own income and spending (Match my spending, 50/30/20, 70/20/10) — [spec](docs/superpowers/specs/2026-09-26-phase-13-preset-budgets-design.md)
 
 ## Architecture
 
