@@ -2,6 +2,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 
 import { readFunctionError } from '@/lib/functions';
 import type { MerchantRule, MerchantRules } from '@/lib/merchants';
+import type { PresetLine } from '@/lib/presets';
 import type { SharedLine } from '@/lib/settle';
 import { supabase } from '@/lib/supabase';
 
@@ -453,6 +454,29 @@ export function useDeleteBudget() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
+    },
+  });
+}
+
+/**
+ * Apply a preset (Phase 13): the herd's budgets are replaced by these lines in
+ * one transaction, so a dropped connection never leaves half a budget. The
+ * function is security invoker, so the same herd policies as every other write
+ * apply. Reports refresh too: the bars on Budgets read the totals view.
+ */
+export function useReplaceBudgets() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (lines: PresetLine[]) => {
+      const { error } = await supabase.rpc('replace_budgets', {
+        p_lines: lines.map((l) => ({ category_id: l.categoryId, amount: l.amount })),
+      });
+      if (error) throw error;
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['budgets'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
     },
   });
 }
