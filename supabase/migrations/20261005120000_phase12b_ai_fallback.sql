@@ -17,7 +17,9 @@ grant update (ai_categorize) on public.profiles to authenticated;
 create table public.ai_category_cache (
   -- merchant|direction|band, built by cacheKeyFor in _shared/ai.ts.
   cache_key text primary key,
-  category_id uuid not null references public.categories (id),
+  -- Null means asked and declined: the model saw this merchant and would not
+  -- place it. Remembering that is what stops us paying to ask again every sync.
+  category_id uuid references public.categories (id),
   created_at timestamptz not null default now()
 );
 

@@ -16,6 +16,14 @@ import { zodOutputFormat } from 'npm:@anthropic-ai/sdk@0.128.0/helpers/zod';
 const MODEL = 'claude-haiku-4-5';
 /** Uncached rows per sync. Cache hits are free and do not count. */
 export const AI_MAX_PER_SYNC = 50;
+/**
+ * How long one sync may spend on the model, and how hard it retries. The SDK
+ * defaults (10 minutes, 2 retries) can hold a sync open for half an hour before
+ * its cursor advances, so every page would be pulled again next time.
+ */
+export const AI_CLIENT = { timeout: 20_000, maxRetries: 1 };
+/** Rows per `in (...)` when writing answers back. Matches set-merchant-rule. */
+export const AI_UPDATE_CHUNK = 200;
 /** The bands the cache key uses, shared with 12c's crowd labels. */
 const BANDS = [5, 15, 50, 150, 500];
 
@@ -70,16 +78,19 @@ export function cacheKeyFor(row: AiRow): string {
  */
 export function buildAskList(
   rows: AiRow[],
-  cached: Map<string, string>,
+  /** key → category, or null for a merchant the model declined once already. */
+  cached: Map<string, string | null>,
 ): { ask: AiRow[]; resolved: Map<string, string> } {
   const resolved = new Map<string, string>();
   const ask: AiRow[] = [];
   const seen = new Set<string>();
   for (const row of rows) {
     const key = cacheKeyFor(row);
-    const hit = cached.get(key);
-    if (hit) {
-      resolved.set(row.id, hit);
+    if (cached.has(key)) {
+      // A null answer is an answer: this merchant has been asked about and the
+      // model declined it. Asking again every sync is money for nothing.
+      const hit = cached.get(key);
+      if (hit) resolved.set(row.id, hit);
       continue;
     }
     if (seen.has(key)) continue;
@@ -95,14 +106,25 @@ export function buildAskList(
  * keeps the category it already had. Private rows take their answer but never
  * reach the global cache: which merchants someone keeps private is not a fact
  * other herds get to learn.
+ *
+ * `unanswered` is the keys we asked about and got nothing usable for. They are
+ * cached as a null answer so the same unanswerable merchant is not sent again
+ * on every later sync — and, like every cache entry, only when a shared row
+ * carries the key.
  */
 export function applyAnswers(
   rows: AiRow[],
   answers: AiAnswer[],
   categories: AiCategory[],
-): { updates: { id: string; category_id: string }[]; cacheable: { key: string; category_id: string }[] } {
+  /** The keys actually sent. Defaults to every key in the batch. */
+  askedKeys?: string[],
+): {
+  updates: { id: string; category_id: string }[];
+  cacheable: { key: string; category_id: string }[];
+  unanswered: string[];
+} {
   const idBySlug = new Map(categories.map((c) => [c.slug, c.id]));
-  const asked = new Set(rows.map(cacheKeyFor));
+  const asked = new Set(askedKeys ?? rows.map(cacheKeyFor));
 
   const byKey = new Map<string, string>();
   for (const answer of answers) {
@@ -120,7 +142,38 @@ export function applyAnswers(
     updates.push({ id: row.id, category_id: categoryId });
     if (!row.is_private) cacheable.set(cacheKeyFor(row), categoryId);
   }
-  return { updates, cacheable: [...cacheable].map(([key, category_id]) => ({ key, category_id })) };
+  // A key only reaches the cache — with an answer or without one — if a shared
+  // row carries it.
+  const shareable = new Set(rows.filter((r) => !r.is_private).map(cacheKeyFor));
+  const unanswered = [...asked].filter((key) => !byKey.has(key) && shareable.has(key));
+
+  return {
+    updates,
+    cacheable: [...cacheable].map(([key, category_id]) => ({ key, category_id })),
+    unanswered,
+  };
+}
+
+/**
+ * Group the row updates by the category they land in and chunk each group, so
+ * answering a warm cache over hundreds of rows is a handful of statements
+ * rather than one round trip per row. Same shape as set-merchant-rule's plan.
+ */
+export function groupUpdates(
+  updates: { id: string; category_id: string }[],
+  chunk = AI_UPDATE_CHUNK,
+): { category_id: string; ids: string[] }[] {
+  const byCategory = new Map<string, string[]>();
+  for (const u of updates) {
+    const ids = byCategory.get(u.category_id) ?? [];
+    ids.push(u.id);
+    byCategory.set(u.category_id, ids);
+  }
+  const out: { category_id: string; ids: string[] }[] = [];
+  for (const [category_id, ids] of byCategory) {
+    for (let i = 0; i < ids.length; i += chunk) out.push({ category_id, ids: ids.slice(i, i + chunk) });
+  }
+  return out;
 }
 
 const ReplySchema = z.object({
@@ -140,7 +193,7 @@ export function hasAnthropicKey(): boolean {
  * missed category is never worth failing a sync over.
  */
 export const askClaude: AskFn = async (rows, categories) => {
-  const client = new Anthropic();
+  const client = new Anthropic(AI_CLIENT);
   const list = categories
     .map((c) => `${c.slug} — ${c.parent_name ? `${c.parent_name} / ` : ''}${c.name}`)
     .join('\n');

@@ -4,6 +4,7 @@ import type { PlaidApi } from 'npm:plaid@30';
 import { buildSnapshotRows, syncAccounts } from './accounts.ts';
 import {
   AI_MAX_PER_SYNC,
+  type AiAnswer,
   type AiRow,
   aiAllowed,
   applyAnswers,
@@ -11,6 +12,7 @@ import {
   type AskFn,
   buildAskList,
   cacheKeyFor,
+  groupUpdates,
   hasAnthropicKey,
 } from './ai.ts';
 import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from './categorize.ts';
@@ -215,7 +217,9 @@ export async function runAiPass(
     const keys = [...new Set(rows.map(cacheKeyFor))];
     const { data: cacheRows } = await admin
       .from('ai_category_cache').select('cache_key, category_id').in('cache_key', keys);
-    const cached = new Map((cacheRows ?? []).map((c) => [c.cache_key as string, c.category_id as string]));
+    const cached = new Map(
+      (cacheRows ?? []).map((c) => [c.cache_key as string, c.category_id as string | null]),
+    );
 
     const { data: categoryRows } = await admin
       .from('categories')
@@ -235,26 +239,32 @@ export async function runAiPass(
       }));
 
     const { ask: toAsk, resolved } = buildAskList(rows, cached);
-    let answers: { key: string; slug: string }[] = [];
-    if (toAsk.length > 0) answers = await ask(toAsk.slice(0, AI_MAX_PER_SYNC), categories);
-    const { updates, cacheable } = applyAnswers(rows, answers, categories);
+    const sent = toAsk.slice(0, AI_MAX_PER_SYNC);
+    let answers: AiAnswer[] = [];
+    if (sent.length > 0) answers = await ask(sent, categories);
+    const { updates, cacheable, unanswered } = applyAnswers(rows, answers, categories, sent.map(cacheKeyFor));
 
     // Cache hits update rows too, and cost nothing.
     for (const [id, category_id] of resolved) updates.push({ id, category_id });
 
-    for (const u of updates) {
+    // Grouped and chunked: a warm cache can answer hundreds of rows at once, and
+    // one statement per row would add seconds to every sync.
+    for (const group of groupUpdates(updates)) {
       const { error } = await admin
         .from('transactions')
-        .update({ category_id: u.category_id, category_source: 'ai' })
-        .eq('id', u.id)
+        .update({ category_id: group.category_id, category_source: 'ai' })
+        .in('id', group.ids)
         // Re-checked at write time: a row set by hand meanwhile stays put.
         .eq('category_is_manual', false);
       if (error) throw error;
     }
-    if (cacheable.length > 0) {
-      await admin
-        .from('ai_category_cache')
-        .upsert(cacheable.map((c) => ({ cache_key: c.key, category_id: c.category_id })), { onConflict: 'cache_key' });
+    const entries = [
+      ...cacheable.map((c) => ({ cache_key: c.key, category_id: c.category_id as string | null })),
+      // Asked and declined: remembered so no later sync pays to ask again.
+      ...unanswered.map((key) => ({ cache_key: key, category_id: null })),
+    ];
+    if (entries.length > 0) {
+      await admin.from('ai_category_cache').upsert(entries, { onConflict: 'cache_key' });
     }
     return updates.length;
   } catch (err) {
@@ -483,10 +493,6 @@ export async function syncItem(
       }
     }
 
-    // 12b: last, over what nothing else could settle. Never throws.
-    const aiSet = await runAiPass(admin, item);
-    if (aiSet > 0) console.log(`item ${item.id}: AI categorized ${aiSet}`);
-
     if (removed.length > 0) {
       const { error } = await admin
         .from('transactions').delete()
@@ -506,6 +512,13 @@ export async function syncItem(
       .in('status', ['active', 'login_required']);
 
     result = { ...base, added: added.length, modified: modified.length, removed: removed.length };
+
+    // 12b, over what nothing else could settle. After the cursor and after
+    // `result` is latched, for the same two reasons the snapshot below is: it
+    // calls a third party, and a slow or dead model must not cost a full
+    // re-pagination next sync or turn a good sync into an error. Never throws.
+    const aiSet = await runAiPass(admin, item);
+    if (aiSet > 0) console.log(`item ${item.id}: AI categorized ${aiSet}`);
 
     // Last, and after `result` is latched: a failed chart row must not turn a
     // good sync into `status: 'error'`, nor cost a full re-pagination by landing

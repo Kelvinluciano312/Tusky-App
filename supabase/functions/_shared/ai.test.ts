@@ -1,6 +1,7 @@
 import { assertEquals } from 'jsr:@std/assert';
 
 import {
+  AI_CLIENT,
   AI_MAX_PER_SYNC,
   type AiCategory,
   type AiRow,
@@ -8,6 +9,7 @@ import {
   applyAnswers,
   buildAskList,
   cacheKeyFor,
+  groupUpdates,
   hasAnthropicKey,
 } from './ai.ts';
 
@@ -124,4 +126,52 @@ Deno.test('with an API key the pass is attempted', () => {
     if (had === undefined) Deno.env.delete('ANTHROPIC_API_KEY');
     else Deno.env.set('ANTHROPIC_API_KEY', had);
   }
+});
+
+Deno.test('the client is bounded: one sync must not hang on a slow model', () => {
+  // The SDK defaults are a 10-minute timeout and 2 retries — half an hour of
+  // wall clock inside a sync that has not advanced its cursor yet.
+  assertEquals(AI_CLIENT.timeout <= 30_000, true);
+  assertEquals(AI_CLIENT.maxRetries <= 1, true);
+});
+
+Deno.test('a merchant the model declined is remembered, so it is asked about once', () => {
+  const asked = [cacheKeyFor(row())];
+  const { updates, unanswered } = applyAnswers([row()], [], CATS, asked);
+  assertEquals(updates, []);
+  // Without this the same unanswerable row is sent again on every single sync.
+  assertEquals(unanswered, asked);
+});
+
+Deno.test('a private row the model declined is not remembered either', () => {
+  const secret = row({ is_private: true });
+  const { unanswered } = applyAnswers([secret], [], CATS, [cacheKeyFor(secret)]);
+  assertEquals(unanswered, []);
+});
+
+Deno.test('a remembered "no answer" resolves the row without asking again', () => {
+  const cached = new Map<string, string | null>([[cacheKeyFor(row()), null]]);
+  const { ask, resolved } = buildAskList([row()], cached);
+  assertEquals(ask, []);
+  assertEquals(resolved.size, 0);
+});
+
+Deno.test('an answer for a key outside the ask list is ignored', () => {
+  // A key in the batch but not asked about was already answered from the cache.
+  const { updates } = applyAnswers([row()], [{ key: cacheKeyFor(row()), slug: 'gas' }], CATS, []);
+  assertEquals(updates, []);
+});
+
+Deno.test('updates are grouped by category and chunked, not written one row at a time', () => {
+  const updates = [
+    { id: 'a', category_id: 'c-fuel' },
+    { id: 'b', category_id: 'c-fuel' },
+    { id: 'c', category_id: 'c-fuel' },
+    { id: 'd', category_id: 'c-groceries' },
+  ];
+  assertEquals(groupUpdates(updates, 2), [
+    { category_id: 'c-fuel', ids: ['a', 'b'] },
+    { category_id: 'c-fuel', ids: ['c'] },
+    { category_id: 'c-groceries', ids: ['d'] },
+  ]);
 });
