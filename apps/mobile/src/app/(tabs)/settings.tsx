@@ -222,11 +222,14 @@ export default function SettingsScreen() {
           <View style={{ flex: 1 }}>
             <AppText variant="label">Let AI sort the leftovers</AppText>
             <AppText variant="caption" tone="dim">
-              Only for transactions nothing else could place. It sees the merchant, the amount and
-              your bank&apos;s guess &mdash; never your balances, your accounts or who you are.
+              Only for transactions nothing else could place. It sees the merchant, the amount,
+              the description your bank sent and your bank&apos;s guess &mdash; never your balances,
+              your accounts or who you are.
             </AppText>
           </View>
           <Switch
+            accessibilityLabel="Let AI sort the leftovers"
+            trackColor={{ false: colors.elevated, true: colors.brand }}
             value={profile?.ai_categorize ?? false}
             disabled={!session?.user.id || setAiCategorize.isPending}
             onValueChange={(enabled) => {
