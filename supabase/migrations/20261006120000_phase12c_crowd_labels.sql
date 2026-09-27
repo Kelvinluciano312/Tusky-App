@@ -100,12 +100,13 @@ security definer
 set search_path = ''
 as $$
 declare
-  uid uuid := (select auth.uid());
+  uid uuid;
   who text;
-  merchant text;
+  merchant_v text;
   cat uuid;
 begin
   begin
+    uid := (select auth.uid());
     if uid is null then return null; end if;
     if not (
       (new.category_is_manual
@@ -125,8 +126,8 @@ begin
     if exists (select 1 from public.accounts a where a.id = new.account_id and a.is_private) then
       return null;
     end if;
-    merchant := coalesce(nullif(new.merchant_entity_id, ''), 'k:' || nullif(new.merchant_key, ''));
-    if merchant is null then return null; end if;
+    merchant_v := coalesce(nullif(new.merchant_entity_id, ''), 'k:' || nullif(new.merchant_key, ''));
+    if merchant_v is null then return null; end if;
     select case when c.herd_id is null then c.id else c.parent_id end into cat
       from public.categories c where c.id = new.category_id;
     if cat is null or exists (
@@ -140,7 +141,7 @@ begin
     insert into public.community_labels
       (contributor, merchant, direction, amount_band, pfc_detailed, category_id, created_on)
     values
-      (who, merchant, case when new.amount > 0 then 'in' else 'out' end,
+      (who, merchant_v, case when new.amount > 0 then 'in' else 'out' end,
        private.amount_band(new.amount), new.pfc_detailed, cat, current_date)
     on conflict (contributor, merchant, direction, amount_band) do update
       set category_id = excluded.category_id,
