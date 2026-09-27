@@ -16,6 +16,7 @@ import {
   hasAnthropicKey,
 } from './ai.ts';
 import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from './categorize.ts';
+import { communityAnswers, communityCategory, crowdMerchants, type Tally } from './crowd.ts';
 import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
 import { ignoredCategoryIds, normalizeMerchant, refreshRecurring } from './recurring.ts';
 import { type CarriedPayer, carryForward, type ExistingRow } from './review.ts';
@@ -134,6 +135,38 @@ export async function loadLabels(
     }
   }
   return byMerchant;
+}
+
+/**
+ * Merchants per community_tallies call. Each returns at most 12 bands
+ * (6 bands × 2 directions) × the categories voted for, so 25 stays well under
+ * PostgREST's max_rows (1000), which would otherwise cut the answer silently.
+ */
+const CROWD_MERCHANT_CHUNK = 25;
+
+/**
+ * The crowd's answers (12c) for these pool merchants, as crowdKey → category.
+ * Never throws: the crowd is a bonus, and a sync is never worth failing over it.
+ */
+export async function loadCommunity(
+  admin: SupabaseClient,
+  merchants: string[],
+): Promise<Map<string, string>> {
+  const unique = [...new Set(merchants.filter(Boolean))];
+  const tallies: Tally[] = [];
+  try {
+    for (let i = 0; i < unique.length; i += CROWD_MERCHANT_CHUNK) {
+      const { data, error } = await admin.rpc('community_tallies', {
+        p_merchants: unique.slice(i, i + CROWD_MERCHANT_CHUNK),
+      });
+      if (error) throw new Error(error.message);
+      tallies.push(...((data ?? []) as Tally[]));
+    }
+  } catch (err) {
+    console.warn(`crowd labels skipped: ${describeError(err)}`);
+    return new Map();
+  }
+  return communityAnswers(tallies);
 }
 
 /** Loads the taxonomy once per invocation. Throws if it cannot. */
@@ -391,6 +424,12 @@ export async function syncItem(
       const merchantKeyOf = (t: any) => normalizeMerchant(t.merchant_name ?? t.name);
       const labelsByMerchant = await loadLabels(admin, item.herd_id, upserts.map(merchantKeyOf));
 
+      // What the crowd agrees on (12c) for the merchants in this batch.
+      const communityByKey = await loadCommunity(
+        admin,
+        upserts.flatMap((t) => crowdMerchants(t.merchant_entity_id, merchantKeyOf(t))),
+      );
+
       // Read existing rows, and the pending rows these post from, so a manual
       // category or memo survives re-sync and pending → posted (carryForward).
       const ids = [...new Set(upserts.flatMap((t) =>
@@ -422,6 +461,10 @@ export async function syncItem(
                 ),
                 toSignedAmount(t.amount),
               ),
+              // The crowd (12c). An answer it already gave this row stands, like an AI one.
+              community: existing?.category_source === 'community'
+                ? existing.category_id
+                : communityCategory(communityByKey, t.merchant_entity_id, merchantKey, toSignedAmount(t.amount)),
               // An answer the AI pass gave survives Plaid modifying the row.
               ai: existing?.category_source === 'ai' ? existing.category_id : null,
               detailed: t.personal_finance_category?.detailed,
