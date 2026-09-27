@@ -13,10 +13,10 @@ export type Resolved = { categoryId: string; source: CategorySource };
 
 /**
  * Resolve a transaction's category from its sources, in precedence order: a
- * merchant rule (7c), then what the herd's own fixes taught (12a), then an
- * answer the AI pass already gave (12b), then Plaid's detailed code, then its
- * primary (whose entries point at groups), then the fallback. 12c slots
- * `community` in here. A manual choice is applied on top by pickCategory, so it
+ * merchant rule (7c), then what the herd's own fixes taught (12a), then the
+ * crowd's answer (12c), then an answer the AI pass already gave (12b), then
+ * Plaid's detailed code, then its primary (whose entries point at groups),
+ * then the fallback. A manual choice is applied on top by pickCategory, so it
  * always wins.
  *
  * `ai` sits above Plaid unconditionally, not below a confident Plaid code as
@@ -29,6 +29,8 @@ export function resolveCategory(
   sources: {
     rule?: string | null;
     learned?: string | null;
+    /** The crowd's answer (12c), or one it already gave this row. */
+    community?: string | null;
     /** An answer the AI pass already applied to this row (12b). */
     ai?: string | null;
     detailed?: string | null;
@@ -39,6 +41,7 @@ export function resolveCategory(
 ): Resolved {
   if (sources.rule) return { categoryId: sources.rule, source: 'rule' };
   if (sources.learned) return { categoryId: sources.learned, source: 'learned' };
+  if (sources.community) return { categoryId: sources.community, source: 'community' };
   if (sources.ai) return { categoryId: sources.ai, source: 'ai' };
   const plaid = (sources.detailed ? maps.detailed[sources.detailed] : undefined) ||
     (sources.primary ? maps.primary[sources.primary] : undefined);
