@@ -198,7 +198,7 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   live Item. Archived Items never block a relink.
 - **Categories are two levels** (Phase 7a). The 16 original rows are the groups (`parent_id` null) and
   keep their ids; 61 children hang off them. `categories_enforce_tree` allows a parent only if it is a
-  built-in group, and copies the group's `kind` onto the child. Sync resolves **manual > rule (7c) > learned (12a) >
+  built-in group, and copies the group's `kind` onto the child. Sync resolves **manual > rule (7c) > learned (12a) > ai (12b) >
   Plaid detailed (`plaid_detailed_map`) > Plaid primary (`plaid_category_map`, whose entries are
   groups) > uncategorized**: `resolveCategory` in `_shared/categorize.ts`, with `pickCategory` on
   top. `credit_card_payment` is transfer-kind, so it leaves spending and cash flow, but
@@ -239,7 +239,12 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   serves every herd — but a private account's row is never cached. `aiAllowed()` is the single
   server-side seam a subscription check will occupy; AI is meant to be a subscriber feature.
   Needs the `ANTHROPIC_API_KEY` secret, **scoped to a workspace** (an org-level key is refused with
-  400 `invalid_request_error`); without any key the pass is skipped silently.
+  400 `invalid_request_error`, as is an account with no credit); without any key the pass is skipped
+  silently. Three things are easy to undo by accident: `ai` is a source in `resolveCategory`, so a
+  re-resolve does not take back an answer the user was already shown; the pass runs **after** the
+  cursor advance, beside the snapshot pass, because a slow model must never cost a re-pagination;
+  and a cache row with a null `category_id` means "asked and declined", which is what stops us
+  paying to ask about the same unplaceable merchant on every sync.
 - **Preset budgets** (Phase 13). `lib/presets.ts` is pure: it takes the last 3 full months of
   `monthly_category_totals`, takes a median per line, and caps each bucket by a share of the median
   income (whole dollars, so pennies of income read as none). Built-in group slugs decide needs from
