@@ -230,6 +230,16 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   own rows. Sync, `set-merchant-rule` and `apply-learning` all re-resolve through `planReresolve`,
   and `apply-learning` touches only unreviewed rows. `node scripts/cat-quality.mjs` prints each
   source's correction rate. Spec: `docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md`.
+- **The AI fallback** (Phase 12b). Opt-in per user (`profiles.ai_categorize`, off by default) and
+  only over rows nothing else could settle. `_shared/ai.ts` is pure except `askClaude`
+  (`claude-haiku-4-5`, `messages.parse` with a Zod output format; no `effort`, no thinking —
+  Haiku 4.5 rejects the first and does not need the second). `runAiPass` in `_shared/sync.ts`
+  never throws: a missed category is not worth failing a sync over. `ai_category_cache` is GLOBAL
+  and has no `herd_id` — the model sees only merchant text and built-in categories, so one answer
+  serves every herd — but a private account's row is never cached. `aiAllowed()` is the single
+  server-side seam a subscription check will occupy; AI is meant to be a subscriber feature.
+  Needs the `ANTHROPIC_API_KEY` secret, **scoped to a workspace** (an org-level key is refused with
+  400 `invalid_request_error`); without any key the pass is skipped silently.
 - **Preset budgets** (Phase 13). `lib/presets.ts` is pure: it takes the last 3 full months of
   `monthly_category_totals`, takes a median per line, and caps each bucket by a share of the median
   income (whole dollars, so pennies of income read as none). Built-in group slugs decide needs from
