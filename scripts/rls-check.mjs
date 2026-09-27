@@ -163,6 +163,9 @@ declare
   ai_on boolean;
   foreign_cat uuid;
   budgets_before int;
+  crowd_cat uuid;
+  crowd_expected boolean;
+  custom_cat uuid;
 begin
   ${setup}
   select herd_id, role into h, r from public.herd_members where user_id = u;
@@ -184,12 +187,17 @@ begin
        and not exists (select 1 from public.herd_members m where m.herd_id = h and m.user_id = t.paid_by)));
   select user_id into outsider from public.herd_members where herd_id <> h limit 1;
   select user_id into mate from public.herd_members where herd_id = h and user_id <> u limit 1;
+  -- Phase 12c: give the mate a consent row, so mates_consents_visible is meaningful.
+  if mate is not null then
+    insert into public.consents (user_id, kind) values (mate, 'crowd_labels') on conflict do nothing;
+  end if;
   -- Phase 12a: a row Tusky categorized, and a built-in category it is not in.
   select id, category_source into auto_tx, auto_src from public.transactions
     where account_id = any (v) and not category_is_manual limit 1;
   select c.id into other_cat from public.categories c
     where c.herd_id is null and c.parent_id is null
       and c.id is distinct from (select category_id from public.transactions where id = auto_tx)
+      and c.slug is distinct from 'uncategorized'
     limit 1;
   -- Phase 13: a built-in category this user may budget, another herd's custom
   -- one they may not, and how many budgets other herds hold (read as the admin,
@@ -375,6 +383,87 @@ begin
     w := w || jsonb_build_object('read_plaid_tokens', 'denied');
   end;
 
+  -- Phase 12c: the pool and consents are nobody's to read, and consent is your own.
+  begin
+    perform 1 from public.community_labels limit 1;
+    w := w || jsonb_build_object('read_community_labels', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('read_community_labels', 'denied');
+  end;
+  begin
+    perform public.community_tallies(array['k:test']);
+    w := w || jsonb_build_object('call_community_tallies', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('call_community_tallies', 'denied');
+  end;
+  begin
+    insert into public.consents (user_id, kind) values (u, 'crowd_labels');
+    w := w || jsonb_build_object('insert_consent_directly', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('insert_consent_directly', 'denied');
+  end;
+  if mate is not null then
+    w := w || jsonb_build_object('mates_consents_visible',
+      (select count(*) from public.consents where user_id = mate));
+  end if;
+  perform public.set_consent('crowd_labels', true);
+  w := w || jsonb_build_object('own_consent_granted',
+    (select count(*) = 1 from public.consents where user_id = u and withdrawn_at is null));
+  if auto_tx is not null then
+    select c.id into crowd_cat from public.categories c
+      where c.herd_id is null and c.parent_id is null and c.slug is distinct from 'uncategorized'
+        and c.id is distinct from (select category_id from public.transactions where id = auto_tx)
+      order by c.id desc limit 1;
+    update public.transactions set category_id = crowd_cat, category_is_manual = true where id = auto_tx;
+    reset role;
+    -- Contributes unless the row's account is private or its merchant is blank.
+    select not a.is_private and coalesce(nullif(t.merchant_entity_id, ''), nullif(t.merchant_key, '')) is not null
+      into crowd_expected
+      from public.transactions t join public.accounts a on a.id = t.account_id where t.id = auto_tx;
+    w := w || jsonb_build_object('crowd_contributed_as_expected',
+      (select count(*) > 0 from public.community_labels
+         where contributor = private.label_contributor(u) and category_id = crowd_cat) = crowd_expected);
+    perform set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated')::text, true);
+    execute 'set local role authenticated';
+    -- A custom category contributes its group, never its own id.
+    insert into public.categories (name, parent_id, icon, color)
+      values ('RLS crowd probe', crowd_cat, 'tag', '#888888') returning id into custom_cat;
+    update public.transactions set category_id = custom_cat where id = auto_tx;
+    reset role;
+    w := w || jsonb_build_object('crowd_custom_is_group',
+      not exists (select 1 from public.community_labels where category_id = custom_cat));
+    perform set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated')::text, true);
+    execute 'set local role authenticated';
+  end if;
+  -- Withdrawing forgets everything this user contributed; granting again works.
+  perform public.set_consent('crowd_labels', false);
+  perform public.set_consent('crowd_labels', true);
+  w := w || jsonb_build_object('crowd_regrant',
+    (select count(*) = 2 from public.consents where user_id = u));
+  perform public.set_consent('crowd_labels', false);
+  reset role;
+  w := w || jsonb_build_object('crowd_withdraw_forgets',
+    not exists (select 1 from public.community_labels where contributor = private.label_contributor(u)));
+  -- A missing pepper must never block a fix. Only when this login may touch the
+  -- vault; otherwise the probe is left out (and so not checked).
+  if auto_tx is not null then
+    begin
+      delete from vault.secrets where name = 'label_pepper';
+      perform set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated')::text, true);
+      execute 'set local role authenticated';
+      perform public.set_consent('crowd_labels', true);
+      begin
+        update public.transactions set category_id = other_cat where id = auto_tx;
+        w := w || jsonb_build_object('fix_without_pepper', 'allowed');
+      exception when others then
+        w := w || jsonb_build_object('fix_without_pepper', 'denied');
+      end;
+      reset role;
+    exception when insufficient_privilege then
+      reset role;
+    end;
+  end if;
+
   -- Phase 13: as the admin again, prove the delete never reached another herd.
   -- Asked as the caller this would be vacuous: RLS hides those rows anyway.
   reset role;
@@ -415,6 +504,16 @@ const WRITE_EXPECT = {
   read_ai_cache: 'denied',
   own_ai_switch: true,
   mates_ai_switch_rows: 0,
+  read_community_labels: 'denied',
+  call_community_tallies: 'denied',
+  insert_consent_directly: 'denied',
+  mates_consents_visible: 0,
+  own_consent_granted: true,
+  crowd_contributed_as_expected: true,
+  crowd_custom_is_group: true,
+  crowd_regrant: true,
+  crowd_withdraw_forgets: true,
+  fix_without_pepper: 'allowed',
 };
 
 let failures = 0;
