@@ -17,6 +17,8 @@ export type ExistingRow = {
   split: Record<string, number> | null;
   /** Which source a hand-picked category corrected (Phase 12a); null = none. */
   corrected_from: string | null;
+  /** Where the current category came from (Phase 12a), so an `ai` answer survives a modify. */
+  category_source: string;
 };
 
 /** Who a purchase was for, as picked by hand: a person, Joint (null), or a split. */

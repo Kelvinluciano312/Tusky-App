@@ -388,7 +388,7 @@ export async function syncItem(
       ))];
       const { data: existingRows } = await admin
         .from('transactions')
-        .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split, corrected_from')
+        .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split, corrected_from, category_source')
         .in('plaid_transaction_id', ids);
       const { existingFor, notes: carriedNotes, payers: carriedPayers } = carryForward(
         upserts,
@@ -412,6 +412,8 @@ export async function syncItem(
                 ),
                 toSignedAmount(t.amount),
               ),
+              // An answer the AI pass gave survives Plaid modifying the row.
+              ai: existing?.category_source === 'ai' ? existing.category_id : null,
               detailed: t.personal_finance_category?.detailed,
               primary: t.personal_finance_category?.primary,
             },

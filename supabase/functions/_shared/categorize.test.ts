@@ -77,3 +77,18 @@ Deno.test('toSignedAmount inverts Plaid inflow to positive', () => {
 Deno.test('toSignedAmount leaves zero alone', () => {
   assertEquals(toSignedAmount(0), 0);
 });
+
+Deno.test('an AI answer outranks Plaid, and yields to a rule or what the herd taught', () => {
+  const maps = { detailed: { COFFEE: 'c-coffee' }, primary: { FOOD_AND_DRINK: 'c-food' } };
+  const sources = { ai: 'c-ai', detailed: 'COFFEE', primary: 'FOOD_AND_DRINK' };
+  // Plaid was unsure about these rows in the first place: that is why AI saw them.
+  assertEquals(resolveCategory(sources, maps, 'c-uncat'), { categoryId: 'c-ai', source: 'ai' });
+  assertEquals(resolveCategory({ ...sources, rule: 'c-rule' }, maps, 'c-uncat'), {
+    categoryId: 'c-rule',
+    source: 'rule',
+  });
+  assertEquals(resolveCategory({ ...sources, learned: 'c-learned' }, maps, 'c-uncat'), {
+    categoryId: 'c-learned',
+    source: 'learned',
+  });
+});

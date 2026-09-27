@@ -11,6 +11,7 @@ const row = (id: string, over: Partial<ExistingRow> = {}): ExistingRow => ({
   paid_by_is_manual: false,
   split: null,
   corrected_from: null,
+  category_source: 'plaid',
   ...over,
 });
 
