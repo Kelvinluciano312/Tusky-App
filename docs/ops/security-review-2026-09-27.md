@@ -7,11 +7,24 @@ Tusky holds people's bank balances and transaction history.
 Everything below was verified against the live projects, not read off the migrations. Live write
 probes ran inside rolled-back blocks on dev only.
 
+## Status (2026-09-27, same day)
+
+| # | Finding | State |
+| --- | --- | --- |
+| 1 | Session tokens in AsyncStorage | **Fixed** — moved to the keystore, verified on device |
+| 2 | Leaked-password protection off | Open — dashboard toggle, both projects |
+| 3 | Email confirmation off on production | Open — deliberate until a third person signs up |
+| 4 | `set_updated_at` search_path | **Fixed** — migration `20261004120000` |
+| 5 | Webhook key-fetch amplification | **Fixed** — negative cache + kid shape check |
+| 6 | npm advisories in build tooling | Open — no runtime exposure |
+| 7 | `rls_auto_enable` | No action — verified inert |
+| 8 | Settlements trust model | No action — by design |
+
 ## Findings
 
 Ordered by what a real attacker gets, not by how easy each is to fix.
 
-### 1. Session tokens sit in unencrypted storage — HIGH
+### 1. Session tokens sit in unencrypted storage — HIGH — FIXED
 
 `apps/mobile/src/lib/supabase.ts` gives supabase-js `storage: AsyncStorage`. On Android that is a
 plain SQLite file in the app's private directory. It holds the **refresh token**, which is
@@ -24,11 +37,18 @@ the hardware-backed keystore and the bank-account session is not.
 App sandboxing keeps other apps out, so this needs a rooted or compromised device, or a backup
 extraction. That is exactly the threat model a finance app is supposed to survive.
 
-**Fix.** Move the auth session to `expo-secure-store`, keyed per project so the dev/production
-switch keeps working. One gotcha: Android SecureStore rejects values over ~2 KB and a Supabase
-session exceeds that, so the adapter has to chunk the value across keys and reassemble it.
-Alongside it, set `android.allowBackup: false` in `app.json` under `expo-build-properties` — the
-Android default is on, and it is how app data leaves a device without root.
+**Fixed.** `lib/secure-storage.ts` is a storage adapter over `expo-secure-store`. Android's keystore
+rejects values over roughly 2 KB and a Supabase session is bigger, so a value is split across
+numbered keys behind a manifest; a missing chunk reads as signed out rather than as a truncated
+token, and every path swallows keystore errors so a broken keystore signs the user out instead of
+crashing the app. Sessions written by older builds are moved across on first read and deleted from
+AsyncStorage. The chunking is injected-backend and covered by nine tests in `npm test`.
+
+Verified on the emulator: after the change the app stayed signed in, and its AsyncStorage database
+then held **no** `sb-*-auth-token` key and zero occurrences of `refresh_token`.
+
+`android.allowBackup: false` is set in `app.json` under `expo-build-properties`. It is a native
+manifest change, so it takes effect on the next `expo run:android`, not on a JS reload.
 
 ### 2. Leaked-password protection is off — MEDIUM
 
@@ -44,14 +64,14 @@ new account lands in its own empty herd and sees nobody else's data, so today th
 accounts rather than exposure — but this must be on before a third person signs up, together with
 custom SMTP (the default sender only delivers to the org's own team).
 
-### 4. `set_updated_at` has a mutable search_path — LOW
+### 4. `set_updated_at` has a mutable search_path — LOW — FIXED
 
 The only function in `public` without `set search_path`. It is `SECURITY INVOKER`, so it runs as the
 caller and is not a privilege-escalation path — which is why this is low and not high. Every other
 function in the project is already hardened, including all three in `private`. Worth closing so the
 advisor's list is empty and the next real one is not lost in noise.
 
-### 5. The public webhook can be made to call Plaid — LOW
+### 5. The public webhook can be made to call Plaid — LOW — FIXED
 
 `plaid-webhook` is the only unauthenticated endpoint. Its verification is sound (below), but
 `getKey` in `supabase/functions/plaid-webhook/index.ts` caches only **successful** key fetches. An
@@ -59,8 +79,10 @@ unauthenticated caller can therefore send a fresh bogus `kid` on every request a
 Plaid's `/webhook_verification_key/get` each time. No data is exposed and no request is ever
 accepted; the cost is Plaid API rate limit and our own CPU.
 
-**Fix.** Cache negative lookups too, with a short TTL, or drop any `kid` that is not a UUID before
-the fetch.
+**Fixed.** Both: a `kid` that is not a UUID never reaches Plaid, and a failed lookup is remembered
+for 60 seconds. The window is short on purpose — Plaid retries a non-200 for 24 hours, so a key that
+appears later is still picked up on the next delivery. Unsigned and bogus-`kid` requests were
+re-tested against dev after deploying: both 401.
 
 ### 6. Five high-severity npm advisories, all in build tooling — INFO
 
@@ -130,10 +152,9 @@ Recorded so the next review can start from here rather than re-deriving it.
 - The only secrets in the app bundle are the project URL and the publishable key, which are designed
   to be public and are useless without a session because of the grants above.
 
-## Suggested order
+## What is left
 
-1. Session tokens into SecureStore, plus `allowBackup: false` (finding 1).
-2. Turn on leaked-password protection on both projects (finding 2) — a toggle.
-3. Close `set_updated_at`'s search_path and the webhook's negative cache (findings 4, 5) — one small
-   migration and a few lines.
-4. Before anyone else signs up: email confirmation on, custom SMTP (finding 3).
+1. **Turn on leaked-password protection** on both projects: Authentication → Policies. A toggle,
+   and the single best return left on this list.
+2. **Before anyone else signs up:** email confirmation on, plus custom SMTP (finding 3).
+3. `npm audit fix` when Expo's versions allow (finding 6). No hurry: none of it ships to the phone.

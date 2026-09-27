@@ -5,6 +5,7 @@ import { AppState, DevSettings } from 'react-native';
 import 'react-native-url-polyfill/auto';
 
 import { type Backend, pickBackend } from '@/lib/environment';
+import { createSecureStorage } from '@/lib/secure-storage';
 
 // `||` not `??` throughout: unset EXPO_PUBLIC_ vars arrive as empty strings, not undefined.
 const sandbox = {
@@ -49,12 +50,19 @@ export function switchBackend(next: Backend) {
   DevSettings.reload();
 }
 
+/**
+ * The session lives in the keystore, not in AsyncStorage: it carries a
+ * long-lived refresh token, and AsyncStorage is an unencrypted file. Sessions
+ * written by older builds are moved across on first read (see secure-storage.ts).
+ */
+const sessionStorage = createSecureStorage(SecureStore, AsyncStorage);
+
 export const supabase = createClient(
   target.url || 'http://localhost:54321',
   target.key || 'unconfigured',
   {
     auth: {
-      storage: AsyncStorage,
+      storage: sessionStorage,
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: false,
