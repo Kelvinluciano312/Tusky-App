@@ -159,6 +159,7 @@ declare
   auto_tx uuid;
   auto_src text;
   other_cat uuid;
+  my_cat uuid;
 begin
   ${setup}
   select herd_id, role into h, r from public.herd_members where user_id = u;
@@ -187,6 +188,8 @@ begin
     where c.herd_id is null and c.parent_id is null
       and c.id is distinct from (select category_id from public.transactions where id = auto_tx)
     limit 1;
+  -- Phase 13: a built-in category this user may budget.
+  select id into my_cat from public.categories where herd_id is null and parent_id is null and kind = 'expense' limit 1;
   -- Invariant (11b): everyone named in a split is in the row's herd.
   w := w || jsonb_build_object('splits_outside_herd',
     (select count(*) from public.transactions t cross join lateral jsonb_each(t.split) s where t.herd_id = h
@@ -302,6 +305,30 @@ begin
     w := w || jsonb_build_object('correction_recorded',
       (select category_source = 'manual' and corrected_from = auto_src from public.transactions where id = auto_tx));
   end if;
+  -- Phase 13: replace_budgets writes only the caller's herd, atomically.
+  if my_cat is not null then
+    perform public.replace_budgets(jsonb_build_array(jsonb_build_object('category_id', my_cat, 'amount', 123)));
+    w := w || jsonb_build_object('replace_budgets_scoped',
+      (select count(*) = 1 from public.budgets where herd_id = h)
+      and (select count(*) from public.budgets where herd_id <> h) = 0);
+    -- Applying twice leaves one set, not two.
+    perform public.replace_budgets(jsonb_build_array(jsonb_build_object('category_id', my_cat, 'amount', 321)));
+    w := w || jsonb_build_object('replace_budgets_idempotent',
+      (select count(*) = 1 and max(amount) = 321 from public.budgets where herd_id = h));
+    -- An unknown category fails the whole call and leaves the herd's budgets alone.
+    begin
+      perform public.replace_budgets(jsonb_build_array(jsonb_build_object('category_id', gen_random_uuid(), 'amount', 9)));
+      w := w || jsonb_build_object('replace_budgets_unknown_category', 'allowed');
+    exception when others then
+      w := w || jsonb_build_object('replace_budgets_unknown_category', 'denied');
+    end;
+    w := w || jsonb_build_object('replace_budgets_intact_after_failure',
+      (select count(*) = 1 and max(amount) = 321 from public.budgets where herd_id = h));
+  end if;
+  -- Phase 13: the calls above must not have touched any other herd's budgets.
+  -- RLS hides them, so a leak shows up as rows this user can suddenly see.
+  w := w || jsonb_build_object('replace_budgets_other_herds_untouched',
+    (select count(*) from public.budgets where herd_id <> h) = 0);
   -- Only the owner renames the herd.
   update public.herds set name = name where id = h;
   get diagnostics n = row_count;
@@ -339,6 +366,11 @@ const WRITE_EXPECT = {
   settle_with_mate_visible: true,
   update_category_source: 'denied',
   correction_recorded: true,
+  replace_budgets_scoped: true,
+  replace_budgets_idempotent: true,
+  replace_budgets_unknown_category: 'denied',
+  replace_budgets_intact_after_failure: true,
+  replace_budgets_other_herds_untouched: true,
 };
 
 let failures = 0;
