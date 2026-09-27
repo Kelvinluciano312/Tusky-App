@@ -123,28 +123,40 @@ For each source it counts the auto-set rows that the user corrected (`corrected_
 reviewed and kept. It prints each source's correction rate. We run it before and after each
 milestone. "Very good" means that number falls.
 
-## 12b: the AI fallback, on credits
+## 12b: the AI fallback
 
-- **Tables.**
-  - `profiles.ai_categorize boolean not null default false`. The user sets it in Settings.
-  - `credit_ledger (id, user_id, delta int, reason text, created_at)`. The balance is the sum of
-    `delta`. A client reads its own rows and never writes; only service_role inserts. Grants are made
-    by SQL for now.
-- **The unit:** 1 credit = 1 transaction categorized by AI. Cache hits are free. What a credit costs
-  is monetization's open question, not this spec's.
+**Revised 2026-09-27, after pricing the model.** The original plan metered this with a credit ledger.
+Claude Haiku 4.5 costs $1 per million input tokens and $5 per million output, which works out to
+about **$0.0001 per transaction** — roughly eleven cents per thousand. A ledger, a balance check and
+debit-with-refund is more machinery than a cost of pennies justifies, so it is dropped. What replaces
+it is an opt-in switch, a hard per-sync cap, and one place a subscription check will later sit.
+
+- **AI is a subscriber feature.** Not gated today, because there is no billing yet, but the check has
+  a single home so it never has to be hunted down: `aiAllowed(herd)` in `_shared/ai.ts` returns true
+  for everyone for now and is the one function Stripe will change. The gate is server-side, never the
+  client — the same rule `docs/product/monetization.md` sets for every tier limit.
+- **The switch.** `profiles.ai_categorize boolean not null default false`, set by the user in
+  Settings, with `grant update (ai_categorize)`. Off by default: nothing reaches a model until
+  someone asks for it.
 - **In `syncItem`,** after the upsert:
   - Collect the rows whose source is low-confidence `plaid` or `fallback`.
-  - Stop unless the connector has the switch on and a positive balance.
-  - Take at most 50 rows per sync, capped by the balance.
-  - Debit first. Make one batched call through `_shared/ai.ts` to `claude-haiku-4-5`, with an
-    `ANTHROPIC_API_KEY` secret. Refund the unused credits if the call fails or returns fewer answers.
-  - Write each answer only to a row that is still non-manual, and only if the answer is a valid
-    built-in category id.
-- **The cache.** A global `ai_category_cache` is keyed by the merchant key (below), direction and
-  amount band. It is checked before any debit. The model only sees built-in categories, so an answer
-  holds for every herd.
+  - Stop unless the Item's connector has the switch on and `aiAllowed` passes.
+  - Answer from the cache first, and take at most 50 uncached rows per sync.
+  - One batched call through `_shared/ai.ts` to `claude-haiku-4-5`, with an `ANTHROPIC_API_KEY`
+    secret. A failure is swallowed: the rows keep Plaid's category and the next sync may retry.
+  - Write each answer only to a row that is still non-manual, and only if the answer is one of the
+    built-in category ids we offered.
+- **The cache is the point, not an optimization.** `ai_category_cache` is global and keyed by merchant
+  and amount band. The model only ever sees built-in categories and merchant-level text, so one
+  answer is correct for every herd: **a merchant any subscriber pays to resolve is then free, and
+  already categorized, for everyone.** That is the same bargain as 12c's crowd labels, arrived at
+  from the other direction.
 - **What the model sees:** the merchant name, the raw description, the amount, Plaid's codes and the
-  built-in category list. Never an account, user or herd. The switch's caption says so.
+  built-in category list. Never an account, a balance, a user or a herd. The switch's caption says so
+  plainly.
+- **Model call shape.** `client.messages.parse()` with `output_config.format` built by
+  `zodOutputFormat`, so the reply is a validated array of `{ id, category_slug }` rather than prose
+  to parse. Haiku 4.5 takes no `effort` and no adaptive thinking — classification needs neither.
 
 ## 12c: crowd labels
 

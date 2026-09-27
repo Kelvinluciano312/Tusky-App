@@ -868,7 +868,7 @@ export function useSetTransactionNotes() {
 }
 
 
-export type Profile = { user_id: string; display_name: string };
+export type Profile = { user_id: string; display_name: string; ai_categorize: boolean };
 
 /** The signed-in user's profile (Phase 9a). Created at signup by a trigger, so it always exists. */
 export function useProfile(userId: string | undefined) {
@@ -878,7 +878,7 @@ export function useProfile(userId: string | undefined) {
     queryFn: async (): Promise<Profile> => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('user_id, display_name')
+        .select('user_id, display_name, ai_categorize')
         .eq('user_id', userId!)
         .single();
       if (error) throw error;
@@ -893,6 +893,23 @@ export function useSetDisplayName() {
   return useMutation({
     mutationFn: async ({ userId, displayName }: { userId: string; displayName: string }) => {
       const { error } = await supabase.from('profiles').update({ display_name: displayName }).eq('user_id', userId);
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['profile'] }),
+  });
+}
+
+/**
+ * The AI fallback switch (12b). Off by default: nothing reaches a model until
+ * someone asks for it. Whether a herd may use it at all is decided server-side
+ * in `aiAllowed`, never here.
+ */
+export function useSetAiCategorize() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ userId, enabled }: { userId: string; enabled: boolean }) => {
+      const { error } = await supabase.from('profiles').update({ ai_categorize: enabled }).eq('user_id', userId);
       if (error) throw error;
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['profile'] }),

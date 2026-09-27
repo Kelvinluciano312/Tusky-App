@@ -88,6 +88,9 @@ export function planReresolve(
       {
         rule: ruleCategoryId,
         learned: learnedCategory(usableLabels(labels, row.user_id, row.is_private), row.amount),
+        // An answer the AI pass gave stands: re-resolving must not take back a
+        // category the user has already been shown.
+        ai: row.category_source === 'ai' ? row.category_id : null,
         detailed: row.pfc_detailed,
         primary: row.pfc_primary,
       },

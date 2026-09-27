@@ -96,3 +96,19 @@ Deno.test('planReresolve: private labels never teach a shared row, even its conn
     { category_id: 'cat-learned', category_source: 'learned', ids: ['t1'] },
   ]);
 });
+
+Deno.test('a re-resolve leaves an AI-categorized row where the AI put it', () => {
+  // Without this, fixing one transaction of a merchant reverted every row the
+  // AI pass had placed back to Plaid's guess or to Uncategorized.
+  const row = {
+    id: 't1',
+    pfc_detailed: null,
+    pfc_primary: null,
+    category_id: 'c-ai',
+    category_source: 'ai',
+    amount: -12,
+    user_id: 'me',
+    is_private: false,
+  };
+  assertEquals(planReresolve([row], null, [], { detailed: {}, primary: {} }, 'c-uncat'), []);
+});

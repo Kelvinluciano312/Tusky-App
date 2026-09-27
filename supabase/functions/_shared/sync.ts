@@ -2,6 +2,19 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import type { PlaidApi } from 'npm:plaid@30';
 
 import { buildSnapshotRows, syncAccounts } from './accounts.ts';
+import {
+  AI_MAX_PER_SYNC,
+  type AiAnswer,
+  type AiRow,
+  aiAllowed,
+  applyAnswers,
+  askClaude,
+  type AskFn,
+  buildAskList,
+  cacheKeyFor,
+  groupUpdates,
+  hasAnthropicKey,
+} from './ai.ts';
 import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from './categorize.ts';
 import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
 import { ignoredCategoryIds, normalizeMerchant, refreshRecurring } from './recurring.ts';
@@ -164,6 +177,103 @@ export async function claimItem(
 }
 
 /**
+ * The AI fallback (12b), run after the upsert over the rows every other source
+ * was unsure about. Never throws: a missed category is not worth failing a sync
+ * over, and the next sync retries. `ask` is injected for tests.
+ */
+export async function runAiPass(
+  admin: SupabaseClient,
+  item: { id: string; user_id: string; herd_id: string },
+  ask: AskFn = askClaude,
+): Promise<number> {
+  try {
+    if (!hasAnthropicKey() || !aiAllowed(item.herd_id)) return 0;
+
+    const { data: profile } = await admin
+      .from('profiles').select('ai_categorize').eq('user_id', item.user_id).maybeSingle();
+    if (!profile?.ai_categorize) return 0;
+
+    // Only this Item's rows, and only the ones nothing else could settle.
+    const { data: rowData, error: rowError } = await admin
+      .from('transactions')
+      .select('id, merchant_key, name, merchant_name, amount, pfc_primary, pfc_detailed, accounts!inner(is_private)')
+      .eq('item_id', item.id)
+      .eq('category_is_manual', false)
+      .in('category_source', ['plaid', 'fallback'])
+      .or('pfc_confidence.is.null,pfc_confidence.in.(LOW,UNKNOWN)');
+    if (rowError) throw rowError;
+    const rows: AiRow[] = (rowData ?? []).map((r) => ({
+      id: r.id,
+      merchant_key: r.merchant_key ?? '',
+      name: r.name,
+      merchant_name: r.merchant_name,
+      amount: Number(r.amount),
+      pfc_primary: r.pfc_primary,
+      pfc_detailed: r.pfc_detailed,
+      is_private: (r.accounts as unknown as { is_private: boolean }).is_private,
+    }));
+    if (rows.length === 0) return 0;
+
+    const keys = [...new Set(rows.map(cacheKeyFor))];
+    const { data: cacheRows } = await admin
+      .from('ai_category_cache').select('cache_key, category_id').in('cache_key', keys);
+    const cached = new Map(
+      (cacheRows ?? []).map((c) => [c.cache_key as string, c.category_id as string | null]),
+    );
+
+    const { data: categoryRows } = await admin
+      .from('categories')
+      .select('id, slug, name, parent_id')
+      .is('herd_id', null)
+      .not('parent_id', 'is', null);
+    const { data: groupRows } = await admin
+      .from('categories').select('id, name').is('herd_id', null).is('parent_id', null);
+    const groupName = new Map((groupRows ?? []).map((g) => [g.id as string, g.name as string]));
+    const categories = (categoryRows ?? [])
+      .filter((c) => c.slug)
+      .map((c) => ({
+        id: c.id as string,
+        slug: c.slug as string,
+        name: c.name as string,
+        parent_name: groupName.get(c.parent_id as string) ?? null,
+      }));
+
+    const { ask: toAsk, resolved } = buildAskList(rows, cached);
+    const sent = toAsk.slice(0, AI_MAX_PER_SYNC);
+    let answers: AiAnswer[] = [];
+    if (sent.length > 0) answers = await ask(sent, categories);
+    const { updates, cacheable, unanswered } = applyAnswers(rows, answers, categories, sent.map(cacheKeyFor));
+
+    // Cache hits update rows too, and cost nothing.
+    for (const [id, category_id] of resolved) updates.push({ id, category_id });
+
+    // Grouped and chunked: a warm cache can answer hundreds of rows at once, and
+    // one statement per row would add seconds to every sync.
+    for (const group of groupUpdates(updates)) {
+      const { error } = await admin
+        .from('transactions')
+        .update({ category_id: group.category_id, category_source: 'ai' })
+        .in('id', group.ids)
+        // Re-checked at write time: a row set by hand meanwhile stays put.
+        .eq('category_is_manual', false);
+      if (error) throw error;
+    }
+    const entries = [
+      ...cacheable.map((c) => ({ cache_key: c.key, category_id: c.category_id as string | null })),
+      // Asked and declined: remembered so no later sync pays to ask again.
+      ...unanswered.map((key) => ({ cache_key: key, category_id: null })),
+    ];
+    if (entries.length > 0) {
+      await admin.from('ai_category_cache').upsert(entries, { onConflict: 'cache_key' });
+    }
+    return updates.length;
+  } catch (err) {
+    console.warn(`ai pass skipped for item ${item.id}: ${describeError(err)}`);
+    return 0;
+  }
+}
+
+/**
  * Sync one Item. Shared by the user-triggered sync and the Plaid webhook, so
  * both paths claim, retry, preserve manual categories and advance the cursor
  * the same way. Never throws: failures come back as an ItemResult.
@@ -288,7 +398,7 @@ export async function syncItem(
       ))];
       const { data: existingRows } = await admin
         .from('transactions')
-        .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split, corrected_from')
+        .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split, corrected_from, category_source')
         .in('plaid_transaction_id', ids);
       const { existingFor, notes: carriedNotes, payers: carriedPayers } = carryForward(
         upserts,
@@ -312,6 +422,8 @@ export async function syncItem(
                 ),
                 toSignedAmount(t.amount),
               ),
+              // An answer the AI pass gave survives Plaid modifying the row.
+              ai: existing?.category_source === 'ai' ? existing.category_id : null,
               detailed: t.personal_finance_category?.detailed,
               primary: t.personal_finance_category?.primary,
             },
@@ -400,6 +512,13 @@ export async function syncItem(
       .in('status', ['active', 'login_required']);
 
     result = { ...base, added: added.length, modified: modified.length, removed: removed.length };
+
+    // 12b, over what nothing else could settle. After the cursor and after
+    // `result` is latched, for the same two reasons the snapshot below is: it
+    // calls a third party, and a slow or dead model must not cost a full
+    // re-pagination next sync or turn a good sync into an error. Never throws.
+    const aiSet = await runAiPass(admin, item);
+    if (aiSet > 0) console.log(`item ${item.id}: AI categorized ${aiSet}`);
 
     // Last, and after `result` is latched: a failed chart row must not turn a
     // good sync into `status: 'error'`, nor cost a full re-pagination by landing

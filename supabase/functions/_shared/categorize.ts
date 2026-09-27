@@ -13,18 +13,33 @@ export type Resolved = { categoryId: string; source: CategorySource };
 
 /**
  * Resolve a transaction's category from its sources, in precedence order: a
- * merchant rule (7c), then what the herd's own fixes taught (12a), then Plaid's
- * detailed code, then its primary (whose entries point at groups), then the
- * fallback. 12b and 12c slot `community` and `ai` in here. A manual choice is
- * applied on top by pickCategory, so it always wins.
+ * merchant rule (7c), then what the herd's own fixes taught (12a), then an
+ * answer the AI pass already gave (12b), then Plaid's detailed code, then its
+ * primary (whose entries point at groups), then the fallback. 12c slots
+ * `community` in here. A manual choice is applied on top by pickCategory, so it
+ * always wins.
+ *
+ * `ai` sits above Plaid unconditionally, not below a confident Plaid code as
+ * the plan's ordering has it: the AI pass only ever runs on rows Plaid was
+ * unsure about, so the two orders differ only where Plaid later gains
+ * confidence about a row it had doubted, and there keeping the answer the user
+ * was already shown beats swapping it out from under them.
  */
 export function resolveCategory(
-  sources: { rule?: string | null; learned?: string | null; detailed?: string | null; primary?: string | null },
+  sources: {
+    rule?: string | null;
+    learned?: string | null;
+    /** An answer the AI pass already applied to this row (12b). */
+    ai?: string | null;
+    detailed?: string | null;
+    primary?: string | null;
+  },
   maps: { detailed: CategoryMap; primary: CategoryMap },
   fallbackId: string,
 ): Resolved {
   if (sources.rule) return { categoryId: sources.rule, source: 'rule' };
   if (sources.learned) return { categoryId: sources.learned, source: 'learned' };
+  if (sources.ai) return { categoryId: sources.ai, source: 'ai' };
   const plaid = (sources.detailed ? maps.detailed[sources.detailed] : undefined) ||
     (sources.primary ? maps.primary[sources.primary] : undefined);
   if (plaid) return { categoryId: plaid, source: 'plaid' };

@@ -33,7 +33,7 @@ npx -y supabase@2.118.0 secrets list --project-ref awiwcgrisyzimzxgddxu
 
 ## Secrets
 
-`PLAID_CLIENT_ID`, `PLAID_SECRET` (production) and `PLAID_ENV=production`. Pedro or Kelvyn enter `PLAID_SECRET` in the dashboard themselves (Edge Functions → Secrets); it never goes through chat or a file in the repo. Supabase provides its own keys to functions automatically (`SUPABASE_SECRET_KEYS`, which `getAdminClient` reads).
+`PLAID_CLIENT_ID`, `PLAID_SECRET` (production), `PLAID_ENV=production` and `ANTHROPIC_API_KEY` (the 12b AI pass; it must be scoped to a workspace, and without it the pass is skipped silently and syncs are otherwise unaffected). Pedro or Kelvyn enter `PLAID_SECRET` in the dashboard themselves (Edge Functions → Secrets); it never goes through chat or a file in the repo. Supabase provides its own keys to functions automatically (`SUPABASE_SECRET_KEYS`, which `getAdminClient` reads).
 
 ## Settings outside the repo
 

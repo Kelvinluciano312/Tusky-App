@@ -1,8 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { ChevronRight, Landmark, Store, Tags, UserRound, Users } from 'lucide-react-native';
+import { ChevronRight, Landmark, Sparkles, Store, Tags, UserRound, Users } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NameSheet } from '@/components/name-sheet';
@@ -13,7 +13,7 @@ import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useConnectBank } from '@/lib/plaid';
-import { type PlaidItem, useHerd, usePlaidItems, useProfile, useSetDisplayName } from '@/lib/queries';
+import { type PlaidItem, useHerd, usePlaidItems, useProfile, useSetAiCategorize, useSetDisplayName } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { type Backend, backendLabel } from '@/lib/environment';
 import { backend, realConfigured, supabase, switchBackend } from '@/lib/supabase';
@@ -24,6 +24,7 @@ export default function SettingsScreen() {
   const { session } = useSession();
   const queryClient = useQueryClient();
   const { data: profile } = useProfile(session?.user.id);
+  const setAiCategorize = useSetAiCategorize();
   const { data: herd } = useHerd();
   const setName = useSetDisplayName();
   const [naming, setNaming] = useState(false);
@@ -210,6 +211,40 @@ export default function SettingsScreen() {
           </AppText>
           <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
         </Pressable>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: Spacing.sm,
+            paddingVertical: Spacing.xs,
+          }}>
+          <Sparkles size={20} color={colors.brand} strokeWidth={1.75} />
+          <View style={{ flex: 1 }}>
+            <AppText variant="label">Let AI sort the leftovers</AppText>
+            <AppText variant="caption" tone="dim">
+              Only for transactions nothing else could place. It sees the merchant, the amount,
+              the description your bank sent and your bank&apos;s guess &mdash; never your balances,
+              your accounts or who you are.
+            </AppText>
+          </View>
+          <Switch
+            accessibilityLabel="Let AI sort the leftovers"
+            trackColor={{ false: colors.elevated, true: colors.brand }}
+            value={profile?.ai_categorize ?? false}
+            disabled={!session?.user.id || setAiCategorize.isPending}
+            onValueChange={(enabled) => {
+              if (session?.user.id) {
+                setAiCategorize.mutate(
+                  { userId: session.user.id, enabled },
+                  {
+                    onError: () =>
+                      Alert.alert('Could not change that', 'Check your connection and try again.'),
+                  },
+                );
+              }
+            }}
+          />
+        </View>
       </Card>
 
       <Card style={{ gap: Spacing.sm }}>
