@@ -160,6 +160,7 @@ declare
   auto_src text;
   other_cat uuid;
   my_cat uuid;
+  ai_on boolean;
   foreign_cat uuid;
   budgets_before int;
 begin
@@ -347,6 +348,21 @@ begin
     w := w || jsonb_build_object('replace_budgets_intact_after_failure',
       (select count(*) = 1 and max(amount) = 321 from public.budgets where herd_id = h));
   end if;
+  -- Phase 12b: the AI cache is server-only, and the switch is your own.
+  begin
+    perform 1 from public.ai_category_cache limit 1;
+    w := w || jsonb_build_object('read_ai_cache', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('read_ai_cache', 'denied');
+  end;
+  update public.profiles set ai_categorize = true where user_id = u;
+  select ai_categorize into ai_on from public.profiles where user_id = u;
+  w := w || jsonb_build_object('own_ai_switch', ai_on);
+  if mate is not null then
+    update public.profiles set ai_categorize = true where user_id = mate;
+    get diagnostics n = row_count;
+    w := w || jsonb_build_object('mates_ai_switch_rows', n);
+  end if;
   -- Only the owner renames the herd.
   update public.herds set name = name where id = h;
   get diagnostics n = row_count;
@@ -396,6 +412,9 @@ const WRITE_EXPECT = {
   replace_budgets_foreign_category: 'denied',
   replace_budgets_intact_after_failure: true,
   replace_budgets_other_herds_untouched: true,
+  read_ai_cache: 'denied',
+  own_ai_switch: true,
+  mates_ai_switch_rows: 0,
 };
 
 let failures = 0;
