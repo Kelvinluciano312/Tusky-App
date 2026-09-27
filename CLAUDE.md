@@ -298,3 +298,9 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
 - Sandbox login inside Plaid Link: `user_good` / `pass_good`. Test app user: `ph.leao2099+tuskytest@gmail.com` (email confirmation is ON for new signups; confirm via admin API or dashboard).
   Second test user for herd tests (9c): "Kel Test", `ph.leao2099+tuskyherd@gmail.com`
   (`706f7db5-…`), no banks, alone in its own herd.
+- **The auth session lives in the keystore, not AsyncStorage.** `lib/secure-storage.ts` wraps
+  `expo-secure-store` for supabase-js: it holds a long-lived refresh token, and AsyncStorage is an
+  unencrypted file. Android's keystore rejects values over ~2 KB, so a value is chunked behind a
+  manifest; a missing chunk reads as signed out, and keystore errors never throw. Old AsyncStorage
+  sessions migrate on first read. Never pass `storage: AsyncStorage` to `createClient` again.
+  See `docs/ops/security-review-2026-09-27.md`.
