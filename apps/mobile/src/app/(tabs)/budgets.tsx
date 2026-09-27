@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BudgetRow } from '@/components/budget-row';
 import { BudgetSheet } from '@/components/budget-sheet';
 import { MonthStepper } from '@/components/month-stepper';
+import { PresetSheet } from '@/components/preset-sheet';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
@@ -13,12 +14,14 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { buildTree, budgetsReplacedBy, rollupByGroup, withoutHidden } from '@/lib/categories';
 import { currentMonthStart } from '@/lib/month';
+import type { PresetLine } from '@/lib/presets';
 import {
   type Category,
   useBudgets,
   useCategories,
   useDeleteBudget,
   useMonthlyTotals,
+  useReplaceBudgets,
   useSetBudget,
 } from '@/lib/queries';
 import { spentByCategory } from '@/lib/reports';
@@ -36,6 +39,8 @@ export default function BudgetsScreen() {
   const { data: totals = [], error } = useMonthlyTotals(month, month);
   const setBudget = useSetBudget();
   const deleteBudget = useDeleteBudget();
+  const replaceBudgets = useReplaceBudgets();
+  const [presetOpen, setPresetOpen] = useState(false);
 
   const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const spent = useMemo(() => spentByCategory(totals), [totals]);
@@ -96,12 +101,45 @@ export default function BudgetsScreen() {
     );
   };
 
+  // Replacing is the whole point of a preset: a merge would leave a half-preset
+  // budget nobody chose. The confirm names what it costs.
+  const applyPreset = (lines: PresetLine[]) => {
+    const write = () => {
+      replaceBudgets.mutate(lines, {
+        onError: () => Alert.alert('Could not build the budget', 'Check your connection and try again.'),
+      });
+      setPresetOpen(false);
+    };
+    if (budgets.length === 0) {
+      write();
+      return;
+    }
+    Alert.alert(
+      `Replace your ${budgets.length} budget${budgets.length === 1 ? '' : 's'}?`,
+      'The preset writes a fresh set. You can edit any of them afterwards.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Replace', onPress: write },
+      ],
+    );
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
       <ScrollView contentContainerStyle={{ padding: Spacing.md, gap: Spacing.lg }}>
         <AppText variant="display">Budgets</AppText>
 
         <MonthStepper month={month} onChange={setMonth} max={currentMonthStart()} />
+
+        {budgets.length === 0 ? (
+          <Card style={{ gap: Spacing.sm }}>
+            <AppText variant="title">Build my budget</AppText>
+            <AppText tone="dim">
+              Start from what you already earn and spend, then edit anything.
+            </AppText>
+            <Button title="Build my budget" onPress={() => setPresetOpen(true)} />
+          </Card>
+        ) : null}
 
         {error ? (
           <AppText variant="caption" tone="negative">
@@ -221,6 +259,10 @@ export default function BudgetsScreen() {
           </Card>
         )}
 
+        {budgets.length > 0 ? (
+          <Button title="Rebuild from a preset" variant="ghost" onPress={() => setPresetOpen(true)} />
+        ) : null}
+
         <View style={{ height: Spacing.xxl }} />
       </ScrollView>
 
@@ -238,6 +280,14 @@ export default function BudgetsScreen() {
           setEditing(null);
         }}
         onClose={() => setEditing(null)}
+      />
+
+      <PresetSheet
+        key={presetOpen ? 'open' : 'closed'}
+        visible={presetOpen}
+        isSaving={replaceBudgets.isPending}
+        onApply={applyPreset}
+        onClose={() => setPresetOpen(false)}
       />
     </View>
   );

@@ -230,6 +230,13 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   own rows. Sync, `set-merchant-rule` and `apply-learning` all re-resolve through `planReresolve`,
   and `apply-learning` touches only unreviewed rows. `node scripts/cat-quality.mjs` prints each
   source's correction rate. Spec: `docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md`.
+- **Preset budgets** (Phase 13). `lib/presets.ts` is pure: it takes the last 3 full months of
+  `monthly_category_totals`, takes a median per line, and caps each bucket by a share of the median
+  income (whole dollars, so pennies of income read as none). Built-in group slugs decide needs from
+  wants, and `food_and_dining` is budgeted as its categories so a group and its children are never
+  budgeted at once. Applying calls `replace_budgets(p_lines jsonb)`, a `security invoker` function
+  that swaps the herd's budget rows in one transaction. Spec:
+  `docs/superpowers/specs/2026-09-26-phase-13-preset-budgets-design.md`.
 - **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op
   `setMounted(false)` on a closed sheet made React drop the render-phase `setMounted(true)` on the
   next open, and no Sheet-based picker ever appeared. Keep the `else if (mounted)`.

@@ -97,7 +97,13 @@ export function typicalByLine(
   return out;
 }
 
-/** The herd's typical monthly income: the median of the months' income-kind totals. */
+/**
+ * The herd's typical monthly income: the median of the months' income-kind
+ * totals, in whole dollars. Rounding is what makes "is there an estimate?" one
+ * question rather than two: an income of a few cents — sandbox data, a stray
+ * refund — rounds to 0 and is treated as none, so the field and the caption
+ * above it can never disagree.
+ */
 export function estimateIncome(rows: MonthlyTotal[], months: string[], byId: CategoriesById): number {
   const perMonth = new Map<string, number>();
   for (const r of rows) {
@@ -105,7 +111,7 @@ export function estimateIncome(rows: MonthlyTotal[], months: string[], byId: Cat
     if (byId.get(groupIdOf(r.category_id, byId))?.kind !== 'income') continue;
     perMonth.set(r.month, (perMonth.get(r.month) ?? 0) + r.total);
   }
-  const value = median(months.map((m) => perMonth.get(m) ?? 0));
+  const value = Math.round(median(months.map((m) => perMonth.get(m) ?? 0)));
   return value > 0 ? value : 0;
 }
 

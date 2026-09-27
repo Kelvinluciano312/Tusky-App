@@ -88,6 +88,20 @@ test('estimateIncome is zero without income rows', () => {
   assert.equal(estimateIncome([row('2026-06-01', 'g-bills', -100)], MONTHS, byId), 0);
 });
 
+test('estimateIncome is whole dollars, so pennies of income read as none', () => {
+  // Sandbox and stray refunds leave cents behind. Rounded to 0 they must count
+  // as no income, or the field shows "0" beside a caption claiming an estimate.
+  const pennies = [
+    row('2026-07-01', 'g-income', 0.12), row('2026-08-01', 'g-income', 0.12),
+  ];
+  assert.equal(estimateIncome(pennies, MONTHS, byId), 0);
+  // A real income still comes back whole.
+  const real = [
+    row('2026-06-01', 'g-income', 5000.49), row('2026-07-01', 'g-income', 5000.49), row('2026-08-01', 'g-income', 5000.49),
+  ];
+  assert.equal(estimateIncome(real, MONTHS, byId), 5000);
+});
+
 const typical = new Map([
   ['g-bills', 1000],   // need
   ['c-groceries', 500], // need

@@ -44,9 +44,14 @@ export function PresetSheet({ visible, onApply, onClose, isSaving }: Props) {
   const typical = useMemo(() => typicalByLine(totals, months, byId), [totals, months, byId]);
   const estimate = useMemo(() => estimateIncome(totals, months, byId), [totals, months, byId]);
 
-  // Seeded once per mount; the screen keys this component on `visible`, so each
-  // opening starts from a fresh estimate rather than the last typed value.
-  const [income, setIncome] = useState(() => (estimate > 0 ? String(Math.round(estimate)) : ''));
+  // Derived, not seeded: the estimate arrives with the totals query, a render or
+  // two after mount, so a useState initializer would capture 0 and the field
+  // would stay empty. Null means "not edited yet", and what the user types wins
+  // from then on — including an empty field, so the estimate cannot reappear
+  // under them. The screen keys this component on `visible`, so each opening
+  // starts over.
+  const [typed, setTyped] = useState<string | null>(null);
+  const income = typed ?? (estimate > 0 ? String(estimate) : '');
   const [chosen, setChosen] = useState<Preset['id'] | null>(null);
 
   const parsedIncome = Number(income.replace(',', '.'));
@@ -74,7 +79,7 @@ export function PresetSheet({ visible, onApply, onClose, isSaving }: Props) {
             <TextField
               label="Monthly income"
               value={income}
-              onChangeText={setIncome}
+              onChangeText={setTyped}
               keyboardType="decimal-pad"
               placeholder="0.00"
             />
