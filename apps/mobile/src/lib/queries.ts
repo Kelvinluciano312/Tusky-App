@@ -916,6 +916,41 @@ export function useSetAiCategorize() {
   });
 }
 
+/**
+ * Crowd labels (12c): whether this user shares their category choices, with
+ * no name attached, to the pool every Tusky user benefits from. Written only
+ * through `set_consent`, which deletes what they shared when they withdraw.
+ */
+export function useCrowdConsent(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['consent', 'crowd_labels', userId],
+    enabled: !!userId,
+    queryFn: async (): Promise<boolean> => {
+      const { data, error } = await supabase
+        .from('consents')
+        .select('id')
+        .eq('user_id', userId!)
+        .eq('kind', 'crowd_labels')
+        .is('withdrawn_at', null)
+        .maybeSingle();
+      if (error) throw error;
+      return !!data;
+    },
+  });
+}
+
+export function useSetCrowdConsent() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (granted: boolean) => {
+      const { error } = await supabase.rpc('set_consent', { p_kind: 'crowd_labels', p_granted: granted });
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['consent'] }),
+  });
+}
+
 // Herds (Phase 9c). Reads go straight to the tables (RLS shows the caller's
 // herd only); invites, joining, leaving and removing go through the `herd`
 // function.

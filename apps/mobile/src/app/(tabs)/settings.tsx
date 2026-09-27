@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { ChevronRight, Landmark, Sparkles, Store, Tags, UserRound, Users } from 'lucide-react-native';
+import { ChevronRight, Landmark, Sparkles, Store, Tags, UserRound, Users, UsersRound } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,7 +13,16 @@ import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useConnectBank } from '@/lib/plaid';
-import { type PlaidItem, useHerd, usePlaidItems, useProfile, useSetAiCategorize, useSetDisplayName } from '@/lib/queries';
+import {
+  type PlaidItem,
+  useCrowdConsent,
+  useHerd,
+  usePlaidItems,
+  useProfile,
+  useSetAiCategorize,
+  useSetCrowdConsent,
+  useSetDisplayName,
+} from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { type Backend, backendLabel } from '@/lib/environment';
 import { backend, realConfigured, supabase, switchBackend } from '@/lib/supabase';
@@ -25,6 +34,8 @@ export default function SettingsScreen() {
   const queryClient = useQueryClient();
   const { data: profile } = useProfile(session?.user.id);
   const setAiCategorize = useSetAiCategorize();
+  const { data: crowdOn } = useCrowdConsent(session?.user.id);
+  const setCrowd = useSetCrowdConsent();
   const { data: herd } = useHerd();
   const setName = useSetDisplayName();
   const [naming, setNaming] = useState(false);
@@ -243,6 +254,35 @@ export default function SettingsScreen() {
                 );
               }
             }}
+          />
+        </View>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: Spacing.sm,
+            paddingVertical: Spacing.xs,
+          }}>
+          <UsersRound size={20} color={colors.brand} strokeWidth={1.75} />
+          <View style={{ flex: 1 }}>
+            <AppText variant="label">Share my fixes, anonymously</AppText>
+            <AppText variant="caption" tone="dim">
+              When you fix a category, the merchant and your choice join a pool that helps
+              every Tusky user. Never your name, your accounts or exact amounts. A category comes
+              from the pool only once three people agree. Turning this off deletes what you
+              shared.
+            </AppText>
+          </View>
+          <Switch
+            accessibilityLabel="Share my fixes, anonymously"
+            trackColor={{ false: colors.elevated, true: colors.brand }}
+            value={crowdOn ?? false}
+            disabled={!session?.user.id || setCrowd.isPending}
+            onValueChange={(granted) =>
+              setCrowd.mutate(granted, {
+                onError: () => Alert.alert('Could not change that', 'Check your connection and try again.'),
+              })
+            }
           />
         </View>
       </Card>
