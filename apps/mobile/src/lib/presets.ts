@@ -57,15 +57,32 @@ const median = (values: number[]): number => {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 };
 
+/**
+ * The months a median may be taken over: the window from the herd's first month
+ * of data onward. A month before that is absent, not zero — counting it would
+ * give a one-month-old herd a median of 0 for everything and offer it nothing.
+ * A quiet month after that start is a real zero and still counts.
+ */
+function activeMonths(rows: MonthlyTotal[], months: string[]): string[] {
+  let first: string | null = null;
+  for (const r of rows) if (first === null || r.month < first) first = r.month;
+  return first === null ? [] : months.filter((m) => m >= first);
+}
+
 /** Which line a category's spend belongs to: itself, or its group. Null = not budgetable. */
 function lineFor(categoryId: string, byId: CategoriesById): string | null {
   const groupId = groupIdOf(categoryId, byId);
   const group = byId.get(groupId);
   if (!group || group.kind !== 'expense' || SKIP_SLUGS.has(group.slug ?? '')) return null;
+  // A group the user hid never comes back as a budget: the hand-built path does
+  // not offer one either (withoutHidden on Budgets). A hidden CHILD still rolls
+  // up into its visible group — hiding changes the picker, not the arithmetic.
+  if (group.hidden) return null;
   // The split group budgets its categories, so a row sitting on the group
   // itself belongs to no bucket and is left out rather than guessed at.
   if (group.slug === SPLIT_GROUP_SLUG) {
-    return categoryId === groupId ? null : categoryId;
+    if (categoryId === groupId) return null;
+    return byId.get(categoryId)?.hidden ? null : categoryId;
   }
   return groupId;
 }
@@ -88,9 +105,10 @@ export function typicalByLine(
     perMonth.set(line, spendByMonth);
   }
 
+  const active = activeMonths(rows, months);
   const out = new Map<string, number>();
   for (const [line, spendByMonth] of perMonth) {
-    const value = median(months.map((m) => spendByMonth.get(m) ?? 0));
+    const value = median(active.map((m) => spendByMonth.get(m) ?? 0));
     // A refund-heavy line is not a negative budget.
     if (value > 0) out.set(line, value);
   }
@@ -111,7 +129,7 @@ export function estimateIncome(rows: MonthlyTotal[], months: string[], byId: Cat
     if (byId.get(groupIdOf(r.category_id, byId))?.kind !== 'income') continue;
     perMonth.set(r.month, (perMonth.get(r.month) ?? 0) + r.total);
   }
-  const value = Math.round(median(months.map((m) => perMonth.get(m) ?? 0)));
+  const value = Math.round(median(activeMonths(rows, months).map((m) => perMonth.get(m) ?? 0)));
   return value > 0 ? value : 0;
 }
 

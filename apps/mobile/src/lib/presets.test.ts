@@ -7,7 +7,8 @@ import type { CategoriesById } from './categories.ts';
 import { buildPresets, estimateIncome, historyWindow, typicalByLine } from './presets.ts';
 
 // A tiny taxonomy: the slugs the buckets name, plus one custom child and one unmapped group.
-const CATS: [string, { id: string; parent_id: string | null; slug: string | null; kind: 'expense' | 'income' | 'transfer'; name: string }][] = [
+type Cat = { id: string; parent_id: string | null; slug: string | null; kind: 'expense' | 'income' | 'transfer'; name: string; hidden?: boolean };
+const CATS: [string, Cat][] = [
   ['g-bills', { id: 'g-bills', parent_id: null, slug: 'bills_and_utilities', kind: 'expense', name: 'Bills & Utilities' }],
   ['g-transport', { id: 'g-transport', parent_id: null, slug: 'transportation', kind: 'expense', name: 'Transportation' }],
   ['g-shopping', { id: 'g-shopping', parent_id: null, slug: 'shopping', kind: 'expense', name: 'Shopping' }],
@@ -19,6 +20,9 @@ const CATS: [string, { id: string; parent_id: string | null; slug: string | null
   ['c-mine', { id: 'c-mine', parent_id: 'g-shopping', slug: null, kind: 'expense', name: 'My custom one' }],
   ['g-uncat', { id: 'g-uncat', parent_id: null, slug: 'uncategorized', kind: 'expense', name: 'Uncategorized' }],
   ['g-income', { id: 'g-income', parent_id: null, slug: 'income', kind: 'income', name: 'Income' }],
+  ['g-travel', { id: 'g-travel', parent_id: null, slug: 'travel', kind: 'expense', name: 'Travel', hidden: true }],
+  ['c-flights', { id: 'c-flights', parent_id: 'g-travel', slug: 'flights', kind: 'expense', name: 'Flights' }],
+  ['c-hidden-gas', { id: 'c-hidden-gas', parent_id: 'g-transport', slug: 'gas_hidden', kind: 'expense', name: 'Hidden Gas', hidden: true }],
 ];
 const byId = new Map(CATS) as unknown as CategoriesById;
 
@@ -48,9 +52,12 @@ test('typicalByLine takes the median per line, and rolls children into their gro
 });
 
 test('typicalByLine counts a month with no spend as zero', () => {
-  // Spent in one month of three: the median is 0, so it is not budgetable.
-  const typical = typicalByLine([row('2026-07-01', 'g-shopping', -300)], MONTHS, byId);
+  // The herd has data from June, so all three months count. Shopping was spent
+  // in July alone: median(0, 300, 0) is 0, so it is not budgetable.
+  const rows = [row('2026-06-01', 'g-bills', -100), row('2026-07-01', 'g-shopping', -300)];
+  const typical = typicalByLine(rows, MONTHS, byId);
   assert.equal(typical.get('g-shopping') ?? 0, 0);
+  assert.equal(typical.has('g-shopping'), false);
 });
 
 test('typicalByLine floors a refund-heavy line at zero, and skips uncategorized', () => {
@@ -74,6 +81,41 @@ test('typicalByLine splits Food & Dining into its categories, never the group', 
   assert.equal(typical.has('g-food'), false);
   assert.equal(typical.get('c-groceries'), 400);
   assert.equal(typical.get('c-restaurants'), 100);
+});
+
+test('one full month of history still produces a budget', () => {
+  // The herd's first transaction is in August. June and July are not zeros —
+  // the herd did not exist yet, and counting them would median everything to 0.
+  const typical = typicalByLine([row('2026-08-01', 'g-bills', -300)], MONTHS, byId);
+  assert.equal(typical.get('g-bills'), 300);
+});
+
+test('two months of history take the median of the months that have data', () => {
+  const rows = [row('2026-07-01', 'g-bills', -200), row('2026-08-01', 'g-bills', -400)];
+  assert.equal(typicalByLine(rows, MONTHS, byId).get('g-bills'), 300);
+});
+
+test('a quiet month after the herd started still counts as zero', () => {
+  // Data starts in June, so July's silence is a real zero: median(300, 0, 300).
+  const rows = [row('2026-06-01', 'g-bills', -300), row('2026-08-01', 'g-bills', -300)];
+  assert.equal(typicalByLine(rows, MONTHS, byId).get('g-bills'), 300);
+});
+
+test('a hidden group is never budgeted, but a hidden child still rolls up', () => {
+  const rows = [
+    // The user hid Travel; a preset must not put it back on their Budgets screen.
+    row('2026-06-01', 'c-flights', -200), row('2026-07-01', 'c-flights', -200), row('2026-08-01', 'c-flights', -200),
+    // A hidden child of a visible group still counts toward that group (spec).
+    row('2026-06-01', 'c-hidden-gas', -50), row('2026-07-01', 'c-hidden-gas', -50), row('2026-08-01', 'c-hidden-gas', -50),
+  ];
+  const typical = typicalByLine(rows, MONTHS, byId);
+  assert.equal(typical.has('g-travel'), false);
+  assert.equal(typical.has('c-flights'), false);
+  assert.equal(typical.get('g-transport'), 50);
+});
+
+test('estimateIncome ignores months before the herd had any data', () => {
+  assert.equal(estimateIncome([row('2026-08-01', 'g-income', 5000)], MONTHS, byId), 5000);
 });
 
 test('estimateIncome is the median of the months, so one bonus does not inflate it', () => {

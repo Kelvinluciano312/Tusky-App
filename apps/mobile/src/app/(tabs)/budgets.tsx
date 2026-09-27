@@ -67,6 +67,13 @@ export default function BudgetsScreen() {
   // children's, a category budget just its own. No overlap exists, because
   // budgetsReplacedBy removes it on save, so nothing counts twice.
   const spentUnder = (c: Category) => (c.parent_id === null ? spentByGroup.get(c.id) ?? 0 : spent.get(c.id) ?? 0);
+  // What "Not budgeted" may still show for a group. Once any of its categories
+  // is budgeted — which a preset does for Food & Dining every time — the group's
+  // rollup includes money already tracked above, so only its own rows are left.
+  const unbudgetedUnder = (group: Category) =>
+    (groupById.get(group.id)?.children ?? []).some((child) => budgetByCategory.has(child.id))
+      ? spent.get(group.id) ?? 0
+      : spentByGroup.get(group.id) ?? 0;
   const budgetedCategories = budgets
     .map((b) => byId.get(b.category_id))
     .filter((c): c is Category => c !== undefined && c.kind === 'expense');
@@ -219,12 +226,12 @@ export default function BudgetsScreen() {
               {discoverable
                 // A group with its own budget covers its children: none of them is budgetable.
                 .filter((group) => !budgetByCategory.has(group.id))
-                .filter((group) => showAll || (spentByGroup.get(group.id) ?? 0) !== 0)
+                .filter((group) => showAll || unbudgetedUnder(group) !== 0)
                 .map((group) => (
                   <View key={group.id}>
                     <BudgetRow
                       category={group}
-                      spent={spentByGroup.get(group.id) ?? 0}
+                      spent={unbudgetedUnder(group)}
                       onPress={() => setEditing(group)}
                     />
                     {group.children
