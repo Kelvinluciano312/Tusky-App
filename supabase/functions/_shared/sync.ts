@@ -2,6 +2,17 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import type { PlaidApi } from 'npm:plaid@30';
 
 import { buildSnapshotRows, syncAccounts } from './accounts.ts';
+import {
+  AI_MAX_PER_SYNC,
+  type AiRow,
+  aiAllowed,
+  applyAnswers,
+  askClaude,
+  type AskFn,
+  buildAskList,
+  cacheKeyFor,
+  hasAnthropicKey,
+} from './ai.ts';
 import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from './categorize.ts';
 import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
 import { ignoredCategoryIds, normalizeMerchant, refreshRecurring } from './recurring.ts';
@@ -161,6 +172,95 @@ export async function claimItem(
     .select('id, sync_cursor')
     .maybeSingle();
   return data;
+}
+
+/**
+ * The AI fallback (12b), run after the upsert over the rows every other source
+ * was unsure about. Never throws: a missed category is not worth failing a sync
+ * over, and the next sync retries. `ask` is injected for tests.
+ */
+export async function runAiPass(
+  admin: SupabaseClient,
+  item: { id: string; user_id: string; herd_id: string },
+  ask: AskFn = askClaude,
+): Promise<number> {
+  try {
+    if (!hasAnthropicKey() || !aiAllowed(item.herd_id)) return 0;
+
+    const { data: profile } = await admin
+      .from('profiles').select('ai_categorize').eq('user_id', item.user_id).maybeSingle();
+    if (!profile?.ai_categorize) return 0;
+
+    // Only this Item's rows, and only the ones nothing else could settle.
+    const { data: rowData, error: rowError } = await admin
+      .from('transactions')
+      .select('id, merchant_key, name, merchant_name, amount, pfc_primary, pfc_detailed, accounts!inner(is_private)')
+      .eq('item_id', item.id)
+      .eq('category_is_manual', false)
+      .in('category_source', ['plaid', 'fallback'])
+      .or('pfc_confidence.is.null,pfc_confidence.in.(LOW,UNKNOWN)');
+    if (rowError) throw rowError;
+    const rows: AiRow[] = (rowData ?? []).map((r) => ({
+      id: r.id,
+      merchant_key: r.merchant_key ?? '',
+      name: r.name,
+      merchant_name: r.merchant_name,
+      amount: Number(r.amount),
+      pfc_primary: r.pfc_primary,
+      pfc_detailed: r.pfc_detailed,
+      is_private: (r.accounts as unknown as { is_private: boolean }).is_private,
+    }));
+    if (rows.length === 0) return 0;
+
+    const keys = [...new Set(rows.map(cacheKeyFor))];
+    const { data: cacheRows } = await admin
+      .from('ai_category_cache').select('cache_key, category_id').in('cache_key', keys);
+    const cached = new Map((cacheRows ?? []).map((c) => [c.cache_key as string, c.category_id as string]));
+
+    const { data: categoryRows } = await admin
+      .from('categories')
+      .select('id, slug, name, parent_id')
+      .is('herd_id', null)
+      .not('parent_id', 'is', null);
+    const { data: groupRows } = await admin
+      .from('categories').select('id, name').is('herd_id', null).is('parent_id', null);
+    const groupName = new Map((groupRows ?? []).map((g) => [g.id as string, g.name as string]));
+    const categories = (categoryRows ?? [])
+      .filter((c) => c.slug)
+      .map((c) => ({
+        id: c.id as string,
+        slug: c.slug as string,
+        name: c.name as string,
+        parent_name: groupName.get(c.parent_id as string) ?? null,
+      }));
+
+    const { ask: toAsk, resolved } = buildAskList(rows, cached);
+    let answers: { key: string; slug: string }[] = [];
+    if (toAsk.length > 0) answers = await ask(toAsk.slice(0, AI_MAX_PER_SYNC), categories);
+    const { updates, cacheable } = applyAnswers(rows, answers, categories);
+
+    // Cache hits update rows too, and cost nothing.
+    for (const [id, category_id] of resolved) updates.push({ id, category_id });
+
+    for (const u of updates) {
+      const { error } = await admin
+        .from('transactions')
+        .update({ category_id: u.category_id, category_source: 'ai' })
+        .eq('id', u.id)
+        // Re-checked at write time: a row set by hand meanwhile stays put.
+        .eq('category_is_manual', false);
+      if (error) throw error;
+    }
+    if (cacheable.length > 0) {
+      await admin
+        .from('ai_category_cache')
+        .upsert(cacheable.map((c) => ({ cache_key: c.key, category_id: c.category_id })), { onConflict: 'cache_key' });
+    }
+    return updates.length;
+  } catch (err) {
+    console.warn(`ai pass skipped for item ${item.id}: ${describeError(err)}`);
+    return 0;
+  }
 }
 
 /**
@@ -380,6 +480,10 @@ export async function syncItem(
         if (error) throw error;
       }
     }
+
+    // 12b: last, over what nothing else could settle. Never throws.
+    const aiSet = await runAiPass(admin, item);
+    if (aiSet > 0) console.log(`item ${item.id}: AI categorized ${aiSet}`);
 
     if (removed.length > 0) {
       const { error } = await admin

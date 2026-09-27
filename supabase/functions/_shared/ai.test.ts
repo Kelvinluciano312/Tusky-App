@@ -8,6 +8,7 @@ import {
   applyAnswers,
   buildAskList,
   cacheKeyFor,
+  hasAnthropicKey,
 } from './ai.ts';
 
 const CATS: AiCategory[] = [
@@ -101,4 +102,26 @@ Deno.test('a private row takes the answer but never reaches the global cache', (
 Deno.test('a shared row is cacheable', () => {
   const { cacheable } = applyAnswers([row()], [{ key: cacheKeyFor(row()), slug: 'gas' }], CATS);
   assertEquals(cacheable, [{ key: cacheKeyFor(row()), category_id: 'c-fuel' }]);
+});
+
+Deno.test('with no API key the pass is skipped rather than attempted', () => {
+  const had = Deno.env.get('ANTHROPIC_API_KEY');
+  Deno.env.delete('ANTHROPIC_API_KEY');
+  try {
+    // A sync on a project with no key must complete normally, not throw.
+    assertEquals(hasAnthropicKey(), false);
+  } finally {
+    if (had !== undefined) Deno.env.set('ANTHROPIC_API_KEY', had);
+  }
+});
+
+Deno.test('with an API key the pass is attempted', () => {
+  const had = Deno.env.get('ANTHROPIC_API_KEY');
+  Deno.env.set('ANTHROPIC_API_KEY', 'sk-ant-test');
+  try {
+    assertEquals(hasAnthropicKey(), true);
+  } finally {
+    if (had === undefined) Deno.env.delete('ANTHROPIC_API_KEY');
+    else Deno.env.set('ANTHROPIC_API_KEY', had);
+  }
 });
