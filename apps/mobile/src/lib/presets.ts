@@ -73,6 +73,10 @@ function activeMonths(rows: MonthlyTotal[], months: string[]): string[] {
 function lineFor(categoryId: string, byId: CategoriesById): string | null {
   const groupId = groupIdOf(categoryId, byId);
   const group = byId.get(groupId);
+  // A category the cache has not caught up with yet is dropped, not guessed at:
+  // we cannot know its bucket, and the "unmapped groups are wants" rule below
+  // would file someone's rent under wants. `['categories']` is invalidated on
+  // every category edit, so the window this can happen in is a moment wide.
   if (!group || group.kind !== 'expense' || SKIP_SLUGS.has(group.slug ?? '')) return null;
   // A group the user hid never comes back as a budget: the hand-built path does
   // not offer one either (withoutHidden on Budgets). A hidden CHILD still rolls

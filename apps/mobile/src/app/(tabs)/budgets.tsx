@@ -41,6 +41,12 @@ export default function BudgetsScreen() {
   const deleteBudget = useDeleteBudget();
   const replaceBudgets = useReplaceBudgets();
   const [presetOpen, setPresetOpen] = useState(false);
+  // Bumped on each open, so the sheet remounts then and not on close.
+  const [opened, setOpened] = useState(0);
+  const openPreset = () => {
+    setOpened((n) => n + 1);
+    setPresetOpen(true);
+  };
 
   const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const spent = useMemo(() => spentByCategory(totals), [totals]);
@@ -111,11 +117,13 @@ export default function BudgetsScreen() {
   // Replacing is the whole point of a preset: a merge would leave a half-preset
   // budget nobody chose. The confirm names what it costs.
   const applyPreset = (lines: PresetLine[]) => {
+    // The sheet stays up until the write settles, so its spinner means something
+    // and a failure leaves the user where they can retry.
     const write = () => {
       replaceBudgets.mutate(lines, {
+        onSuccess: () => setPresetOpen(false),
         onError: () => Alert.alert('Could not build the budget', 'Check your connection and try again.'),
       });
-      setPresetOpen(false);
     };
     if (budgets.length === 0) {
       write();
@@ -144,7 +152,7 @@ export default function BudgetsScreen() {
             <AppText tone="dim">
               Start from what you already earn and spend, then edit anything.
             </AppText>
-            <Button title="Build my budget" onPress={() => setPresetOpen(true)} />
+            <Button title="Build my budget" onPress={openPreset} />
           </Card>
         ) : null}
 
@@ -267,7 +275,7 @@ export default function BudgetsScreen() {
         )}
 
         {budgets.length > 0 ? (
-          <Button title="Rebuild from a preset" variant="ghost" onPress={() => setPresetOpen(true)} />
+          <Button title="Rebuild from a preset" variant="ghost" onPress={openPreset} />
         ) : null}
 
         <View style={{ height: Spacing.xxl }} />
@@ -289,8 +297,12 @@ export default function BudgetsScreen() {
         onClose={() => setEditing(null)}
       />
 
+      {/* `opened` keys it so each opening starts fresh — keying on `presetOpen`
+          would remount on close too, and Sheet would skip its closing
+          animation. It stays mounted for that animation, and its own 3-month
+          query is gated on `visible` rather than on being mounted. */}
       <PresetSheet
-        key={presetOpen ? 'open' : 'closed'}
+        key={opened}
         visible={presetOpen}
         isSaving={replaceBudgets.isPending}
         onApply={applyPreset}

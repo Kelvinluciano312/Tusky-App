@@ -37,7 +37,9 @@ export function PresetSheet({ visible, onApply, onClose, isSaving }: Props) {
   const colors = useTheme();
   const { from, to } = useMemo(() => historyWindow(new Date()), []);
   const { data: categories = [] } = useCategories();
-  const { data: totals = [] } = useMonthlyTotals(from, to);
+  // Stays mounted while closed so Sheet can animate out; the window is only
+  // fetched once it is actually open.
+  const { data: totals = [] } = useMonthlyTotals(from, to, visible);
 
   const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const months = useMemo(() => monthsEndingAt(to, HISTORY_MONTHS), [to]);
@@ -59,6 +61,9 @@ export function PresetSheet({ visible, onApply, onClose, isSaving }: Props) {
   const presets = useMemo(() => buildPresets(typical, usableIncome, byId), [typical, usableIncome, byId]);
   const selected = presets.find((p) => p.id === chosen) ?? null;
   const nothingToUse = typical.size === 0;
+  // Two different dead ends: no months to average at all, or months whose spend
+  // is all uncategorized or too sporadic to give any line a median.
+  const hasHistory = totals.length > 0;
 
   return (
     <Sheet
@@ -69,10 +74,14 @@ export function PresetSheet({ visible, onApply, onClose, isSaving }: Props) {
       <AppText variant="title">Build my budget</AppText>
 
       {nothingToUse ? (
-        <AppText tone="dim">
-          Tusky needs a full month of spending before it can suggest a budget. Come back once this
-          month is over, or set a budget by hand below.
-        </AppText>
+        <View style={{ gap: Spacing.md }}>
+          <AppText tone="dim">
+            {hasHistory
+              ? 'Nothing here can be budgeted yet — the spending Tusky can see is either uncategorized or too irregular to average. Categorize a few transactions and try again.'
+              : 'Tusky needs a full month of spending before it can suggest a budget. Come back once a month has gone by.'}
+          </AppText>
+          <Button title="Close" variant="secondary" onPress={onClose} />
+        </View>
       ) : (
         <ScrollView contentContainerStyle={{ gap: Spacing.md, paddingBottom: Spacing.md }}>
           <View style={{ gap: Spacing.xs }}>
@@ -112,17 +121,27 @@ export function PresetSheet({ visible, onApply, onClose, isSaving }: Props) {
                   {disabled ? null : <Amount value={-preset.total} size={16} />}
                 </View>
                 <AppText variant="caption" tone="dim">
-                  {disabled
-                    ? 'Enter your income to use this one.'
-                    : preset.savings !== null
-                      ? `${preset.blurb} Leaves ${preset.savings < 0 ? 'you short by ' : ''}${Math.abs(Math.round(preset.savings))} a month.`
-                      : preset.blurb}
+                  {disabled ? 'Enter your income to use this one.' : preset.blurb}
                 </AppText>
+                {/* Money never renders as a bare number: the ledger voice is Amount's. */}
+                {!disabled && preset.savings !== null ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.xs }}>
+                    <AppText variant="caption" tone="dim">
+                      {preset.savings < 0 ? 'Leaves you short by' : 'Leaves'}
+                    </AppText>
+                    <Amount value={Math.abs(preset.savings)} size={13} />
+                    <AppText variant="caption" tone="dim">
+                      a month
+                    </AppText>
+                  </View>
+                ) : null}
               </Pressable>
             );
           })}
 
-          {selected ? (
+          {/* An empty preset shows no preview: clearing the income field must not
+              leave a heading standing over nothing. */}
+          {selected && selected.lines.length > 0 ? (
             <View style={{ gap: Spacing.xs }}>
               <AppText variant="caption" tone="dim" style={{ textTransform: 'uppercase', letterSpacing: 1.1 }}>
                 What you would get
@@ -144,7 +163,8 @@ export function PresetSheet({ visible, onApply, onClose, isSaving }: Props) {
               {selected.savings !== null ? (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: Spacing.xs }}>
                   <AppText variant="label">{selected.savings < 0 ? 'Short by' : 'Left to save'}</AppText>
-                  <Amount value={Math.abs(selected.savings)} size={15} />
+                  {/* Signed, so a shortfall reads as one rather than as money gained. */}
+                  <Amount value={selected.savings} size={15} signColor />
                 </View>
               ) : null}
             </View>
