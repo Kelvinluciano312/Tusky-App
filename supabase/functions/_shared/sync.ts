@@ -19,10 +19,11 @@ import {
 } from './ai.ts';
 import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from './categorize.ts';
 import { communityAnswers, communityCategory, crowdMerchants, type Tally } from './crowd.ts';
-import { hasJevKey } from './jev.ts';
+import { askJev, hasJevKey, JEV_CONCURRENCY, JEV_PASS_BUDGET_MS, type JevAsk, mapLimit } from './jev.ts';
 import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
 import { ignoredCategoryIds, normalizeMerchant, refreshRecurring } from './recurring.ts';
 import { type CarriedPayer, carryForward, type ExistingRow } from './review.ts';
+import { groupTriage, readTriage, TRIAGE_PER_SYNC, triageQuestions, type TriageRow, triageState } from './triage.ts';
 
 const PAGE_SIZE = 500;
 const FIRST_SYNC_DAYS = 90;
@@ -345,6 +346,86 @@ export async function runAiPass(
 }
 
 /**
+ * Triage (12d): a review priority for each unreviewed posted row and, in a
+ * shared herd, a split hint. Runs after runAiPass so it sees the final
+ * categories. Only rows no triage has reached, newest first, TRIAGE_PER_SYNC
+ * at a time. A row whose call failed stays unjudged and is retried next sync.
+ * The caller has already checked jevEnabled. Never throws.
+ */
+export async function runTriagePass(
+  admin: SupabaseClient,
+  item: { id: string; user_id: string; herd_id: string },
+  ask: JevAsk = askJev,
+): Promise<number> {
+  try {
+    const { data: rowData, error: rowError } = await admin
+      .from('transactions')
+      .select('id, name, merchant_name, amount, category_id, category_source, split, accounts!inner(is_private)')
+      .eq('item_id', item.id)
+      .eq('pending', false)
+      .is('reviewed_at', null)
+      .is('review_priority', null)
+      .order('date', { ascending: false })
+      .limit(TRIAGE_PER_SYNC);
+    if (rowError) throw rowError;
+    if (!rowData || rowData.length === 0) return 0;
+
+    const { data: memberRows, error: memberError } = await admin
+      .from('herd_members').select('user_id').eq('herd_id', item.herd_id);
+    if (memberError) throw memberError;
+    const herdSize = (memberRows ?? []).length;
+    // isShared's rule (apps/mobile/src/lib/herd.ts): a herd of one has nobody to share with.
+    const shared = herdSize > 1;
+
+    const categoryIds = [...new Set(rowData.map((r) => r.category_id as string | null).filter(Boolean))];
+    let nameOf = new Map<string, string>();
+    if (categoryIds.length > 0) {
+      const { data: categoryRows, error: categoryError } = await admin
+        .from('categories').select('id, name').in('id', categoryIds);
+      if (categoryError) throw categoryError;
+      nameOf = new Map((categoryRows ?? []).map((c) => [c.id as string, c.name as string]));
+    }
+
+    const rows: TriageRow[] = rowData.map((r) => ({
+      id: r.id,
+      name: r.name,
+      merchant_name: r.merchant_name,
+      amount: Number(r.amount),
+      category_name: r.category_id ? nameOf.get(r.category_id) ?? null : null,
+      category_source: r.category_source,
+      is_private: (r.accounts as unknown as { is_private: boolean }).is_private,
+      split: r.split,
+    }));
+
+    const deadline = Date.now() + JEV_PASS_BUDGET_MS;
+    const settled = await mapLimit(rows, JEV_CONCURRENCY, async (row) =>
+      readTriage(row, await ask(triageState(row, herdSize), triageQuestions(row, shared), { deadline }), shared), deadline);
+    const results = settled.flatMap((s) => (s.status === 'fulfilled' && s.value ? [s.value] : []));
+    if (results.length === 0) {
+      const failed = settled.find((s) => s.status === 'rejected') as PromiseRejectedResult | undefined;
+      if (failed) throw failed.reason;
+      return 0;
+    }
+
+    let written = 0;
+    for (const group of groupTriage(results)) {
+      const { error } = await admin
+        .from('transactions')
+        .update({ review_priority: group.review_priority, split_suggested: group.split_suggested })
+        .in('id', group.ids)
+        // Re-checked at write time: a row reviewed meanwhile needs no priority.
+        .is('reviewed_at', null);
+      if (error) throw error;
+      written += group.ids.length;
+    }
+    return written;
+  } catch (err) {
+    console.warn(`triage pass skipped for item ${item.id}: ${describeError(err)}`);
+    return 0;
+  }
+}
+
+/**
  * Sync one Item. Shared by the user-triggered sync and the Plaid webhook, so
  * both paths claim, retry, preserve manual categories and advance the cursor
  * the same way. Never throws: failures come back as an ItemResult.
@@ -602,6 +683,9 @@ export async function syncItem(
     if (jevOn) {
       const aiSet = await runAiPass(admin, item);
       if (aiSet > 0) console.log(`item ${item.id}: AI categorized ${aiSet}`);
+      // After the categories settle, so triage judges the final ones.
+      const triaged = await runTriagePass(admin, item);
+      if (triaged > 0) console.log(`item ${item.id}: triaged ${triaged}`);
     }
 
     // Last, and after `result` is latched: a failed chart row must not turn a

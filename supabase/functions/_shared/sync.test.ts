@@ -2,7 +2,8 @@ import { assertEquals } from 'jsr:@std/assert';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
 import type { AiCategory, AiRow } from './ai.ts';
-import { jevEnabled, loadCommunity, runAiPass } from './sync.ts';
+import type { JevAsk, JevResponse } from './jev.ts';
+import { jevEnabled, loadCommunity, runAiPass, runTriagePass } from './sync.ts';
 
 // A fake PostgREST client. Every builder method records itself and returns the
 // builder; awaiting the chain pops the next planned response for
@@ -26,7 +27,7 @@ function fakeAdmin(plan: Record<string, Resp[]>) {
         return q;
       };
     }
-    for (const filter of ['eq', 'in', 'is', 'not', 'or', 'neq', 'gt', 'lt']) {
+    for (const filter of ['eq', 'in', 'is', 'not', 'or', 'neq', 'gt', 'lt', 'gte', 'order', 'limit', 'range']) {
       q[filter] = (...args: unknown[]) => {
         current.filters.push([filter, ...args]);
         return q;
@@ -293,4 +294,97 @@ Deno.test('loadCommunity applies the threshold to what the database tallied', as
     }),
   } as unknown as SupabaseClient;
   assertEquals((await loadCommunity(admin, ['k:shell'])).get('k:shell|out|2'), 'gas');
+});
+
+// --- Triage (12d) ------------------------------------------------------------
+
+const triRow = (over: Partial<Record<string, unknown>> = {}) => ({
+  id: 'r1',
+  name: 'TRADER JOES 552',
+  merchant_name: "Trader Joe's",
+  amount: -84.1,
+  category_id: 'c-groceries',
+  category_source: 'plaid',
+  split: null,
+  accounts: { is_private: false },
+  ...over,
+});
+
+/** The reads runTriagePass makes, in order. */
+function triagePlan(rows: unknown[], members: string[] = ['user-1']): Record<string, Resp[]> {
+  return {
+    'transactions:select': [{ data: rows }],
+    'herd_members:select': [{ data: members.map((user_id) => ({ user_id })) }],
+    'categories:select': [{ data: [{ id: 'c-groceries', name: 'Groceries' }] }],
+  };
+}
+
+const judged = (answers: Record<string, unknown>): JevResponse => ({ model: 'jev-1.13.0', answers });
+const fixAndShare: JevAsk = () =>
+  Promise.resolve(judged({
+    review_priority: { type: 'score', score: 1.8, confidence: 0.7, probabilities: {} },
+    is_shared_expense: { type: 'noul', noul: 0.9 },
+  }));
+
+Deno.test('runTriagePass: reads only unreviewed, unjudged posted rows, newest first, 50 at a time', async () => {
+  const { admin, of } = fakeAdmin(triagePlan([triRow()]));
+  await runTriagePass(admin, ITEM, fixAndShare);
+  assertEquals(of('transactions', 'select')[0].filters, [
+    ['eq', 'item_id', 'item-1'],
+    ['eq', 'pending', false],
+    ['is', 'reviewed_at', null],
+    ['is', 'review_priority', null],
+    ['order', 'date', { ascending: false }],
+    ['limit', 50],
+  ]);
+});
+
+Deno.test('runTriagePass: writes grouped, and never over a row reviewed meanwhile', async () => {
+  const { admin, of } = fakeAdmin(triagePlan([triRow({ id: 'r1' }), triRow({ id: 'r2' })], ['user-1', 'user-2']));
+  const written = await runTriagePass(admin, ITEM, fixAndShare);
+
+  assertEquals(written, 2);
+  const writes = of('transactions', 'update');
+  assertEquals(writes.length, 1);
+  assertEquals(writes[0].payload, { review_priority: 2, split_suggested: true });
+  assertEquals(writes[0].filters, [['in', 'id', ['r1', 'r2']], ['is', 'reviewed_at', null]]);
+});
+
+Deno.test('runTriagePass: in a herd of one, only the priority is asked', async () => {
+  const { admin, of } = fakeAdmin(triagePlan([triRow()]));
+  const asked: string[][] = [];
+  await runTriagePass(admin, ITEM, (_state, questions) => {
+    asked.push(Object.keys(questions));
+    return fixAndShare({}, {});
+  });
+  assertEquals(asked, [['review_priority']]);
+  assertEquals(of('transactions', 'update')[0].payload, { review_priority: 2, split_suggested: null });
+});
+
+Deno.test('runTriagePass: a row whose call failed stays unjudged for the next sync', async () => {
+  const { admin, of } = fakeAdmin(triagePlan([triRow({ id: 'r1' }), triRow({ id: 'r2', name: 'OTHER' })]));
+  const written = await runTriagePass(admin, ITEM, (state, questions) =>
+    (state as { description: string }).description === 'OTHER'
+      ? Promise.reject(new Error('jev: HTTP 503'))
+      : fixAndShare(state, questions));
+  assertEquals(written, 1);
+  assertEquals(of('transactions', 'update')[0].filters[0], ['in', 'id', ['r1']]);
+});
+
+Deno.test('runTriagePass: a vendor that fails costs the sync nothing', async () => {
+  const { admin, calls } = fakeAdmin(triagePlan([triRow()]));
+  assertEquals(await runTriagePass(admin, ITEM, () => Promise.reject(new Error('jev: HTTP 402'))), 0);
+  assertEquals(calls.filter((c) => c.verb === 'update').length, 0);
+});
+
+Deno.test('runTriagePass: nothing to judge reads no herd and asks nothing', async () => {
+  const { admin, of } = fakeAdmin(triagePlan([]));
+  let asked = false;
+  const written = await runTriagePass(admin, ITEM, () => {
+    asked = true;
+    return fixAndShare({}, {});
+  });
+  assertEquals(written, 0);
+  assertEquals(asked, false);
+  assertEquals(of('herd_members', 'select').length, 0);
 });
