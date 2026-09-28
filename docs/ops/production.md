@@ -33,7 +33,7 @@ npx -y supabase@2.118.0 secrets list --project-ref awiwcgrisyzimzxgddxu
 
 ## Secrets
 
-`PLAID_CLIENT_ID`, `PLAID_SECRET` (production), `PLAID_ENV=production` and `ANTHROPIC_API_KEY` (the 12b AI pass; it must be scoped to a workspace, and without it the pass is skipped silently and syncs are otherwise unaffected). Pedro or Kelvyn enter `PLAID_SECRET` in the dashboard themselves (Edge Functions → Secrets); it never goes through chat or a file in the repo. Supabase provides its own keys to functions automatically (`SUPABASE_SECRET_KEYS`, which `getAdminClient` reads).
+`PLAID_CLIENT_ID`, `PLAID_SECRET` (production), `PLAID_ENV=production` and `JEV_API_KEY` (TypeSafe's Jev, which makes every AI decision since Phase 12d; without it the Jev passes are skipped silently and syncs are otherwise unaffected; `ANTHROPIC_API_KEY` is no longer read). Pedro or Kelvyn enter `PLAID_SECRET` in the dashboard themselves (Edge Functions → Secrets); it never goes through chat or a file in the repo. Supabase provides its own keys to functions automatically (`SUPABASE_SECRET_KEYS`, which `getAdminClient` reads).
 
 **`label_pepper` (Vault, Phase 12c).** The HMAC key for `community_labels.contributor`, created once per project by SQL, never in the repo or chat: `select vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'label_pepper', 'HMAC pepper for community_labels.contributor (Phase 12c)');`. Without it, contributions are silently skipped. Never rotate it: every contributor would split into two, and withdrawal could no longer find their old rows.
 
