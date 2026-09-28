@@ -151,6 +151,11 @@ export function ReviewCard({ id }: { id: string }) {
             Tusky guessed this {guessHint(t.category_source)}
           </AppText>
         ) : null}
+        {t.review_priority === 2 ? (
+          <AppText variant="caption" tone="brand" style={{ textAlign: 'center' }}>
+            Worth a second look
+          </AppText>
+        ) : null}
         {rule?.category_id ? (
           <AppText variant="caption" tone="dim" style={{ textAlign: 'center' }}>
             {name} is always {categories.find((c) => c.id === rule.category_id)?.name ?? 'set by a rule'}

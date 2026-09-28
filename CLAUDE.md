@@ -8,7 +8,7 @@ households), who paid, production project — `docs/superpowers/specs/2026-09-25
 milestones 9a → 9d plus Track P. Latest handoff: `docs/superpowers/plans/2026-09-28-phase-9d-handoff.md`.
 Phase 10 (review deck, accounts by type) and Phase 11 (shared money:
 `docs/superpowers/specs/2026-09-26-phase-11-shared-money-design.md`) are merged. Now: Phase 12, the
-categorization engine (12a learning from fixes, 12b AI fallback, 12c crowd labels):
+categorization engine (12a learning from fixes, 12b AI fallback, 12c crowd labels, 12d Jev decisions — spec docs/superpowers/specs/2026-09-27-phase-12d-jev-decisions-design.md):
 `docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md`. Preset budgets (Phase 13) follow 12a.
 
 **Production project** (real banks): `awiwcgrisyzimzxgddxu`. Read `docs/ops/production.md` before
@@ -32,7 +32,7 @@ npx expo run:android --device Pixel_7   # emulator (x86_64); omit --device for d
 npx supabase db push
 npx supabase functions deploy <name> --use-api   # omit <name> to deploy all; reads config.toml
 npx supabase secrets set --env-file supabase/functions/.env   # NOT YET: the file holds the pending new Plaid keys (see Phase 6 spec, final step)
-npx -y deno test supabase/functions/_shared/    # Edge Function unit tests; Deno need not be installed
+npx -y deno test --allow-env supabase/functions/_shared/    # Edge Function unit tests; Deno need not be installed (tests set env vars)
 node scripts/cat-quality.mjs                    # dev: each category source's correction rate
 ```
 
@@ -230,21 +230,43 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   own rows. Sync, `set-merchant-rule` and `apply-learning` all re-resolve through `planReresolve`,
   and `apply-learning` touches only unreviewed rows. `node scripts/cat-quality.mjs` prints each
   source's correction rate. Spec: `docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md`.
-- **The AI fallback** (Phase 12b). Opt-in per user (`profiles.ai_categorize`, off by default) and
-  only over rows nothing else could settle. `_shared/ai.ts` is pure except `askClaude`
-  (`claude-haiku-4-5`, `messages.parse` with a Zod output format; no `effort`, no thinking —
-  Haiku 4.5 rejects the first and does not need the second). `runAiPass` in `_shared/sync.ts`
-  never throws: a missed category is not worth failing a sync over. `ai_category_cache` is GLOBAL
-  and has no `herd_id` — the model sees only merchant text and built-in categories, so one answer
-  serves every herd — but a private account's row is never cached. `aiAllowed()` is the single
-  server-side seam a subscription check will occupy; AI is meant to be a subscriber feature.
-  Needs the `ANTHROPIC_API_KEY` secret, **scoped to a workspace** (an org-level key is refused with
-  400 `invalid_request_error`, as is an account with no credit); without any key the pass is skipped
-  silently. Three things are easy to undo by accident: `ai` is a source in `resolveCategory`, so a
-  re-resolve does not take back an answer the user was already shown; the pass runs **after** the
-  cursor advance, beside the snapshot pass, because a slow model must never cost a re-pagination;
-  and a cache row with a null `category_id` means "asked and declined", which is what stops us
-  paying to ask about the same unplaceable merchant on every sync.
+- **The AI fallback** (Phase 12b; answered by Jev since 12d). Opt-in per user (`profiles.ai_categorize`,
+  off by default) and only over rows nothing else could settle. `_shared/ai.ts` is pure except the
+  `JevAsk` that `jevCategorizer` is given. `runAiPass` in `_shared/sync.ts` never throws: a missed
+  category is not worth failing a sync over. `ai_category_cache` is GLOBAL and has no `herd_id` — the
+  model sees only merchant text and built-in categories, so one answer serves every herd — but a
+  private account's row is never cached. `aiAllowed()` is the single server-side seam a subscription
+  check will occupy; AI is meant to be a subscriber feature. Three things are easy to undo by
+  accident: `ai` is a source in `resolveCategory`, so a re-resolve does not take back an answer the
+  user was already shown; the pass runs **after** the cursor advance, beside the snapshot pass,
+  because a slow vendor must never cost a re-pagination; and a cache row with a null `category_id`
+  means "asked and declined", which is what stops us paying to ask about the same unplaceable
+  merchant on every sync. A merchant whose call *failed* is never cached, so it is asked again.
+- **Jev decisions** (Phase 12d). Jev (TypeSafe AI's System One model) makes every structured
+  decision. Claude is kept for sentences, and nothing uses it yet. `_shared/jev.ts` holds the only
+  impure call, `askJev`: a raw `fetch` to `https://api.typesafe.ai/v1/systemone`, with the secret
+  `JEV_API_KEY` and the model pinned in `JEV_MODEL`. Its readers return null on any shape they do not
+  expect. Each call is bounded (`JEV_CLIENT`) and each pass has a total budget (`JEV_PASS_BUDGET_MS`),
+  because a pass is up to 50 calls. `jevEnabled` checks the key, `aiAllowed` and the connector's
+  `ai_categorize` once per sync. One switch covers all surfaces.
+  - **Categories:** one speculative fan-out per uncached merchant: a `group` Choice plus one
+    `child__<group_slug>` Choice per group, in one request. A child is written only when the group
+    AND the child clear `JEV_CONFIDENCE` (0.9). A sure group alone writes the group; anything else is
+    declined. `uncategorized` is offered as "none fits", and choosing it is a decline.
+    `ai_confidence`/`ai_level` on the row (and `confidence`/`level` in the cache) feed
+    `cat-quality.mjs`'s calibration table.
+  - **Triage** (`_shared/triage.ts`, `runTriagePass`) is per row and never cached. `review_priority`
+    (0 routine, 1 worth a glance, 2 likely needs a fix) orders the review deck (`orderQueue` in
+    `lib/review.ts`). Null sorts as routine, so with Jev off the deck is unchanged. `split_suggested`
+    is asked only in shared herds, on shared accounts, for money out that is not already split. It is
+    a hint the app shows in `WhoPaid`: it never writes `split`, so it cannot move a balance.
+  - **Recurring:** the heuristic stays the source of truth. Only a near miss is sent to Jev: a regular
+    cadence whose amounts are past the tolerance but within `NEAR_MISS_FACTOR`×. A `noul` ≥ 0.5 tips
+    it in. A near miss Jev could not judge is neither added nor deleted, so a flaky call never makes a
+    stream flicker. With Jev off, near misses are dropped exactly as before.
+  - Only these passes write the four Jev columns on `transactions`, and never in sync's upsert
+    payload. The client has no UPDATE on them. The table-level SELECT grant lets the app read all
+    four, which is harmless: they are the herd's own rows.
 - **Crowd labels** (Phase 12c). Contributions are written only by the `security definer` trigger
   `ae_transactions_crowd_label`, for the acting user (`auth.uid()`) with active `crowd_labels` consent
   — never by a service-role rule, sync, or `apply-learning` write. `community_labels` has no user,

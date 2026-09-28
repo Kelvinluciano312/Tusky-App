@@ -231,15 +231,16 @@ export default function SettingsScreen() {
           }}>
           <Sparkles size={20} color={colors.brand} strokeWidth={1.75} />
           <View style={{ flex: 1 }}>
-            <AppText variant="label">Let AI sort the leftovers</AppText>
+            <AppText variant="label">Let AI help sort and review</AppText>
             <AppText variant="caption" tone="dim">
-              Only for transactions nothing else could place. It sees the merchant, the amount,
-              the description your bank sent and your bank&apos;s guess &mdash; never your balances,
-              your accounts or who you are.
+              Places transactions nothing else could, puts the ones worth a second look first in
+              Review, and spots costs you may want to split. It sees the merchant, the amount, the
+              description your bank sent and the category &mdash; never your balances, your accounts
+              or who you are.
             </AppText>
           </View>
           <Switch
-            accessibilityLabel="Let AI sort the leftovers"
+            accessibilityLabel="Let AI help sort and review"
             trackColor={{ false: colors.elevated, true: colors.brand }}
             value={profile?.ai_categorize ?? false}
             disabled={!session?.user.id || setAiCategorize.isPending}

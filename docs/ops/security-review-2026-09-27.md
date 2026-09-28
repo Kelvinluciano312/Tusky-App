@@ -105,6 +105,16 @@ EXECUTE is optional hardening on an object Supabase owns and may recreate.
 the other paid them. That is the intended two-person trust model and `rls-check` pins that it cannot
 cross herds. Revisit if herds ever hold people who do not fully trust each other.
 
+### 9. A second AI processor: TypeSafe (Phase 12d) — INFO, by design
+
+With a user's AI switch on, sync sends TypeSafe (Jev) the merchant name, the bank's description, the
+amount and direction, and Plaid's category guess for rows nothing else could place. For each new
+unreviewed row it also sends the category, how that category was set, and the herd's size. It never
+sends balances, account names or numbers, user ids, or anyone's name. Under 12b, Anthropic received
+the same merchant-level fields; today it receives nothing. The switch stays off by default for this
+reason: however well-behaved the model, the data leaves our infrastructure. **Before production:**
+read TypeSafe's data-retention and training terms and record them here.
+
 ## What was verified and is sound
 
 Recorded so the next review can start from here rather than re-deriving it.

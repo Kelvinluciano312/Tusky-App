@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { deckReducer, newDeck, NOTE_MAX, normalizeNote, topCard } from './review.ts';
+import { deckReducer, newDeck, NOTE_MAX, normalizeNote, orderQueue, topCard } from './review.ts';
 
 test('normalizeNote trims, and blank means no memo', () => {
   assert.equal(normalizeNote('  Dinner with Ana \n'), 'Dinner with Ana');
@@ -61,4 +61,28 @@ test('accepting a card skipped earlier clears its skip; undo with no history doe
   assert.equal(d.accepted, 2);
   const empty = newDeck([]);
   assert.equal(deckReducer(empty, { type: 'undo' }), empty);
+});
+
+test('orderQueue puts likely fixes first, then glances, oldest first within each', () => {
+  assert.deepEqual(
+    orderQueue([
+      { id: 'a', review_priority: 0 },
+      { id: 'b', review_priority: 2 },
+      { id: 'c', review_priority: null },
+      { id: 'd', review_priority: 1 },
+      { id: 'e', review_priority: 2 },
+    ]),
+    ['b', 'e', 'd', 'a', 'c'],
+  );
+});
+
+test('with Jev off every row is unjudged, and the order is exactly the old one', () => {
+  assert.deepEqual(
+    orderQueue([
+      { id: 'x', review_priority: null },
+      { id: 'y', review_priority: null },
+      { id: 'z', review_priority: null },
+    ]),
+    ['x', 'y', 'z'],
+  );
 });

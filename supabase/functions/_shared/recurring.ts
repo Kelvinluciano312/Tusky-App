@@ -9,6 +9,7 @@
  */
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
+import { JEV_CONCURRENCY, JEV_PASS_BUDGET_MS, type JevAsk, type JevQuestion, mapLimit, readNoul } from './jev.ts';
 
 export type Cadence = 'weekly' | 'biweekly' | 'monthly';
 export type Direction = 'outflow' | 'inflow';
@@ -67,6 +68,17 @@ export const CADENCES: Record<Cadence, { minDays: number; maxDays: number; toler
 const MONTHLY_MIN_GAP_DAYS = 20;
 const PRICE_CHANGE_MIN = 1;
 const PRICE_CHANGE_PCT = 0.05;
+
+/**
+ * How far past the amount tolerance a regular run may stray and still be
+ * worth asking Jev about (12d). Twice the tolerance: a bill whose amount
+ * varies, not a shop visited on a whim.
+ */
+export const NEAR_MISS_FACTOR = 2;
+/** Near misses sent to Jev per Item per sync. The rest are kept, not asked. */
+export const RECURRING_ASK_MAX = 20;
+/** Jev's `is_recurring` at or above this tips a near miss in. */
+export const RECURRING_YES_AT = 0.5;
 
 const DAY_MS = 86_400_000;
 
@@ -152,8 +164,14 @@ function nextMonthlyDate(lastDate: string, anchor: number): string {
 type Occurrence = { date: string; day: number; amount: number; source: DetectInput };
 type Detected = Omit<StreamRow, 'account_id' | 'merchant_key' | 'direction'>;
 
-/** One merchant's occurrences, oldest first → a stream, or null. */
-function detectGroup(occ: Occurrence[]): Detected | null {
+/**
+ * One merchant's occurrences, oldest first → a stream it is sure of, a near
+ * miss, or null. A near miss (12d) has a regular cadence and enough payments,
+ * but amounts that stray past the tolerance while staying within
+ * NEAR_MISS_FACTOR times it. The heuristic cannot tell a variable bill from a
+ * shop visited on a schedule, so Jev is asked instead.
+ */
+function classifyGroup(occ: Occurrence[]): { detected: Detected; sure: boolean } | null {
   const n = occ.length;
   if (n < MIN_OCCURRENCES) return null;
 
@@ -180,7 +198,9 @@ function detectGroup(occ: Occurrence[]): Detected | null {
 
   const amounts = run.map((o) => o.amount);
   const center = median(amounts);
-  if (!amounts.every((a) => withinTolerance(a, center, tolerance))) return null;
+  const within = (factor: number) => amounts.every((a) => withinTolerance(a, center, tolerance * factor));
+  if (!within(NEAR_MISS_FACTOR)) return null;
+  const sure = within(1);
 
   const last = run[run.length - 1];
   const previous = run[run.length - 2];
@@ -196,21 +216,25 @@ function detectGroup(occ: Occurrence[]): Detected | null {
     : isoFromDay(last.day + (cadence === 'weekly' ? 7 : 14));
 
   return {
-    name: last.source.merchant_name ?? last.source.name,
-    category_id: last.source.category_id,
-    frequency: cadence,
-    average_amount: round2(amounts.reduce((sum, a) => sum + a, 0) / amounts.length),
-    last_amount: round2(last.amount),
-    previous_amount: round2(previous.amount),
-    amount_change: fixed && moved ? delta : null,
-    first_date: run[0].date,
-    last_date: last.date,
-    next_date,
-    occurrences: run.length,
+    sure,
+    detected: {
+      name: last.source.merchant_name ?? last.source.name,
+      category_id: last.source.category_id,
+      frequency: cadence,
+      average_amount: round2(amounts.reduce((sum, a) => sum + a, 0) / amounts.length),
+      last_amount: round2(last.amount),
+      previous_amount: round2(previous.amount),
+      amount_change: fixed && moved ? delta : null,
+      first_date: run[0].date,
+      last_date: last.date,
+      next_date,
+      occurrences: run.length,
+    },
   };
 }
 
-const streamKey = (s: { account_id: string; direction: Direction; merchant_key: string }) =>
+/** A stream's identity, as the upsert's conflict target and Jev's verdicts see it. */
+export const streamKey = (s: { account_id: string; direction: Direction; merchant_key: string }) =>
   `${s.account_id}|${s.direction}|${s.merchant_key}`;
 
 /**
@@ -222,12 +246,19 @@ export function ignoredCategoryIds(categories: { id: string; kind: string; slug:
   return categories.filter((c) => c.kind === 'transfer' && c.slug !== 'credit_card_payment').map((c) => c.id);
 }
 
+const byStreamKey = (a: StreamRow, b: StreamRow) =>
+  streamKey(a) < streamKey(b) ? -1 : streamKey(a) > streamKey(b) ? 1 : 0;
+
 /**
- * Posted transactions → recurring streams, one per (account, direction,
- * merchant). Transfer-kind categories are excluded by OUR category_id, so a
- * manual recategorization to Transfer takes a stream out at the next sync.
+ * Posted transactions → the streams detection is sure of, and the near misses
+ * Jev may tip in (12d). One per (account, direction, merchant). Transfer-kind
+ * categories are excluded by OUR category_id, so a manual recategorization to
+ * Transfer takes a stream out at the next sync.
  */
-export function detectStreams(rows: DetectInput[], opts: { transferCategoryIds: string[] }): StreamRow[] {
+export function detectCandidates(
+  rows: DetectInput[],
+  opts: { transferCategoryIds: string[] },
+): { streams: StreamRow[]; nearMisses: StreamRow[] } {
   const transfers = new Set(opts.transferCategoryIds);
   const groups = new Map<
     string,
@@ -257,12 +288,105 @@ export function detectStreams(rows: DetectInput[], opts: { transferCategoryIds: 
     }
   }
 
-  const out: StreamRow[] = [];
+  const streams: StreamRow[] = [];
+  const nearMisses: StreamRow[] = [];
   for (const g of groups.values()) {
-    const found = detectGroup([...g.byDate.values()].sort((a, b) => a.day - b.day));
-    if (found) out.push({ account_id: g.account_id, merchant_key: g.merchant_key, direction: g.direction, ...found });
+    const found = classifyGroup([...g.byDate.values()].sort((a, b) => a.day - b.day));
+    if (!found) continue;
+    const row = { account_id: g.account_id, merchant_key: g.merchant_key, direction: g.direction, ...found.detected };
+    (found.sure ? streams : nearMisses).push(row);
   }
-  return out.sort((a, b) => (streamKey(a) < streamKey(b) ? -1 : streamKey(a) > streamKey(b) ? 1 : 0));
+  return { streams: streams.sort(byStreamKey), nearMisses: nearMisses.sort(byStreamKey) };
+}
+
+/** The streams detection is sure of: what every sync stored before 12d, and still does with Jev off. */
+export function detectStreams(rows: DetectInput[], opts: { transferCategoryIds: string[] }): StreamRow[] {
+  return detectCandidates(rows, opts).streams;
+}
+
+/** Jev's verdict per streamKey. A missing key means "could not judge". */
+export type RecurringDecide = (candidates: StreamRow[]) => Promise<Map<string, boolean>>;
+
+/**
+ * Fold Jev's verdicts on the near misses into the sure streams (12d). A near
+ * miss Jev calls recurring joins them, and one it rejects is left out (and
+ * deleted if it was stored). One it could not judge (cap reached, call failed)
+ * is returned in `keep`: neither added nor deleted, so a flaky call never makes
+ * a stream flicker. Without `decide` (Jev off) the heuristic alone stands,
+ * exactly as before 12d.
+ */
+export async function settleNearMisses(
+  sure: StreamRow[],
+  nearMisses: StreamRow[],
+  decide?: RecurringDecide,
+): Promise<{ streams: StreamRow[]; keep: StreamRow[] }> {
+  if (!decide || nearMisses.length === 0) return { streams: sure, keep: [] };
+  let verdicts = new Map<string, boolean>();
+  try {
+    verdicts = await decide(nearMisses.slice(0, RECURRING_ASK_MAX));
+  } catch (err) {
+    console.warn(`recurring tiebreak skipped: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return {
+    streams: [...sure, ...nearMisses.filter((s) => verdicts.get(streamKey(s)) === true)],
+    keep: nearMisses.filter((s) => !verdicts.has(streamKey(s))),
+  };
+}
+
+/** The one question per near miss. */
+export function recurringQuestions(): Record<string, JevQuestion> {
+  return {
+    is_recurring: {
+      type: 'noul',
+      instructions:
+        'Are these transactions a recurring bill or subscription, rather than repeat purchases that happen to be regular?',
+      criteria: {
+        true: 'A bill, subscription, membership, rent, loan or insurance payment, or a regular paycheck',
+        false: 'Everyday purchases at a shop or restaurant the user happens to visit often',
+      },
+    },
+  };
+}
+
+/** What Jev sees about one near miss: the pattern, never the account. */
+export function recurringState(s: StreamRow, categoryName: string | null) {
+  return {
+    merchant: s.name,
+    cadence: s.frequency,
+    occurrences: s.occurrences,
+    amounts: {
+      average: Math.abs(s.average_amount),
+      previous: Math.abs(s.previous_amount),
+      last: Math.abs(s.last_amount),
+    },
+    direction: s.direction === 'inflow' ? 'money in' : 'money out',
+    category: categoryName ?? 'Uncategorized',
+    first_date: s.first_date,
+    last_date: s.last_date,
+  };
+}
+
+/**
+ * The RecurringDecide that sync uses: one Noul per near miss, bounded like
+ * every Jev pass. A call that fails or answers unreadably has no verdict, so
+ * settleNearMisses keeps that stream as it was.
+ */
+export function jevRecurringDecide(ask: JevAsk, categoryNames: Map<string, string>): RecurringDecide {
+  return async (candidates) => {
+    const deadline = Date.now() + JEV_PASS_BUDGET_MS;
+    const questions = recurringQuestions();
+    const settled = await mapLimit(candidates, JEV_CONCURRENCY, async (s) => {
+      const name = s.category_id ? categoryNames.get(s.category_id) ?? null : null;
+      const yes = readNoul((await ask(recurringState(s, name), questions, { deadline })).answers.is_recurring);
+      if (yes === null) throw new Error('jev: unreadable is_recurring');
+      return yes >= RECURRING_YES_AT;
+    }, deadline);
+    const verdicts = new Map<string, boolean>();
+    settled.forEach((s, i) => {
+      if (s.status === 'fulfilled') verdicts.set(streamKey(candidates[i]), s.value);
+    });
+    return verdicts;
+  };
 }
 
 /**
@@ -294,6 +418,8 @@ export async function refreshRecurring(
   admin: SupabaseClient,
   item: { id: string; user_id: string },
   transferCategoryIds: string[],
+  /** Jev's tiebreak for near misses (12d); absent when Jev is off. */
+  decide?: RecurringDecide,
 ): Promise<void> {
   const since = isoFromDay(Math.floor(Date.now() / DAY_MS) - LOOKBACK_DAYS);
 
@@ -314,7 +440,8 @@ export async function refreshRecurring(
     if (page.length < PAGE_SIZE) break;
   }
 
-  const streams = detectStreams(rows, { transferCategoryIds });
+  const { streams: sure, nearMisses } = detectCandidates(rows, { transferCategoryIds });
+  const { streams, keep } = await settleNearMisses(sure, nearMisses, decide);
 
   if (streams.length > 0) {
     // `dismissed` is deliberately absent: DO UPDATE SET covers only the keys
@@ -338,7 +465,8 @@ export async function refreshRecurring(
     .in('account_id', (accounts ?? []).map((a) => a.id));
   if (existingError) throw existingError;
 
-  const stale = staleStreamIds(existing ?? [], streams);
+  // A near miss Jev could not judge this time is neither refreshed nor deleted.
+  const stale = staleStreamIds(existing ?? [], [...streams, ...keep]);
   if (stale.length > 0) {
     // Re-checked in the delete itself: a user can dismiss between the read above
     // and this statement, and their verdict must survive.

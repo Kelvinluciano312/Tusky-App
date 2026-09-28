@@ -76,3 +76,16 @@ export function topCard(deck: Deck): string | null {
   if (top === undefined) return null;
   return deck.queue.every((id) => deck.skipped.includes(id)) ? null : top;
 }
+
+/**
+ * The deck's order (12d): Jev's "likely needs a fix" first, then "worth a
+ * glance", then everything else, keeping the queue's oldest-first order within
+ * each. Unjudged rows count as routine, so with Jev off the order is exactly
+ * the old one.
+ */
+export function orderQueue(rows: { id: string; review_priority: number | null }[]): string[] {
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => (b.row.review_priority ?? 0) - (a.row.review_priority ?? 0) || a.index - b.index)
+    .map(({ row }) => row.id);
+}

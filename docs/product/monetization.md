@@ -85,6 +85,16 @@ Model choice is deliberately **not decided**. Haiku 4.5 for bulk work with Sonne
 user-facing and open-ended is the obvious starting point. Pedro also raised "Jev from Typesafe AI",
 which is unevaluated — pending a link.
 
+### Decisions vs sentences (Phase 12d)
+
+Since Phase 12d, Jev (TypeSafe AI) makes every AI decision: categories, review priority, split hints
+and recurring tiebreaks. It costs $0.042 per million input tokens, and output is free. A
+categorization call is roughly 1.5k input tokens, so $10 covers about 150,000 of them. For costing
+purposes, the decisions are free. That changes what a credit meters: credits are for Claude-written
+text (the future money assistant), not for decisions. Decisions stay a subscriber feature behind
+`aiAllowed()` because they are a reason to subscribe, not because they cost us much. Re-evaluate once
+dev data shows Jev's quality (`scripts/cat-quality.mjs`).
+
 ## How the tiers work
 
 **Free**
@@ -154,6 +164,6 @@ Nothing needs changing now. When the time comes:
 - How many days of inactivity before we remove a free Item, and how we warn.
 - Free-tier history window: 90 days or 30?
 - Does Tusklet include any AI allowance, or is AI a Tusk and credits-only feature?
-- What is Jev from Typesafe AI, and how does it compare to Haiku on cost and quality?
+- Jev vs Haiku: decided in Phase 12d. Jev makes decisions and Haiku writes text (see *Decisions vs sentences*). Quality is measured on dev with `scripts/cat-quality.mjs`.
 - What Plaid actually charges us at production volume — the public page defers to sales, so the
   per-Item price is still unknown. That number decides the free-tier bank limit.
