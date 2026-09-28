@@ -1,5 +1,7 @@
 # Stripe subscriptions: design (ready to build, not scheduled)
 
+> **Superseded 2026-09-28** by `2026-09-28-phase-14-monetization-design.md`: store billing (Google Play, App Store) through RevenueCat. Google's 10% fee on link-out subscriptions made Stripe Checkout cost more than Play Billing. The sandbox products below stay unused.
+
 Status: **not started**. Stripe setup paused on 2026-09-23. Done: account, sandbox, onboarding
 answers, and both products with their prices. Still to do in the Dashboard: accept the Managed
 Payments ToS, set Tusklet's monthly `tax_behavior` to exclusive, and add lookup keys. We will build this in the monetization phase. Product direction lives in
