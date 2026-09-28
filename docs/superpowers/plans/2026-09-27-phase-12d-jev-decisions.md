@@ -1,5 +1,7 @@
 # Phase 12d — Jev Decisions Implementation Plan
 
+**Status (2026-09-28):** built and merged (PR #28). The migration is on dev and the sync functions are deployed there. Still open: (1) prod has not had the 12d migration (`20261007120000`) pushed or the sync functions redeployed; (2) no live Jev call has run on dev yet: 0 rows are triaged and the AI cache is empty, because no sync with `ai_categorize` on has happened since the deploy.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make Jev (TypeSafe AI's System One model) Tusky's engine for every structured decision: categorization (replacing 12b's Haiku), review-deck priority, split hints and recurring tiebreaks. It stays behind one off-by-default switch and the `aiAllowed()` subscriber seam.
@@ -57,12 +59,12 @@ These were decided while planning, against the code as it is. Each one is marked
 **Interfaces:**
 - Produces: `ai_category_cache.confidence numeric`, `ai_category_cache.level text` (`'child'|'group'`). On `transactions`: `ai_confidence numeric`, `ai_level text`, `review_priority smallint` (0–2) and `split_suggested boolean`. All are nullable, and every task after this one writes or reads them.
 
-- [ ] **Step 1: Confirm the CLI is linked to dev**
+- [x] **Step 1: Confirm the CLI is linked to dev**
 
 Run: `cat supabase/.temp/project-ref`
 Expected: `ifibrsgqdibcomzxencf`. Anything else: STOP and tell Pedro.
 
-- [ ] **Step 2: Write the migration**
+- [x] **Step 2: Write the migration**
 
 ```sql
 -- Phase 12d: Jev decisions. Every column here is written only by sync's Jev
@@ -95,12 +97,12 @@ comment on column public.transactions.split_suggested is
 -- write them: there is no UPDATE grant. ai_category_cache stays server-only.
 ```
 
-- [ ] **Step 3: Apply it to dev**
+- [x] **Step 3: Apply it to dev**
 
 Run: `npx -y supabase@2.118.0 db push`
 Expected: `Applying migration 20261007120000_phase12d_jev_decisions.sql...` then `Finished supabase db push.`
 
-- [ ] **Step 4: Verify the privileges**
+- [x] **Step 4: Verify the privileges**
 
 Run:
 ```bash
@@ -108,12 +110,12 @@ npx -y supabase@2.118.0 db query --linked -o csv "select has_column_privilege('a
 ```
 Expected: `t,t,f,f,f,f,f`. Any `t` in the last five: STOP, because a client could write a Jev column or read the global cache.
 
-- [ ] **Step 5: Run the RLS check**
+- [x] **Step 5: Run the RLS check**
 
 Run: `node scripts/rls-check.mjs`
 Expected: every check passes, as before the migration (columns on an already-protected table change nothing).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add supabase/migrations/20261007120000_phase12d_jev_decisions.sql
@@ -145,7 +147,7 @@ EOF
   - `mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>, deadline?: number): Promise<PromiseSettledResult<R>[]>`
   - `retryWaitMs(header: string | null, now?: number): number | null`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `supabase/functions/_shared/jev.test.ts`:
 
@@ -380,12 +382,12 @@ Deno.test('mapLimit starts nothing once the deadline has passed', async () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/jev.test.ts`
 Expected: FAIL. The module `./jev.ts` cannot be found.
 
-- [ ] **Step 3: Write the client**
+- [x] **Step 3: Write the client**
 
 `supabase/functions/_shared/jev.ts`:
 
@@ -570,17 +572,17 @@ export const askJev = async (
 };
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/jev.test.ts`
 Expected: PASS, all 17 tests, with no "leaking async ops" warning.
 
-- [ ] **Step 5: Run the whole Edge suite**
+- [x] **Step 5: Run the whole Edge suite**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/`
 Expected: `ok | 171 passed | 0 failed` (154 before, plus 17).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add supabase/functions/_shared/jev.ts supabase/functions/_shared/jev.test.ts
@@ -613,7 +615,7 @@ Replaces the Haiku fallback. The pure 12b scaffolding (cache key, ask list, answ
   - `ai.ts`: `JEV_CONFIDENCE = 0.9`, `FALLBACK_SLUG = 'uncategorized'`, `type AiLevel = 'child' | 'group'`, `type AiVerdict = { category_id: string; confidence: number | null; level: AiLevel | null }`, `type AiCategory = { id; slug; name; parent_slug: string | null }`, `type AiAnswer = { key: string; slug: string | null; confidence?: number; level?: AiLevel }`, `categoryQuestions(cats)`, `categoryState(row)`, `pickCategorization(res, cats)`, `jevCategorizer(ask?): AskFn`. `buildAskList`, `applyAnswers` and `groupUpdates` now carry `AiVerdict` (the signatures are in the code below).
   - `sync.ts`: `jevEnabled(admin, item: { user_id: string; herd_id: string }): Promise<boolean>`, and `runAiPass(admin, item, ask?: AskFn)`, which no longer gates itself.
 
-- [ ] **Step 1: Write the failing `ai.test.ts`**
+- [x] **Step 1: Write the failing `ai.test.ts`**
 
 Replace the whole file with:
 
@@ -944,12 +946,12 @@ Deno.test('no rows, no calls', async () => {
 });
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/ai.test.ts`
 Expected: FAIL. TypeScript errors such as `Module './ai.ts' has no exported member 'categoryQuestions'`.
 
-- [ ] **Step 3: Rewrite `ai.ts`**
+- [x] **Step 3: Rewrite `ai.ts`**
 
 Replace the whole file with:
 
@@ -1253,12 +1255,12 @@ export function jevCategorizer(ask: JevAsk = askJev): AskFn {
 }
 ```
 
-- [ ] **Step 4: Run `ai.test.ts` to verify it passes**
+- [x] **Step 4: Run `ai.test.ts` to verify it passes**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/ai.test.ts`
 Expected: PASS, all 36 tests.
 
-- [ ] **Step 5: Write the failing `sync.test.ts` changes**
+- [x] **Step 5: Write the failing `sync.test.ts` changes**
 
 Replace lines 4–5 (the imports) with:
 
@@ -1501,12 +1503,12 @@ Deno.test('runAiPass: a vendor that fails costs the sync nothing', async () => {
 });
 ```
 
-- [ ] **Step 6: Run it to verify it fails**
+- [x] **Step 6: Run it to verify it fails**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/sync.test.ts`
 Expected: FAIL. `sync.ts` has no exported member `jevEnabled`, and it still imports `askClaude`, which `ai.ts` no longer exports.
 
-- [ ] **Step 7: Update `sync.ts`**
+- [x] **Step 7: Update `sync.ts`**
 
 Replace the `./ai.ts` import block (lines 5–17) with:
 
@@ -1684,17 +1686,17 @@ In `syncItem`, replace the 12b call (the comment block starting `// 12b, over wh
     }
 ```
 
-- [ ] **Step 8: Run the Edge suite**
+- [x] **Step 8: Run the Edge suite**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/`
 Expected: `0 failed`.
 
-- [ ] **Step 9: Confirm Haiku is gone from the Edge code**
+- [x] **Step 9: Confirm Haiku is gone from the Edge code**
 
 Run: `grep -rn "askClaude\|hasAnthropicKey\|ANTHROPIC_API_KEY\|anthropic-ai\|AI_CLIENT" supabase/functions/`
 Expected: no output.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add supabase/functions/_shared/ai.ts supabase/functions/_shared/ai.test.ts supabase/functions/_shared/sync.ts supabase/functions/_shared/sync.test.ts
@@ -1726,7 +1728,7 @@ EOF
 - Consumes (Task 2): `askJev`, `JEV_CONCURRENCY`, `JEV_PASS_BUDGET_MS`, `type JevAsk`, `type JevQuestion`, `type JevResponse`, `mapLimit`, `readNoul`, `readScore`. From Task 3: `jevOn` in `syncItem`.
 - Produces: `TRIAGE_PER_SYNC = 50`, `SPLIT_SUGGEST_AT = 0.7`, `PRIORITY_LEVELS: string[]` (3 entries), `type TriageRow`, `type Triage = { id: string; review_priority: number; split_suggested: boolean | null }`, `asksSplit(row, shared)`, `triageState(row, herdSize)`, `triageQuestions(row, shared)`, `readTriage(row, response, shared): Triage | null`, `groupTriage(results)`. In `sync.ts`: `runTriagePass(admin, item, ask?: JevAsk): Promise<number>`. The app (Task 6) reads `review_priority` 0–2 and `split_suggested`.
 
-- [ ] **Step 1: Write the failing `triage.test.ts`**
+- [x] **Step 1: Write the failing `triage.test.ts`**
 
 ```ts
 import { assertEquals } from 'jsr:@std/assert';
@@ -1848,12 +1850,12 @@ Deno.test('results are grouped by what they write', () => {
 });
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/triage.test.ts`
 Expected: FAIL. The module `./triage.ts` cannot be found.
 
-- [ ] **Step 3: Write `triage.ts`**
+- [x] **Step 3: Write `triage.ts`**
 
 ```ts
 /**
@@ -1976,12 +1978,12 @@ export function groupTriage(
 }
 ```
 
-- [ ] **Step 4: Run `triage.test.ts` to verify it passes**
+- [x] **Step 4: Run `triage.test.ts` to verify it passes**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/triage.test.ts`
 Expected: PASS, all 10 tests.
 
-- [ ] **Step 5: Write the failing `runTriagePass` tests**
+- [x] **Step 5: Write the failing `runTriagePass` tests**
 
 In `sync.test.ts`:
 
@@ -2100,12 +2102,12 @@ Deno.test('runTriagePass: nothing to judge reads no herd and asks nothing', asyn
 });
 ```
 
-- [ ] **Step 6: Run it to verify it fails**
+- [x] **Step 6: Run it to verify it fails**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/sync.test.ts`
 Expected: FAIL. `sync.ts` has no exported member `runTriagePass`.
 
-- [ ] **Step 7: Add `runTriagePass` and wire it in**
+- [x] **Step 7: Add `runTriagePass` and wire it in**
 
 In `sync.ts`, replace `import { hasJevKey } from './jev.ts';` with:
 
@@ -2215,12 +2217,12 @@ In `syncItem`, extend the `if (jevOn)` block from Task 3 so it reads:
     }
 ```
 
-- [ ] **Step 8: Run the Edge suite**
+- [x] **Step 8: Run the Edge suite**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/`
 Expected: `0 failed`.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add supabase/functions/_shared/triage.ts supabase/functions/_shared/triage.test.ts supabase/functions/_shared/sync.ts supabase/functions/_shared/sync.test.ts
@@ -2249,7 +2251,7 @@ EOF
 - Consumes (Task 2): `JEV_CONCURRENCY`, `JEV_PASS_BUDGET_MS`, `type JevAsk`, `type JevQuestion`, `mapLimit`, `readNoul`. From Task 3: `jevOn` in `syncItem`.
 - Produces: `NEAR_MISS_FACTOR = 2`, `RECURRING_ASK_MAX = 20`, `RECURRING_YES_AT = 0.5`, `export streamKey`, `detectCandidates(rows, opts): { streams: StreamRow[]; nearMisses: StreamRow[] }`, `type RecurringDecide = (candidates: StreamRow[]) => Promise<Map<string, boolean>>`, `settleNearMisses(sure, nearMisses, decide?)`, `recurringQuestions()`, `recurringState(stream, categoryName)`, `jevRecurringDecide(ask, categoryNames)`, and `refreshRecurring(admin, item, transferCategoryIds, decide?)`. `detectStreams` keeps its signature and behaviour.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Replace line 3 of `recurring.test.ts` with:
 
@@ -2384,12 +2386,12 @@ Deno.test('recurringState names the category and never an account', () => {
 });
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/recurring.test.ts`
 Expected: FAIL. `recurring.ts` has no exported member `detectCandidates`.
 
-- [ ] **Step 3: Update `recurring.ts`**
+- [x] **Step 3: Update `recurring.ts`**
 
 (a) Below `import type { SupabaseClient } …`, add:
 
@@ -2676,12 +2678,12 @@ Replace `const stale = staleStreamIds(existing ?? [], streams);` with:
   const stale = staleStreamIds(existing ?? [], [...streams, ...keep]);
 ```
 
-- [ ] **Step 4: Run the recurring tests to verify they pass**
+- [x] **Step 4: Run the recurring tests to verify they pass**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/recurring.test.ts`
 Expected: PASS, every existing test plus the 10 new ones.
 
-- [ ] **Step 5: Wire the tiebreak into `syncItem`**
+- [x] **Step 5: Wire the tiebreak into `syncItem`**
 
 In `sync.ts`, replace the recurring import with:
 
@@ -2720,12 +2722,12 @@ with:
       );
 ```
 
-- [ ] **Step 6: Run the Edge suite**
+- [x] **Step 6: Run the Edge suite**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/`
 Expected: `0 failed`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add supabase/functions/_shared/recurring.ts supabase/functions/_shared/recurring.test.ts supabase/functions/_shared/sync.ts
@@ -2757,7 +2759,7 @@ EOF
 - Consumes (Tasks 1, 4): `transactions.review_priority` (0–2 | null), `transactions.split_suggested` (boolean | null)
 - Produces: `orderQueue(rows: { id: string; review_priority: number | null }[]): string[]`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 In `apps/mobile/src/lib/review.test.ts`, change the import to:
 
@@ -2793,12 +2795,12 @@ test('with Jev off every row is unjudged, and the order is exactly the old one',
 });
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run (in `apps/mobile`): `npm test`
 Expected: FAIL. `orderQueue` is not exported.
 
-- [ ] **Step 3: Add `orderQueue` to `lib/review.ts`**
+- [x] **Step 3: Add `orderQueue` to `lib/review.ts`**
 
 Append:
 
@@ -2817,12 +2819,12 @@ export function orderQueue(rows: { id: string; review_priority: number | null }[
 }
 ```
 
-- [ ] **Step 4: Run it to verify it passes**
+- [x] **Step 4: Run it to verify it passes**
 
 Run (in `apps/mobile`): `npm test`
 Expected: PASS, `tests 101`, `fail 0`.
 
-- [ ] **Step 5: Read the new columns and order the queue**
+- [x] **Step 5: Read the new columns and order the queue**
 
 In `apps/mobile/src/lib/queries.ts`:
 
@@ -2854,7 +2856,7 @@ const TRANSACTION_COLUMNS =
       return orderQueue(data);
 ```
 
-- [ ] **Step 6: Mark a likely fix on the review card**
+- [x] **Step 6: Mark a likely fix on the review card**
 
 In `apps/mobile/src/components/review-card.tsx`, directly after the `{guessHint(t.category_source) ? ( … ) : null}` block, add:
 
@@ -2866,7 +2868,7 @@ In `apps/mobile/src/components/review-card.tsx`, directly after the `{guessHint(
         ) : null}
 ```
 
-- [ ] **Step 7: Offer the split hint in WhoPaid**
+- [x] **Step 7: Offer the split hint in WhoPaid**
 
 In `apps/mobile/src/components/who-paid.tsx`:
 
@@ -2891,7 +2893,7 @@ In `apps/mobile/src/components/who-paid.tsx`:
 
 (WhoPaid already returns null outside a shared herd, and a private row is never asked, so neither case needs a check here.)
 
-- [ ] **Step 8: Say what the switch now covers**
+- [x] **Step 8: Say what the switch now covers**
 
 In `apps/mobile/src/app/(tabs)/settings.tsx`, replace:
 
@@ -2918,12 +2920,12 @@ with:
 
 and change `accessibilityLabel="Let AI sort the leftovers"` to `accessibilityLabel="Let AI help sort and review"`.
 
-- [ ] **Step 9: Typecheck, lint, test**
+- [x] **Step 9: Typecheck, lint, test**
 
 Run (in `apps/mobile`): `npm run typecheck; npx expo lint; npm test`
 Expected: typecheck exits 0; lint reports 0 errors; `tests 101`, `fail 0`.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add apps/mobile/src/lib/review.ts apps/mobile/src/lib/review.test.ts apps/mobile/src/lib/queries.ts apps/mobile/src/components/review-card.tsx apps/mobile/src/components/who-paid.tsx "apps/mobile/src/app/(tabs)/settings.tsx"
@@ -2953,7 +2955,7 @@ EOF
 **Interfaces:**
 - Consumes: every column from Task 1 and every constant name from Tasks 2–5. Docs must use those exact names.
 
-- [ ] **Step 1: Rewrite the query section of `cat-quality.mjs`**
+- [x] **Step 1: Rewrite the query section of `cat-quality.mjs`**
 
 Replace everything from `const sql = \`` (line 25) to the end of the file with:
 
@@ -3044,12 +3046,12 @@ In the header comment, directly after the line `// compare runs made after 12a s
 // are taken.
 ```
 
-- [ ] **Step 2: Run it on dev**
+- [x] **Step 2: Run it on dev**
 
 Run: `node scripts/cat-quality.mjs`
 Expected: four titled tables. The first matches what it printed before 12d. The three 12d tables show only their header rows until Task 8 produces data.
 
-- [ ] **Step 3: Update `CLAUDE.md`**
+- [x] **Step 3: Update `CLAUDE.md`**
 
 (a) In the status paragraph, change `(12a learning from fixes, 12b AI fallback, 12c crowd labels):` to `(12a learning from fixes, 12b AI fallback, 12c crowd labels, 12d Jev decisions — spec docs/superpowers/specs/2026-09-27-phase-12d-jev-decisions-design.md):`.
 
@@ -3107,7 +3109,7 @@ npx -y deno test --allow-env supabase/functions/_shared/    # Edge Function unit
     four, which is harmless: they are the herd's own rows.
 ```
 
-- [ ] **Step 4: Update `docs/ops/production.md` line 36**
+- [x] **Step 4: Update `docs/ops/production.md` line 36**
 
 Replace `` `ANTHROPIC_API_KEY` (the 12b AI pass; it must be scoped to a workspace, and without it the pass is skipped silently and syncs are otherwise unaffected) `` with:
 
@@ -3115,7 +3117,7 @@ Replace `` `ANTHROPIC_API_KEY` (the 12b AI pass; it must be scoped to a workspac
 `JEV_API_KEY` (TypeSafe's Jev, which makes every AI decision since Phase 12d; without it the Jev passes are skipped silently and syncs are otherwise unaffected; `ANTHROPIC_API_KEY` is no longer read)
 ```
 
-- [ ] **Step 5: Record TypeSafe as a processor in the security review**
+- [x] **Step 5: Record TypeSafe as a processor in the security review**
 
 In `docs/ops/security-review-2026-09-27.md`, insert directly before `## What was verified and is sound`:
 
@@ -3132,7 +3134,7 @@ read TypeSafe's data-retention and training terms and record them here.
 
 ```
 
-- [ ] **Step 6: Record the cost finding in `docs/product/monetization.md`**
+- [x] **Step 6: Record the cost finding in `docs/product/monetization.md`**
 
 Directly before `## How the tiers work`, insert:
 
@@ -3155,12 +3157,12 @@ Replace the open question `- What is Jev from Typesafe AI, and how does it compa
 - Jev vs Haiku: decided in Phase 12d. Jev makes decisions and Haiku writes text (see *Decisions vs sentences*). Quality is measured on dev with `scripts/cat-quality.mjs`.
 ```
 
-- [ ] **Step 7: Check that no doc still points at the old path**
+- [x] **Step 7: Check that no doc still points at the old path**
 
 Run: `grep -n "askClaude\|hasAnthropicKey\|messages.parse" CLAUDE.md docs/ops/production.md`
 Expected: no output.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add scripts/cat-quality.mjs CLAUDE.md docs/ops/production.md docs/ops/security-review-2026-09-27.md docs/product/monetization.md
@@ -3186,18 +3188,18 @@ EOF
 **Interfaces:**
 - Consumes: everything above. Test user `ccbd42ef-cba6-4f05-a100-a83a727255b2` (`ph.leao2099+tuskytest`), who connects the banks. Kel Test has no banks, so their switch decides nothing.
 
-- [ ] **Step 1: Confirm dev and the secret**
+- [x] **Step 1: Confirm dev and the secret**
 
 Run: `cat supabase/.temp/project-ref` → `ifibrsgqdibcomzxencf`.
 Run: `npx -y supabase@2.118.0 secrets list` → the list includes `JEV_API_KEY`. (It shows names only. Never run `secrets set --env-file`.)
 If `JEV_API_KEY` is missing: STOP and ask Pedro. Every pass would skip silently.
 
-- [ ] **Step 2: Deploy every function to dev**
+- [x] **Step 2: Deploy every function to dev**
 
 Run: `npx -y supabase@2.118.0 functions deploy --use-api`
 Expected: each function reports `Deployed Function …`. `plaid-sync-transactions` and `plaid-webhook` both bundle `_shared/sync.ts`.
 
-- [ ] **Step 3: Turn the switch on for the test user, and refill the review queue**
+- [x] **Step 3: Turn the switch on for the test user, and refill the review queue**
 
 Run:
 ```bash
@@ -3206,11 +3208,11 @@ node scripts/seed-review.mjs 25
 ```
 Expected: one row, `…,t`. The seed script reports 25 rows back in the queue.
 
-- [ ] **Step 4: Sync**
+- [x] **Step 4: Sync**
 
 Kill anything on port 8081 and start Metro fresh (CLAUDE.md: a Metro that outlived its session hangs). On the emulator, open Home and pull to refresh. The tooling notes give the gesture: `adb -s emulator-5554 shell input swipe 540 900 540 1900 1200` from the top of the list. Wait for the refresh spinner to stop (`node scripts/emu.mjs ui`).
 
-- [ ] **Step 5: Verify what Jev wrote**
+- [x] **Step 5: Verify what Jev wrote**
 
 Run:
 ```bash
@@ -3219,22 +3221,22 @@ npx -y supabase@2.118.0 db query --linked -o csv "select coalesce(level, 'declin
 ```
 Expected: `triaged` ≥ 1 (the seeded rows). `split_judged` = 0, because the test user's herd is solo and the split question is never asked; unit tests cover the shared case. `ai_rows` ≥ 0: it depends on how many rows Plaid left uncertain. If both `ai_rows` and `triaged` are 0, open the Edge Function logs for `plaid-sync-transactions` in the dashboard and look for `ai pass skipped` / `triage pass skipped` lines. Report the logged reason (e.g. `jev: HTTP 401`) to Pedro instead of guessing.
 
-- [ ] **Step 6: Read the instrument**
+- [x] **Step 6: Read the instrument**
 
 Run: `node scripts/cat-quality.mjs`
 Expected: the calibration table shows a row for each band Jev answered in. Record the four tables' output for the PR description.
 
-- [ ] **Step 7: See the deck**
+- [x] **Step 7: See the deck**
 
 Run: `node scripts/emu.mjs tap "Review"` (or open the review badge), then `node scripts/emu.mjs ui`.
 Expected: if any row has `review_priority = 2`, the first card shows "Worth a second look". Then Settings (`node scripts/emu.mjs ui` on the Settings tab) shows "Let AI help sort and review". Take one screenshot only if layout looks wrong.
 
-- [ ] **Step 8: Run every suite one last time**
+- [x] **Step 8: Run every suite one last time**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/` → `0 failed`.
 Run (in `apps/mobile`): `npm run typecheck; npx expo lint; npm test` → clean, `fail 0`.
 
-- [ ] **Step 9: Push and open the PR (never merge)**
+- [x] **Step 9: Push and open the PR (never merge)**
 
 The branch was created tracking `origin/master`, so always name the push target:
 

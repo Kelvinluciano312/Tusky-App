@@ -1,8 +1,9 @@
 # Phase 6 — Connections & control (design)
 
 Status: approved 2026-09-23; **built 2026-09-24** (plan: `docs/superpowers/plans/2026-09-24-phase-6-connections-control.md`,
-handoff: `docs/superpowers/plans/2026-09-24-phase-6-handoff.md`). Only the final step, the Plaid key switch, remains, and it
-waits on Pedro's go-ahead.
+handoff: `docs/superpowers/plans/2026-09-24-phase-6-handoff.md`). **Complete.** The final step, the Plaid key switch, was
+superseded on 2026-09-28: dev keeps its Sandbox keys, and production keys live only in the separate production
+project (`docs/ops/production.md`).
 
 Phase 6 gives users control over their connected banks:
 

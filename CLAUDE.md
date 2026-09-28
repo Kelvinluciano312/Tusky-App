@@ -1,15 +1,15 @@
 # Tusky — agent notes
 
 Monarch-Money-style personal finance mobile app. Expo (React Native) + Supabase + Plaid Sandbox.
-Approved plan/phases: see README Status (Phases 0–6 done; Phase 6's final step, the Plaid key switch, waits
-on Pedro's go-ahead — see its spec, `docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md`).
-Phases 7 (categories) and 8 (transaction review) are merged. Now: Phase 9 — names, herds (shared
-households), who paid, production project — `docs/superpowers/specs/2026-09-25-phase-9-herds-design.md`,
-milestones 9a → 9d plus Track P. Latest handoff: `docs/superpowers/plans/2026-09-28-phase-9d-handoff.md`.
-Phase 10 (review deck, accounts by type) and Phase 11 (shared money:
-`docs/superpowers/specs/2026-09-26-phase-11-shared-money-design.md`) are merged. Now: Phase 12, the
-categorization engine (12a learning from fixes, 12b AI fallback, 12c crowd labels, 12d Jev decisions — spec docs/superpowers/specs/2026-09-27-phase-12d-jev-decisions-design.md):
-`docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md`. Preset budgets (Phase 13) follow 12a.
+Approved plan/phases: see README Status. Phases 0–13 are merged, including Phase 12's four layers
+(12a–12d, `docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md`). Phase 9's
+Track P (production) is live and waits only on Plaid's production access for OAuth banks. Next:
+monetization (`docs/product/monetization.md`).
+
+**Plaid keys per project.** Dev stays on Sandbox, and all general testing happens there. Production
+keys live only in the production project's secrets. Phase 6's old "key switch" step is superseded by
+this split. `supabase/functions/.env` now holds **production** values (`PLAID_ENV=production`), so it
+must never be pushed to dev.
 
 **Production project** (real banks): `awiwcgrisyzimzxgddxu`. Read `docs/ops/production.md` before
 touching it. The CLI stays linked to dev; production commands name `--project-ref`, and each one waits
@@ -31,7 +31,8 @@ npx expo run:android --device Pixel_7   # emulator (x86_64); omit --device for d
 # backend (repo root; per machine, run `supabase login` + `link` once — see "First run")
 npx supabase db push
 npx supabase functions deploy <name> --use-api   # omit <name> to deploy all; reads config.toml
-npx supabase secrets set --env-file supabase/functions/.env   # NOT YET: the file holds the pending new Plaid keys (see Phase 6 spec, final step)
+# NEVER `secrets set --env-file supabase/functions/.env` on dev: the file holds production Plaid keys.
+# Set one dev secret at a time: npx supabase secrets set NAME=value
 npx -y deno test --allow-env supabase/functions/_shared/    # Edge Function unit tests; Deno need not be installed (tests set env vars)
 node scripts/cat-quality.mjs                    # dev: each category source's correction rate
 ```
