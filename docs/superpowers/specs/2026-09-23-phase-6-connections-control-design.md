@@ -294,7 +294,8 @@ All text goes through `AppText`, all money through `Amount`, and all colours and
 
 - **Reconnecting a kept bank.**
   - Reconnecting a bank whose history was kept creates a new connection. Its first 90 days overlap
-    the kept history and show twice until the old one is deleted.
+    the kept history and show twice until the old one is deleted. Fixed in Phase 14b: the reconnect
+    merge (`_shared/merge.ts`).
   - The duplicate guard ignores archived Items on purpose.
 - **Net worth steps on the disconnect day.** Kept history still counts on earlier days, so the line
   jumps on that day.
