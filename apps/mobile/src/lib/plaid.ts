@@ -8,7 +8,7 @@ import { HIDDEN_DEPENDENT_KEYS } from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
 
 /** Everything a bank's arrival, departure or sync can change on screen. */
-const BANK_DEPENDENT_KEYS = [['plaid_items'], ...HIDDEN_DEPENDENT_KEYS];
+const BANK_DEPENDENT_KEYS = [['plaid_items'], ['plan'], ...HIDDEN_DEPENDENT_KEYS];
 
 function invalidateBankData(queryClient: ReturnType<typeof useQueryClient>) {
   return Promise.all(BANK_DEPENDENT_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
