@@ -3,6 +3,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { readFunctionError } from '@/lib/functions';
 import type { MerchantRule, MerchantRules } from '@/lib/merchants';
 import type { PresetLine } from '@/lib/presets';
+import { orderQueue } from '@/lib/review';
 import type { SharedLine } from '@/lib/settle';
 import { supabase } from '@/lib/supabase';
 
@@ -240,13 +241,17 @@ export type Transaction = {
   split: Record<string, number> | null;
   /** When it left the review queue (Phase 8); null = waiting. Pending rows are never queued. */
   reviewed_at: string | null;
+  /** Jev's review triage (12d): 0 routine, 1 worth a glance, 2 likely needs a fix. Null = not judged. */
+  review_priority: number | null;
+  /** Jev thinks this looks shared (12d, shared herds only). A hint: never a split. */
+  split_suggested: boolean | null;
 };
 
 const PAGE_SIZE = 50;
 type PageCursor = { date: string; id: string } | null;
 
 const TRANSACTION_COLUMNS =
-  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, category_source, notes, paid_by, paid_by_is_manual, split, reviewed_at';
+  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, category_source, notes, paid_by, paid_by_is_manual, split, reviewed_at, review_priority, split_suggested';
 
 /**
  * Keyset pagination on (date, id), NOT offset. Sync inserts rows while the user
@@ -783,10 +788,10 @@ export function useReviewCount() {
 const REVIEW_BATCH = 200;
 
 /**
- * The queue's ids, oldest first, snapshotted once per visit. Deliberately NOT
- * under ['transactions']: marking a card reviewed invalidates that key, and a
- * live queue would drop the card being swiped. Cards read their row through
- * useTransaction, which does stay live.
+ * The queue's ids, most likely fixes first (12d), else oldest first, snapshotted
+ * once per visit. Deliberately NOT under ['transactions']: marking a card
+ * reviewed invalidates that key, and a live queue would drop the card being
+ * swiped. Cards read their row through useTransaction, which does stay live.
  */
 export function useReviewQueue() {
   return useQuery({
@@ -796,7 +801,7 @@ export function useReviewQueue() {
     queryFn: async (): Promise<string[]> => {
       const { data, error } = await supabase
         .from('transactions')
-        .select('id, accounts!inner(hidden)')
+        .select('id, review_priority, accounts!inner(hidden)')
         .is('reviewed_at', null)
         .eq('pending', false)
         .eq('accounts.hidden', false)
@@ -804,7 +809,7 @@ export function useReviewQueue() {
         .order('id', { ascending: true })
         .limit(REVIEW_BATCH);
       if (error) throw error;
-      return data.map((r) => r.id);
+      return orderQueue(data);
     },
   });
 }

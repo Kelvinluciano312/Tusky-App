@@ -33,7 +33,7 @@ export function WhoPaid({
 }: {
   transaction: Pick<
     TransactionDetail,
-    'id' | 'date' | 'amount' | 'pending' | 'category_id' | 'paid_by' | 'paid_by_is_manual' | 'split' | 'accounts'
+    'id' | 'date' | 'amount' | 'pending' | 'category_id' | 'paid_by' | 'paid_by_is_manual' | 'split' | 'split_suggested' | 'accounts'
   >;
 }) {
   const { data: herd } = useHerd();
@@ -86,6 +86,14 @@ export function WhoPaid({
               .map(([id, pct]) => `${payerLabel(id, members)} ${pct}%`)
               .join(' · ')}
             {' · Edit'}
+          </AppText>
+        </Pressable>
+      ) : null}
+      {!t.split && !t.paid_by_is_manual && t.split_suggested ? (
+        // Jev's hint (12d). It opens the same sheet and writes nothing itself.
+        <Pressable onPress={() => setSplitting(true)} hitSlop={6}>
+          <AppText variant="caption" tone="brand">
+            Looks shared. Split it?
           </AppText>
         </Pressable>
       ) : null}
