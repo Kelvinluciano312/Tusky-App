@@ -64,15 +64,6 @@ export type AiAnswer = { key: string; slug: string | null; confidence?: number; 
 export type AskFn = (rows: AiRow[], categories: AiCategory[]) => Promise<AiAnswer[]>;
 
 /**
- * Whether this herd may use AI decisions. True for everyone today. AI is
- * meant to be a subscriber feature, and this is the one place that check will
- * go. Server-side on purpose: a tier limit is never enforced in the client.
- */
-export function aiAllowed(_herdId: string): boolean {
-  return true;
-}
-
-/**
  * What one answer covers: a merchant, a direction and an amount band. A row
  * with no merchant key falls back to its raw description, so two unrelated
  * blank-merchant rows never share an answer.

@@ -5,7 +5,6 @@ import {
   type AiCategory,
   type AiLevel,
   type AiRow,
-  aiAllowed,
   applyAnswers,
   buildAskList,
   cacheKeyFor,
@@ -57,10 +56,6 @@ const reply = (answers: Record<string, unknown>): JevResponse => ({ model: 'jev-
 const SURE_GAS = reply({ group: choice('transportation', 0.97), child__transportation: choice('gas', 0.96) });
 
 // --- The 12b scaffolding, now carrying confidence ---------------------------
-
-Deno.test('aiAllowed lets every herd through for now — the seam a subscription check will fill', () => {
-  assertEquals(aiAllowed('any-herd-id'), true);
-});
 
 Deno.test('the per-sync cap is 50', () => {
   assertEquals(AI_MAX_PER_SYNC, 50);
