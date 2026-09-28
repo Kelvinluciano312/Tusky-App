@@ -3,8 +3,9 @@
 Monarch-Money-style personal finance mobile app. Expo (React Native) + Supabase + Plaid Sandbox.
 Approved plan/phases: see README Status. Phases 0–13 are merged, including Phase 12's four layers
 (12a–12d, `docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md`). Phase 9's
-Track P (production) is live and waits only on Plaid's production access for OAuth banks. Next:
-monetization (`docs/product/monetization.md`).
+Track P (production) is live and waits only on Plaid's production access for OAuth banks. Now:
+Phase 14, monetization (`docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md`),
+milestones 14a (plans and limits) → 14b (lifecycle, reconnect merge) → 14c (purchases).
 
 **Plaid keys per project.** Dev stays on Sandbox, and all general testing happens there. Production
 keys live only in the production project's secrets. Phase 6's old "key switch" step is superseded by
@@ -236,8 +237,8 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   `JevAsk` that `jevCategorizer` is given. `runAiPass` in `_shared/sync.ts` never throws: a missed
   category is not worth failing a sync over. `ai_category_cache` is GLOBAL and has no `herd_id` — the
   model sees only merchant text and built-in categories, so one answer serves every herd — but a
-  private account's row is never cached. `aiAllowed()` is the single server-side seam a subscription
-  check will occupy; AI is meant to be a subscriber feature. Three things are easy to undo by
+  private account's row is never cached. Since 14a, `aiAllowed(plan)` (`_shared/plans.ts`) gates it
+  on the connector's plan. Three things are easy to undo by
   accident: `ai` is a source in `resolveCategory`, so a re-resolve does not take back an answer the
   user was already shown; the pass runs **after** the cursor advance, beside the snapshot pass,
   because a slow vendor must never cost a re-pagination; and a cache row with a null `category_id`
@@ -288,6 +289,21 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   budgeted at once. Applying calls `replace_budgets(p_lines jsonb)`, a `security invoker` function
   that swaps the herd's budget rows in one transaction. Spec:
   `docs/superpowers/specs/2026-09-26-phase-13-preset-budgets-design.md`.
+- **Plans** (Phase 14a).
+  - `plans` holds the limits: banks, history days, AI, and self or herd scope.
+  - `subscriptions` has one row per user and is written only by the service role: today the signup
+    trigger's 30-day trial, later the store webhook and the daily job.
+  - `private.effective_plan` picks the best of the user's own live row, a herd mate's live
+    `tusk_herd`, and `free`. `plan_for(user)` (service role only) adds the limits and `banks_used`;
+    `my_plan()` is the app's view of it.
+  - A bank counts against its connector's plan, or against the herd's pool under `tusk_herd`.
+    Archived banks never count.
+  - `plaid-create-link-token` and `plaid-exchange-token` refuse a new bank with
+    `402 { error: 'plan_limit', plan, max_banks }`. Update mode is never refused. Link-token sets
+    `days_requested` from the plan. Exchange-token checks again after recording the Item and removes it
+    at Plaid if a race tipped the plan over.
+  - `scripts/plan-check.sql` proves the resolver on dev. Spec:
+    `docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md`.
 - **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op
   `setMounted(false)` on a closed sheet made React drop the render-phase `setMounted(true)` on the
   next open, and no Sheet-based picker ever appeared. Keep the `else if (mounted)`.

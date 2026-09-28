@@ -43,12 +43,12 @@
 **Interfaces:**
 - Produces: tables `public.plans(id text pk, rank int, max_banks int, history_days int, ai bool, scope text)` and `public.subscriptions(user_id uuid pk, plan text, store text, status text, expires_at timestamptz, over_limit_since timestamptz, updated_at timestamptz)`; `private.effective_plan(p_user uuid) returns table(plan text, source text, expires_at timestamptz)`; `public.plan_for(p_user uuid) returns table(plan text, source text, expires_at timestamptz, max_banks int, history_days int, ai boolean, scope text, banks_used int)`; `public.my_plan()` with the same columns. `source` is one of `own | herd | trial | free`.
 
-- [ ] **Step 1: Confirm the CLI is linked to dev**
+- [x] **Step 1: Confirm the CLI is linked to dev**
 
 Run: `cat supabase/.temp/project-ref`
 Expected: `ifibrsgqdibcomzxencf`. Stop if it is anything else.
 
-- [ ] **Step 2: Write the failing check**
+- [x] **Step 2: Write the failing check**
 
 Create `scripts/plan-check.sql`. Like `payer-carry-check.sql`, it always ends in `RAISE`, so every change rolls back and the result is in the error text.
 
@@ -130,12 +130,12 @@ begin
 end $$;
 ```
 
-- [ ] **Step 3: Run it to confirm it fails**
+- [x] **Step 3: Run it to confirm it fails**
 
 Run: `npx -y supabase@2.118.0 db query --linked -f scripts/plan-check.sql`
 Expected: an error that `public.plan_for` does not exist.
 
-- [ ] **Step 4: Write the migration**
+- [x] **Step 4: Write the migration**
 
 Create `supabase/migrations/20261008120000_phase14a_plans.sql`:
 
@@ -295,17 +295,17 @@ end;
 $$;
 ```
 
-- [ ] **Step 5: Apply it to dev**
+- [x] **Step 5: Apply it to dev**
 
 Run: `npx -y supabase@2.118.0 db push`
 Expected: `Applying migration 20261008120000_phase14a_plans.sql...` then `Finished supabase db push.`
 
-- [ ] **Step 6: Run the check**
+- [x] **Step 6: Run the check**
 
 Run: `npx -y supabase@2.118.0 db query --linked -f scripts/plan-check.sql`
 Expected: the error text contains `PLAN_CHECK all PASS` and eight `ok` cases.
 
-- [ ] **Step 7: Confirm nothing leaked and the grants are right**
+- [x] **Step 7: Confirm nothing leaked and the grants are right**
 
 Run:
 ```sh
@@ -313,7 +313,7 @@ npx -y supabase@2.118.0 db query --linked -o csv "select (select count(*) from a
 ```
 Expected: `leaked_users` 0, `comps` = `users`, `auth_plan_for` f, `auth_my_plan` t, `auth_update_subs` f.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```sh
 git add supabase/migrations/20261008120000_phase14a_plans.sql scripts/plan-check.sql
@@ -330,7 +330,7 @@ git commit -m "feat(db): plans, subscriptions and the effective plan (Phase 14a)
 **Interfaces:**
 - Consumes: Task 1's tables and `public.my_plan()`.
 
-- [ ] **Step 1: Add the visibility counts**
+- [x] **Step 1: Add the visibility counts**
 
 Append to the `counts` array, before its closing `];`:
 
@@ -344,7 +344,7 @@ Append to the `counts` array, before its closing `];`:
   ],
 ```
 
-- [ ] **Step 2: Add the write probes**
+- [x] **Step 2: Add the write probes**
 
 In `block()`, directly after the line `w := w || jsonb_build_object('own_ai_switch', ai_on);`, add:
 
@@ -377,7 +377,7 @@ In `block()`, directly after the line `w := w || jsonb_build_object('own_ai_swit
   w := w || jsonb_build_object('my_plan_rows', (select count(*) from public.my_plan()));
 ```
 
-- [ ] **Step 3: Add the expectations**
+- [x] **Step 3: Add the expectations**
 
 Add to `WRITE_EXPECT`:
 
@@ -389,12 +389,12 @@ Add to `WRITE_EXPECT`:
   my_plan_rows: 1,
 ```
 
-- [ ] **Step 4: Run it, including a two-member herd**
+- [x] **Step 4: Run it, including a two-member herd**
 
 Run: `node scripts/rls-check.mjs` then `node scripts/rls-check.mjs --join 706f7db5-e7e2-4024-bfe3-de3e23954ed2 ccbd42ef-cba6-4f05-a100-a83a727255b2`
 Expected: both end with `all PASS`, and the new lines (`plans`, `subscriptions`, the five probes) show PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add scripts/rls-check.mjs
@@ -425,7 +425,7 @@ git commit -m "test(rls): plans and subscriptions are read-only to the app (Phas
   - `aiAllowed(p: PlanState): boolean`
   - `planLimitBody(p: PlanState): { error: 'plan_limit'; plan: PlanId; max_banks: number }`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `supabase/functions/_shared/plans.test.ts`:
 
@@ -490,12 +490,12 @@ Deno.test('loadPlan throws on a failed read, so callers refuse rather than allow
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/plans.test.ts`
 Expected: FAIL, module `./plans.ts` not found.
 
-- [ ] **Step 3: Write `_shared/plans.ts`**
+- [x] **Step 3: Write `_shared/plans.ts`**
 
 ```ts
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
@@ -554,12 +554,12 @@ export function planLimitBody(p: PlanState): { error: 'plan_limit'; plan: PlanId
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/plans.test.ts`
 Expected: 8 passed.
 
-- [ ] **Step 5: Move the AI gate onto the plan**
+- [x] **Step 5: Move the AI gate onto the plan**
 
 In `supabase/functions/_shared/ai.ts`, delete the `aiAllowed` stub and its doc comment (lines 66–73, from `/**\n * Whether this herd may use AI decisions.` through the closing `}`).
 
@@ -591,7 +591,7 @@ export async function jevEnabled(
 }
 ```
 
-- [ ] **Step 6: Teach the fake client `rpc`, and update the gate tests**
+- [x] **Step 6: Teach the fake client `rpc`, and update the gate tests**
 
 In `supabase/functions/_shared/sync.test.ts`, inside `fakeAdmin`, add `'rpc'` to the verb list:
 
@@ -662,12 +662,12 @@ Deno.test('jevEnabled: a failed profile read means off, never a thrown sync', as
 
 Keep `'jevEnabled: without a key nothing is read'` as it is: with no key, `calls.length` stays 0.
 
-- [ ] **Step 7: Run every Edge Function test**
+- [x] **Step 7: Run every Edge Function test**
 
 Run: `npx -y deno test --allow-env supabase/functions/_shared/`
 Expected: all pass, no failures. `grep -rn "aiAllowed" supabase/functions` shows only `plans.ts`, `plans.test.ts` and `sync.ts`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```sh
 git add supabase/functions/_shared/plans.ts supabase/functions/_shared/plans.test.ts supabase/functions/_shared/ai.ts supabase/functions/_shared/ai.test.ts supabase/functions/_shared/sync.ts supabase/functions/_shared/sync.test.ts
@@ -686,7 +686,7 @@ git commit -m "feat(sync): AI decisions follow the connector's plan (Phase 14a)"
 - Consumes: `loadPlan`, `canAddBank`, `overLimit`, `historyDays`, `planLimitBody` from `_shared/plans.ts`.
 - Produces: `402 { error: 'plan_limit', plan, max_banks }` from both functions (Task 5 reads it).
 
-- [ ] **Step 1: link-token refuses at the limit and asks for the plan's history**
+- [x] **Step 1: link-token refuses at the limit and asks for the plan's history**
 
 In `plaid-create-link-token/index.ts`, add the import:
 
@@ -724,7 +724,7 @@ In the `linkTokenCreate` call, replace the products spread with:
         }),
 ```
 
-- [ ] **Step 2: exchange-token checks before the exchange, and again after**
+- [x] **Step 2: exchange-token checks before the exchange, and again after**
 
 In `plaid-exchange-token/index.ts`, add the import:
 
@@ -757,17 +757,17 @@ After step 3 (the `plaid_tokens` upsert) and before step 4 (`syncAccounts`), add
     }
 ```
 
-- [ ] **Step 3: Type-check both functions**
+- [x] **Step 3: Type-check both functions**
 
 Run: `npx -y deno check supabase/functions/plaid-create-link-token/index.ts supabase/functions/plaid-exchange-token/index.ts`
 Expected: no errors.
 
-- [ ] **Step 4: Deploy the changed functions to dev**
+- [x] **Step 4: Deploy the changed functions to dev**
 
 Run: `npx -y supabase@2.118.0 functions deploy plaid-create-link-token plaid-exchange-token plaid-sync-transactions plaid-webhook --use-api`
 Expected: each reports `Deployed Functions … plaid-…`. (sync and webhook carry the new `jevEnabled`.)
 
-- [ ] **Step 5: Live-check the refusal as Kel Test**
+- [x] **Step 5: Live-check the refusal as Kel Test**
 
 Kel Test has no banks and, after Task 1, a comp Tusk row. Use the scratchpad `as-user.mjs` (signs in as Kel with the anon key from `apps/mobile/.env` and the dev-only password in `tusky-tooling-notes` memory; recreate it if the scratchpad is gone). Set Kel to Free, then call:
 
@@ -779,7 +779,7 @@ node <scratchpad>/as-user.mjs plaid-exchange-token '{"public_token":"public-sand
 
 Expected: both answer `402 {"error":"plan_limit","plan":"free","max_banks":0}`. The exchange refuses before Plaid is ever called (a real call with that fake token would be a 500).
 
-- [ ] **Step 6: Live-check that a plan with room opens Link, and update mode is never refused**
+- [x] **Step 6: Live-check that a plan with room opens Link, and update mode is never refused**
 
 ```sh
 npx -y supabase@2.118.0 db query --linked "update public.subscriptions set expires_at = now() + interval '30 days' where user_id = '706f7db5-e7e2-4024-bfe3-de3e23954ed2'"
@@ -793,7 +793,7 @@ Expected: the first returns `200` with a `link_token` (trial, 0 of 2). The secon
 npx -y supabase@2.118.0 db query --linked "update public.subscriptions set plan = 'tusk', store = 'comp', expires_at = null where user_id = '706f7db5-e7e2-4024-bfe3-de3e23954ed2'"
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```sh
 git add supabase/functions/plaid-create-link-token/index.ts supabase/functions/plaid-exchange-token/index.ts
@@ -814,7 +814,7 @@ git commit -m "feat(plaid): bank limits and history depth follow the plan (Phase
 - Consumes: the 402 body from Task 4.
 - Produces: `readFunctionError(err): Promise<{ status?: number; message?: string; body?: Record<string, unknown> }>`; `planLimitMessage(plan: unknown, maxBanks: unknown): string` in `lib/plans.ts`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `apps/mobile/src/lib/plans.test.ts`:
 
@@ -852,12 +852,12 @@ test('an unreadable body still gives a sentence', () => {
 });
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run (in `apps/mobile`): `npm test`
 Expected: FAIL, cannot find `./plans.ts`.
 
-- [ ] **Step 3: Write `lib/plans.ts`**
+- [x] **Step 3: Write `lib/plans.ts`**
 
 ```ts
 /**
@@ -876,12 +876,12 @@ export function planLimitMessage(plan: unknown, maxBanks: unknown): string {
 }
 ```
 
-- [ ] **Step 4: Run it to verify it passes**
+- [x] **Step 4: Run it to verify it passes**
 
 Run (in `apps/mobile`): `npm test`
 Expected: all tests pass, including the three new ones.
 
-- [ ] **Step 5: Return the body from `readFunctionError`**
+- [x] **Step 5: Return the body from `readFunctionError`**
 
 Replace `apps/mobile/src/lib/functions.ts`'s function with:
 
@@ -905,7 +905,7 @@ export async function readFunctionError(
 
 Keep the file's existing doc comment above it.
 
-- [ ] **Step 6: Show the message in the connect flow**
+- [x] **Step 6: Show the message in the connect flow**
 
 In `apps/mobile/src/lib/plaid.ts`, add `import { planLimitMessage } from './plans';` beside the `./functions` import. Replace the link-token check:
 
@@ -939,12 +939,12 @@ In the exchange error handling, after the `409 duplicate` branch and before the 
 
 and change that `readFunctionError` destructuring to `const { status, message, body } = await readFunctionError(exchangeError);`.
 
-- [ ] **Step 7: Type-check and lint**
+- [x] **Step 7: Type-check and lint**
 
 Run (in `apps/mobile`): `npm run typecheck && npx expo lint`
 Expected: no errors.
 
-- [ ] **Step 8: One emulator pass**
+- [x] **Step 8: One emulator pass**
 
 With Metro running and the test user signed in: set the test user to an expired trial, tap **Connect a bank** in Settings, and read the error with `node scripts/emu.mjs ui`. Then restore the comp row.
 
@@ -957,7 +957,7 @@ npx -y supabase@2.118.0 db query --linked "update public.subscriptions set plan 
 
 Expected: the `grep` prints the "Your free trial has ended…" line. The label to tap may differ; take it from `emu ui`.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```sh
 git add apps/mobile/src/lib/functions.ts apps/mobile/src/lib/plans.ts apps/mobile/src/lib/plans.test.ts apps/mobile/src/lib/plaid.ts
@@ -973,7 +973,7 @@ git commit -m "feat(app): say why a bank was refused for the plan (Phase 14a)"
 - Modify: `docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md` (Testing: plan resolution is proved in SQL)
 - Create: `docs/superpowers/plans/2026-09-28-phase-14a-handoff.md`
 
-- [ ] **Step 1: CLAUDE.md**
+- [x] **Step 1: CLAUDE.md**
 
 In the "The AI fallback (Phase 12b…)" bullet, replace the sentence beginning ``aiAllowed()` is the single server-side seam`` with: ``Since 14a, `aiAllowed(plan)` (`_shared/plans.ts`) gates it on the connector's plan.``
 
@@ -993,15 +993,15 @@ Add a Conventions bullet after "Preset budgets (Phase 13)":
   Spec: `docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md`.
 ```
 
-- [ ] **Step 2: Spec note**
+- [x] **Step 2: Spec note**
 
 In the spec's Testing section, replace "the plan resolution and the bank-count rules (pure, mirrored in TypeScript for tests)" with "the bank-count and limit helpers (`_shared/plans.ts`); the plan resolution itself is proved in SQL by `scripts/plan-check.sql`, so it is never mirrored".
 
-- [ ] **Step 3: Write the handoff**
+- [x] **Step 3: Write the handoff**
 
 Create `docs/superpowers/plans/2026-09-28-phase-14a-handoff.md` with: what shipped (Tasks 1–5), the dev state (migration applied, four functions deployed, every existing user comped Tusk), the verification actually run with its results (plan-check, rls-check both runs, deno tests, npm test, the Kel live checks, the emulator pass), and what waits on Pedro: the production push (`db push --project-ref awiwcgrisyzimzxgddxu` plus the four functions). Production's comp rows come from the same migration, so real users keep their banks.
 
-- [ ] **Step 4: Run the full gate once more**
+- [x] **Step 4: Run the full gate once more**
 
 ```sh
 npx -y deno test --allow-env supabase/functions/_shared/
@@ -1012,7 +1012,7 @@ cd apps/mobile && npm test && npm run typecheck && npx expo lint
 
 Expected: all pass; plan-check reports `all PASS`; rls-check ends `all PASS`.
 
-- [ ] **Step 5: Commit, push, open the PR**
+- [x] **Step 5: Commit, push, open the PR**
 
 ```sh
 git add CLAUDE.md docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md docs/superpowers/plans/2026-09-28-phase-14a-handoff.md

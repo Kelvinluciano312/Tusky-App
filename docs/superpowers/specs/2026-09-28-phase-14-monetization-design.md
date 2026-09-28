@@ -233,8 +233,8 @@ One plan, handoff and PR per milestone, as usual. Pedro merges.
 
 ## Testing
 
-- **Unit tests:** the plan resolution and the bank-count rules (pure, mirrored in TypeScript for
-  tests), the merge matcher (`_shared/merge.ts`), and the webhook's event-to-row mapping, with a fake
+- **Unit tests:** the bank-count and limit helpers (`_shared/plans.ts`); the plan resolution itself
+  is proved in SQL by `scripts/plan-check.sql`, so it is never mirrored. Also the merge matcher (`_shared/merge.ts`), and the webhook's event-to-row mapping, with a fake
   RevenueCat client.
 - **`rls-check.mjs`:** a user reads only their own subscription and herd mates' `tusk_herd`, cannot
   write any row, and cannot write `plans`.
