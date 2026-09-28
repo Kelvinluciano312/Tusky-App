@@ -47,13 +47,13 @@ Branch `pedro-14b`. Dev only; production is untouched.
   and kept Chase. A third run changed nothing and closed the window.
 - `node scripts/rls-check.mjs`: all PASS.
 
-## Known limits (deferred)
+## Fixed after review
 
-- `mergeReconnected` reads every row of a paired new account on every sync, even once the overlap is gone.
-  This matters only for users who reconnected a kept bank. It could first read the new account's earliest
-  date, and skip when nothing kept is dated on or after it.
-- Home's pull-to-refresh does not refetch `['plan']`. The banner updates when the app returns to the
-  foreground (focusManager), after a bank change, or after a reload.
+- `mergeReconnected` first reads the new account's earliest date, and it reads the new account in full only
+  when a kept row is dated on or after it. Once the overlap is merged, a sync costs one small query per
+  paired account. Tested with a fake client (`merge.test.ts`); redeployed to dev.
+- Home's pull-to-refresh now refetches `['plan']`. Checked on the emulator: a trial set to end in 2 days
+  showed "Your trial ends in 3 days" after a pull, without a reload.
 
 ## Waits on Pedro (production)
 

@@ -21,6 +21,7 @@ import {
   useAccounts,
   useCategories,
   useNetWorthHistory,
+  usePlan,
   useProfile,
   useRecurringStreams,
   useReviewCount,
@@ -45,6 +46,8 @@ export default function HomeScreen() {
   const settle = useSettleUp();
   const { data: accounts = [], isRefetching, refetch } = useAccounts();
   const { data: profile } = useProfile(session?.user.id);
+  // PlanBanner reads the same ['plan'] query; refetched here so a pull shows what the daily check did.
+  const { refetch: refetchPlan } = usePlan(session?.user.id);
   const greetName = profile ? firstName(profile.display_name) : '';
 
   const visibleAccounts = accounts.filter((a) => !a.hidden);
@@ -84,6 +87,7 @@ export default function HomeScreen() {
             refetchHistory();
             refetchStreams();
             refetchReview();
+            refetchPlan();
           }}
           tintColor={colors.textDim}
         />

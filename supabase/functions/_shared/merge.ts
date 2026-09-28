@@ -131,10 +131,16 @@ export async function mergeReconnected(
 
   let replaced = 0;
   for (const pair of pairs) {
+    // The new account's earliest row first: once no kept row is dated on or
+    // after it, the overlap is merged, and the full read below is skipped.
+    const { data: first, error: firstError } = await admin
+      .from('transactions').select('date').eq('account_id', pair.fresh)
+      .order('date').limit(1).maybeSingle();
+    if (firstError) throw firstError;
+    if (!first) continue;
+    const oldRows = await allRows(admin, pair.archived, first.date as string);
+    if (oldRows.length === 0) continue;
     const newRows = await allRows(admin, pair.fresh);
-    if (newRows.length === 0) continue;
-    const start = newRows.reduce((m, r) => (r.date < m ? r.date : m), newRows[0].date);
-    const oldRows = await allRows(admin, pair.archived, start);
     const plan = planMerge(oldRows, newRows, members);
     for (const u of plan.updates) {
       const { error } = await admin.from('transactions').update(u.patch).eq('id', u.id);
