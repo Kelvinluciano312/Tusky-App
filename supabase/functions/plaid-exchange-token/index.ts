@@ -1,6 +1,7 @@
 import { syncAccounts } from '../_shared/accounts.ts';
 import { isDuplicateLink, type LinkedAccount } from '../_shared/connections.ts';
 import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, getPlaidClient, jsonResponse } from '../_shared/lib.ts';
+import { canAddBank, loadPlan, overLimit, planLimitBody } from '../_shared/plans.ts';
 
 type ExchangeBody = {
   public_token: string;
@@ -41,6 +42,13 @@ Deno.serve(async (req) => {
     //    joint bank would be billed twice. The 409 never says whose it is.
     //    Without an institution_id there is nothing to compare.
     const { herd_id: herdId } = await getCallerHerd(admin, user.id);
+
+    // The plan check that counts (Phase 14): the Item, and Plaid's bill, is
+    // created below. Before the exchange, so a refused bank never gets a token.
+    // A failed read throws into the catch below: 500, never an unchecked bank.
+    const plan = await loadPlan(admin, user.id);
+    if (!canAddBank(plan)) return jsonResponse(planLimitBody(plan), 402);
+
     if (body.institution_id) {
       const { data: existing, error: existingError } = await admin
         .from('accounts')
@@ -87,6 +95,17 @@ Deno.serve(async (req) => {
       .from('plaid_tokens')
       .upsert({ item_id: item.id, access_token: exchange.access_token }, { onConflict: 'item_id' });
     if (tokenError) throw tokenError;
+
+    // 3b. Two links at once can both pass the check above. Count again now the
+    //     Item exists; if this one tipped the plan over, remove it at Plaid (the
+    //     only thing that stops the bill) and forget it.
+    const after = await loadPlan(admin, user.id);
+    if (overLimit(after)) {
+      await plaid.itemRemove({ access_token: exchange.access_token });
+      await admin.from('plaid_items').delete().eq('id', item.id);
+      console.log(`over plan limit after link, removed: user ${user.id}, item ${item.id}`);
+      return jsonResponse(planLimitBody(after), 402);
+    }
 
     // 4. Pull accounts for the new item. Shared with syncItem, which runs the
     //    same refresh on every sync so balances stop being frozen at link time.
