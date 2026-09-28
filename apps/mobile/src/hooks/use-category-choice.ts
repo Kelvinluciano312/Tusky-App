@@ -1,5 +1,6 @@
 import { Alert } from 'react-native';
 
+import { useCrowdPrompt } from '@/hooks/use-crowd-prompt';
 import { type Category, type Transaction, useSetMerchantRule, useSetTransactionCategory } from '@/lib/queries';
 
 type Target = Pick<Transaction, 'id' | 'category_id' | 'category_is_manual' | 'merchant_key'>;
@@ -11,10 +12,12 @@ type Target = Pick<Transaction, 'id' | 'category_id' | 'category_is_manual' | 'm
 export function useCategoryChoice() {
   const setCategory = useSetTransactionCategory();
   const setRule = useSetMerchantRule();
+  const noteFix = useCrowdPrompt();
 
   return (t: Target, name: string, next: Category) => {
     if (next.id === t.category_id) return;
-    const once = () => setCategory.mutate({ transactionId: t.id, categoryId: next.id });
+    const once = () =>
+      setCategory.mutate({ transactionId: t.id, categoryId: next.id }, { onSuccess: noteFix });
     // A name with no letters has an empty key and can take no rule.
     const merchantKey = t.merchant_key || null;
     if (!merchantKey) {
