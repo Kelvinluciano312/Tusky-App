@@ -134,6 +134,13 @@ const counts = [
     `select count(distinct s.date) from public.balance_snapshots s join public.accounts a on a.id = s.account_id where s.account_id = any (v) and not a.hidden and a.in_totals`,
     `select count(*) from public.daily_net_worth`,
   ],
+  ['plans', `select count(*) from public.plans`, `select count(*) from public.plans`],
+  [
+    'subscriptions',
+    // Your own row, and a herd mate's Tusk Herd.
+    `select count(*) from public.subscriptions s where s.user_id = u or (s.plan = 'tusk_herd' and exists (select 1 from public.herd_members m where m.herd_id = h and m.user_id = s.user_id))`,
+    `select count(*) from public.subscriptions`,
+  ],
 ];
 
 function block(userId) {
@@ -366,6 +373,32 @@ begin
   update public.profiles set ai_categorize = true where user_id = u;
   select ai_categorize into ai_on from public.profiles where user_id = u;
   w := w || jsonb_build_object('own_ai_switch', ai_on);
+  -- Phase 14a: plans and subscriptions are server-written; my_plan is mine.
+  begin
+    update public.subscriptions set plan = 'tusk_herd' where user_id = u;
+    w := w || jsonb_build_object('update_own_subscription', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('update_own_subscription', 'denied');
+  end;
+  begin
+    insert into public.subscriptions (user_id, plan, store) values (gen_random_uuid(), 'tusk', 'comp');
+    w := w || jsonb_build_object('insert_subscription', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('insert_subscription', 'denied');
+  end;
+  begin
+    update public.plans set max_banks = 99 where id = 'free';
+    w := w || jsonb_build_object('update_plans', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('update_plans', 'denied');
+  end;
+  begin
+    perform 1 from public.plan_for(u);
+    w := w || jsonb_build_object('call_plan_for', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('call_plan_for', 'denied');
+  end;
+  w := w || jsonb_build_object('my_plan_rows', (select count(*) from public.my_plan()));
   if mate is not null then
     update public.profiles set ai_categorize = true where user_id = mate;
     get diagnostics n = row_count;
@@ -514,6 +547,11 @@ const WRITE_EXPECT = {
   crowd_regrant: true,
   crowd_withdraw_forgets: true,
   fix_without_pepper: 'allowed',
+  update_own_subscription: 'denied',
+  insert_subscription: 'denied',
+  update_plans: 'denied',
+  call_plan_for: 'denied',
+  my_plan_rows: 1,
 };
 
 let failures = 0;
