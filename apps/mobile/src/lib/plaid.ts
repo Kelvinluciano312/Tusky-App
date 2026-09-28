@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { createPlaidLinkSession } from 'react-native-plaid-link-sdk';
 
 import { readFunctionError } from '@/lib/functions';
+import { planLimitMessage } from '@/lib/plans';
 import { HIDDEN_DEPENDENT_KEYS } from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
 
@@ -33,6 +34,12 @@ export function useConnectBank() {
       const { data, error: fnError } = await supabase.functions.invoke('plaid-create-link-token', {
         body: itemId ? { item_id: itemId } : {},
       });
+      if (fnError) {
+        const { status, message, body } = await readFunctionError(fnError);
+        if (status === 402 && message === 'plan_limit') {
+          throw new Error(planLimitMessage(body?.plan, body?.max_banks));
+        }
+      }
       if (fnError || !data?.link_token) {
         throw new Error('Could not start the bank connection. Try again in a moment.');
       }
@@ -54,11 +61,14 @@ export function useConnectBank() {
                 },
               });
               if (exchangeError) {
-                const { status, message } = await readFunctionError(exchangeError);
+                const { status, message, body } = await readFunctionError(exchangeError);
                 if (status === 409 && message === 'duplicate') {
                   throw new Error(
                     `${institution?.name ?? 'This bank'} is already connected in your herd. If it stopped syncing, whoever connected it can use Reconnect in Settings.`,
                   );
+                }
+                if (status === 402 && message === 'plan_limit') {
+                  throw new Error(planLimitMessage(body?.plan, body?.max_banks));
                 }
                 throw new Error('The bank responded, but saving the connection failed.');
               }
