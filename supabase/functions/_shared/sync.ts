@@ -20,6 +20,7 @@ import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from 
 import { communityAnswers, communityCategory, crowdMerchants, type Tally } from './crowd.ts';
 import { askJev, hasJevKey, JEV_CONCURRENCY, JEV_PASS_BUDGET_MS, type JevAsk, mapLimit } from './jev.ts';
 import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
+import { mergeReconnected } from './merge.ts';
 import { aiAllowed, loadPlan } from './plans.ts';
 import {
   ignoredCategoryIds,
@@ -682,6 +683,16 @@ export async function syncItem(
       .in('status', ['active', 'login_required']);
 
     result = { ...base, added: added.length, modified: modified.length, removed: removed.length };
+
+    // 14b: a reconnected bank takes over its kept history. After the cursor and
+    // `result`, like the snapshot: a failed merge must not fail a good sync, and
+    // it runs again next sync, since Plaid delivers history in stages.
+    try {
+      const replaced = await mergeReconnected(admin, item);
+      if (replaced > 0) console.log(`item ${item.id}: merged ${replaced} kept rows into the reconnected bank`);
+    } catch (err) {
+      console.warn(`reconnect merge failed for item ${item.id}: ${describeError(err)}`);
+    }
 
     // 12b/12d: Jev's decisions. After the cursor and after `result` is latched,
     // for the same two reasons the snapshot below is: it calls a third party,
