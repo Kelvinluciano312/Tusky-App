@@ -3,9 +3,17 @@
 Monarch-Money-style personal finance mobile app. Expo (React Native) + Supabase + Plaid Sandbox.
 Approved plan/phases: see README Status (Phases 0–6 done; Phase 6's final step, the Plaid key switch, waits
 on Pedro's go-ahead — see its spec, `docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md`).
-Phase 7 (categories, 7a/7b/7c) is merged. Now: Phase 8 — transaction review —
-`docs/superpowers/specs/2026-09-25-phase-8-transaction-review-design.md`, built. Latest handoff:
-`docs/superpowers/plans/2026-09-25-phase-8-handoff.md`; specs in `docs/superpowers/specs/`.
+Phases 7 (categories) and 8 (transaction review) are merged. Now: Phase 9 — names, herds (shared
+households), who paid, production project — `docs/superpowers/specs/2026-09-25-phase-9-herds-design.md`,
+milestones 9a → 9d plus Track P. Latest handoff: `docs/superpowers/plans/2026-09-28-phase-9d-handoff.md`.
+Phase 10 (review deck, accounts by type) and Phase 11 (shared money:
+`docs/superpowers/specs/2026-09-26-phase-11-shared-money-design.md`) are merged. Now: Phase 12, the
+categorization engine (12a learning from fixes, 12b AI fallback, 12c crowd labels):
+`docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md`. Preset budgets (Phase 13) follow 12a.
+
+**Production project** (real banks): `awiwcgrisyzimzxgddxu`. Read `docs/ops/production.md` before
+touching it. The CLI stays linked to dev; production commands name `--project-ref`, and each one waits
+for Pedro's go-ahead.
 
 ## Layout
 
@@ -25,7 +33,12 @@ npx supabase db push
 npx supabase functions deploy <name> --use-api   # omit <name> to deploy all; reads config.toml
 npx supabase secrets set --env-file supabase/functions/.env   # NOT YET: the file holds the pending new Plaid keys (see Phase 6 spec, final step)
 npx -y deno test supabase/functions/_shared/    # Edge Function unit tests; Deno need not be installed
+node scripts/cat-quality.mjs                    # dev: each category source's correction rate
 ```
+
+**Review queue for demos:** `node scripts/seed-review.mjs [count]` puts the test user's latest posted
+transactions (25 by default) back in the review queue. It works on dev only, and refuses to run if the
+CLI is linked to any other project.
 
 **Driving the emulator (agents):** use `node scripts/emu.mjs` — `ui` prints visible labels with tap
 centers as text, `tap "<label>"` taps by text, `logs` shows JS errors/crashes since the last call.
@@ -37,6 +50,7 @@ question. JS edits hot-reload via Metro — never rebuild for them.
 - Start Metro with `$env:REACT_NATIVE_PACKAGER_HOSTNAME='100.108.96.124'; npx expo start --dev-client`.
 - The phone then opens `http://100.108.96.124:8081`. When wireless adb is up, `adb shell am start -a android.intent.action.VIEW -d "exp+tusky://expo-development-client/?url=http%3A%2F%2F100.108.96.124%3A8081" com.tusky.app` opens it for him.
 - A white screen with no bundle request in Metro means the phone cannot reach the PC: check the firewall and Tailscale.
+- **A Metro that outlived its Claude session hangs.** It still answers `/status`, but bundle requests stall, so the phone shows a white screen. After any new session, kill whatever listens on 8081 and start Metro fresh. Test with a real bundle fetch (`/node_modules/expo-router/entry.bundle?platform=android&dev=true`), not `/status`.
 - A native rebuild needs wireless adb, which works only on the same Wi-Fi: `npx expo run:android --device Pixel_10_Pro`. Expo matches the model name, not the adb serial.
 
 ## Hard-won gotchas
@@ -101,15 +115,76 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
 ## Conventions
 
 - All Plaid calls go through Edge Functions; the app never sees access tokens (`plaid_tokens` has zero client grants/policies).
-- New tables: enable RLS, add `(select auth.uid()) = user_id` policies, then grant `authenticated`
+- **Herds own the data** (Phase 9b). Every user belongs to exactly one herd (`herd_members.user_id`
+  is unique), and a personal one is created at signup by `handle_new_user`.
+  - **Access.** `herd_id` is the access boundary on every owned table. Policies use
+    `herd_id = (select private.my_herd_id())`. Account-bearing tables also require
+    `account_id = any ((select private.my_account_ids())::uuid[])`, which is what hides another
+    member's private account. The `::uuid[]` cast is required: without it, `= any ((select …))` is
+    read as a subquery and fails with `uuid = uuid[]`.
+  - **`user_id` on Plaid data** (items, accounts, transactions, snapshots, streams) means "connected
+    by". It decides who may reconnect or disconnect a bank and which banks leave with a member, never
+    who may read a row.
+  - **Config tables** (budgets, category_overrides, merchant_rules, custom categories) have no
+    `user_id`. A built-in category is `herd_id is null`. Client inserts get
+    `herd_id default private.my_herd_id()`.
+  - **Composite keys.** `(item_id, herd_id)` and `(account_id, herd_id)` cascade on update, so moving a
+    bank to another herd is one `update plaid_items set herd_id`. They are the ONLY foreign keys to
+    their parent: a second one makes PostgREST refuse embeds with PGRST201.
+  - **Triggers.** `fill_herd_id` fills `herd_id` on Plaid inserts, so server code never names it.
+    `category_in_herd` refuses a category from another herd, which an FK check would allow because it
+    bypasses RLS.
+  - **Edge Functions** scope with `getCallerHerd` (`_shared/lib.ts`).
+  - **Membership (9c).** Every membership change goes through the `herd` function (logic in
+    `_shared/herd.ts`), which calls `merge_into_herd` (join) and `leave_herd` (leave and remove). Only
+    service_role may execute them, so each runs in one transaction. A join moves everything the joiner
+    has; where both sides set the same override or rule, or the herd already has budgets, the herd wins.
+    A leaver takes the banks they connected; the herd keeps config, and custom categories on the leaver's
+    rows fall back to their group first. Invites are single-use 8-character Crockford codes, 7 days,
+    max 6 members. `accounts.is_private` is changed only by the account's connector
+    (`accounts_private_by_connector` trigger). Herd mates see each other's profiles. The app resets its
+    whole query cache after a join, leave or removal.
+  - **Who paid (9d).** `accounts.owner_id` (null = Joint) defaults to the connector on insert, and any
+    member may change it. `transactions.paid_by` (null = Joint) is set by the database, never by sync's
+    payload: `ab_transactions_paid_by` copies the account's owner onto each new row, and
+    `accounts_owner_reapply` re-applies a new owner to the rows where `paid_by_is_manual` is false. An
+    owner or payer must be a member of the row's herd (`private.is_herd_member`, which triggers call as
+    the app's user; that is why it lives in `private`). Sync carries a hand-picked payer from pending to
+    posted (`carryForward`), except for a payer who has since left. Leaving hands the leaver's banks to
+    them as owner and payer, and makes accounts they owned on others' banks Joint. The app shows who-paid
+    UI only in herds of two or more.
+  - **Shared money (11).** Since Phase 11, `paid_by` means "whose expense", and the account's owner is who
+    paid. The app gates every shared feature on `isShared(herd)` (`lib/herd.ts`). `monthly_person_totals`
+    is `monthly_category_totals` split by `paid_by`. A payer or owner change must refresh `['transactions']`
+    and `['reports']`, because the feed filters by payer and Reports totals by person.
+  - **Splits and settle-up (11b).**
+    - A debt exists where "for" differs from who paid: `paid_by` or a `split` against the account's owner.
+    - `transactions.split` (`{ user_id: percent }`) is validated by `ac_transactions_split`: two or more
+      members, totalling 100. Setting a split nulls `paid_by`; choosing a person clears the split.
+    - `carryForward` moves a split from pending to posted, like a payer.
+    - `shared_lines` lists every row that can create a debt; private accounts are left out, so every member
+      sees the same balance. `settlements` holds recorded payments.
+    - The math is `lib/settle.ts`, kept in whole cents per purchase so the balance squares exactly.
+    - Anything that can move a balance must invalidate `['settle']`: payer, split, owner, hidden, private,
+      category.
+  - **The app hides connector-only actions**: reconnect, disconnect, the Private switch and the sandbox
+    tools show only when `item.user_id` is the signed-in user.
+  - **`node scripts/rls-check.mjs`** proves every member sees exactly their herd minus others' private
+    accounts, and that forbidden writes fail. It runs as each user inside a rolled-back block, with no
+    credentials. Run it after any migration that touches RLS, grants or views.
+    `--join <joiner> <host>` and `--join-leave <joiner> <host>` first rehearse a membership change in
+    the same rolled-back block (the joiner's first account made private), so two-member visibility is
+    tested without committing anything.
+- New tables: enable RLS, add herd policies (above), then grant `authenticated`
   exactly what the app uses — **a new table is unreachable from the app until you do**. Since Phase 6
   (`20260924120100_phase6_revoke_default_grants.sql`) `postgres`'s default privileges in `public` give
   anon and authenticated nothing (service_role still gets everything), and every older table was revoked
   and re-granted to match what the app uses. Before that, the defaults gave anon and authenticated EVERY
   privilege, and a column-scoped `grant update (col)` restricted nothing. Check with
   `has_column_privilege('authenticated', '<table>', '<col>', 'UPDATE')`. A table-level `revoke` also
-  drops that table's column grants, so re-issue them afterwards. Functions still get `EXECUTE` from
-  PUBLIC by Postgres default: revisit that when adding the first RPC.
+  drops that table's column grants, so re-issue them afterwards. Since 9a, functions `postgres`
+  creates in `public` no longer get `EXECUTE` from PUBLIC; grant it per function when one is meant to
+  be called.
 - **Disconnecting a bank** (`plaid-disconnect-item`, logic in `_shared/connections.ts`) calls
   `/item/remove` FIRST, and changes local state only if that succeeds or returns `ITEM_NOT_FOUND`. The
   token is the only way to stop Plaid's billing, so it is never deleted after a transient error. "Keep
@@ -123,30 +198,76 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   live Item. Archived Items never block a relink.
 - **Categories are two levels** (Phase 7a). The 16 original rows are the groups (`parent_id` null) and
   keep their ids; 61 children hang off them. `categories_enforce_tree` allows a parent only if it is a
-  built-in group, and copies the group's `kind` onto the child. Sync resolves **manual > rule (7c) >
+  built-in group, and copies the group's `kind` onto the child. Sync resolves **manual > rule (7c) > learned (12a) > community (12c) > ai (12b) >
   Plaid detailed (`plaid_detailed_map`) > Plaid primary (`plaid_category_map`, whose entries are
-  groups) > uncategorized**: `resolveCategoryId` in `_shared/categorize.ts`, with `pickCategoryId` on
+  groups) > uncategorized**: `resolveCategory` in `_shared/categorize.ts`, with `pickCategory` on
   top. `credit_card_payment` is transfer-kind, so it leaves spending and cash flow, but
   `ignoredCategoryIds` keeps it in recurring detection: a card bill still has a due date. Rollups go
   through `lib/categories.ts` (`groupIdOf`, `rollupByGroup`), and a group and its children are never
   budgeted at once (`budgetsReplacedBy`). `transactions.merchant_key` is a generated column, the SQL
   twin of `normalizeMerchant`. Change both together, or rules and renames (7c) stop matching.
 - **Custom categories and overrides** (Phase 7b). The app reads `user_categories`, never `categories`
-  directly. That view applies this user's `category_overrides` (name, colour, hidden) to the built-ins and
-  adds their own custom rows. Overrides are for built-ins only (a trigger refuses custom rows). A custom
+  directly. That view applies the herd's `category_overrides` (name, colour, hidden) to the built-ins and
+  adds the herd's custom rows. Overrides are for built-ins only (a trigger refuses custom rows). A custom
   category is a child of a built-in group. The client may `insert (name, parent_id, icon, color)` and
   `update (name, icon, color)`, and nothing else. `parent_id` is insert-only because
   `categories_enforce_tree` cannot stop a group being made its own parent. Clients cannot delete: the
   `delete-category` function moves the category's transactions (manual flags kept), streams and budget
-  first. Sync loads only built-in categories into its shared context, and adds the Item owner's custom
+  first. Sync loads only built-in categories into its shared context, and adds the Item's herd's custom
   transfer categories per Item before recurring detection.
-- **Merchant rules** (Phase 7c). `merchant_rules` (one per user and `merchant_key`) holds a category, a
+- **Merchant rules** (Phase 7c). `merchant_rules` (one per herd and `merchant_key`) holds a category, a
   display name, or both. Clients only read it; every write goes through `set-merchant-rule`, which
-  re-resolves the merchant's non-manual rows with `resolveCategoryId` whenever the category part
-  changes, so removing a rule puts Plaid's category back. Sync loads the owner's rules per Item and passes
+  re-resolves the merchant's non-manual rows with `resolveCategory` whenever the category part
+  changes, so removing a rule puts back what learning (12a) or Plaid says. Sync loads the Item's herd's rules and passes
   `rule:` to the same resolver. Renames apply only when data is read (`lib/merchants.ts`). Rows read the
   rules themselves (`useMerchantRules`), so every surface shows the same name. `delete-category` moves
   rules to the group before its delete: the rules FK has no cascade, on purpose.
+- **Learning from fixes** (Phase 12a). `transactions.category_source` records where each category came
+  from (`manual | rule | learned | community | ai | plaid | fallback`), and `corrected_from` which
+  source a hand-picked category replaced. The `ad_transactions_category_source` trigger stamps both;
+  the client never writes them. Labels are a merchant's manual rows plus accepted guesses
+  (`_shared/learn.ts`), loaded by `loadLabels`; a member's private-account labels teach only their
+  own rows. Sync, `set-merchant-rule` and `apply-learning` all re-resolve through `planReresolve`,
+  and `apply-learning` touches only unreviewed rows. `node scripts/cat-quality.mjs` prints each
+  source's correction rate. Spec: `docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md`.
+- **The AI fallback** (Phase 12b). Opt-in per user (`profiles.ai_categorize`, off by default) and
+  only over rows nothing else could settle. `_shared/ai.ts` is pure except `askClaude`
+  (`claude-haiku-4-5`, `messages.parse` with a Zod output format; no `effort`, no thinking —
+  Haiku 4.5 rejects the first and does not need the second). `runAiPass` in `_shared/sync.ts`
+  never throws: a missed category is not worth failing a sync over. `ai_category_cache` is GLOBAL
+  and has no `herd_id` — the model sees only merchant text and built-in categories, so one answer
+  serves every herd — but a private account's row is never cached. `aiAllowed()` is the single
+  server-side seam a subscription check will occupy; AI is meant to be a subscriber feature.
+  Needs the `ANTHROPIC_API_KEY` secret, **scoped to a workspace** (an org-level key is refused with
+  400 `invalid_request_error`, as is an account with no credit); without any key the pass is skipped
+  silently. Three things are easy to undo by accident: `ai` is a source in `resolveCategory`, so a
+  re-resolve does not take back an answer the user was already shown; the pass runs **after** the
+  cursor advance, beside the snapshot pass, because a slow model must never cost a re-pagination;
+  and a cache row with a null `category_id` means "asked and declined", which is what stops us
+  paying to ask about the same unplaceable merchant on every sync.
+- **Crowd labels** (Phase 12c). Contributions are written only by the `security definer` trigger
+  `ae_transactions_crowd_label`, for the acting user (`auth.uid()`) with active `crowd_labels` consent
+  — never by a service-role rule, sync, or `apply-learning` write. `community_labels` has no user,
+  herd or account column and no client grants at all: the pool is server-only. `contributor` is an
+  HMAC of the user's id under the Vault secret `label_pepper`, so one person casts one vote per
+  merchant/direction/band and withdrawal can find and delete their own rows. Serving needs at least 3
+  distinct contributors and at least 70% agreement (`communityAnswers` in `_shared/crowd.ts`); below
+  that, nothing is served, so one person's label never leaks through another user's category.
+  `private.amount_band` is the SQL twin of `amountBand`, the same bands 12b's AI cache key uses. A
+  community answer is sticky like an AI one: `community` is a source in `resolveCategory`, so a later
+  re-resolve does not take back an answer already shown. Consent (`consents`, kind `crowd_labels`) is
+  written only through `set_consent` — never a direct client write — and withdrawing deletes that
+  user's contributions.
+- **Preset budgets** (Phase 13). `lib/presets.ts` is pure: it takes the last 3 full months of
+  `monthly_category_totals`, takes a median per line, and caps each bucket by a share of the median
+  income (whole dollars, so pennies of income read as none). Built-in group slugs decide needs from
+  wants, and `food_and_dining` is budgeted as its categories so a group and its children are never
+  budgeted at once. Applying calls `replace_budgets(p_lines jsonb)`, a `security invoker` function
+  that swaps the herd's budget rows in one transaction. Spec:
+  `docs/superpowers/specs/2026-09-26-phase-13-preset-budgets-design.md`.
+- **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op
+  `setMounted(false)` on a closed sheet made React drop the render-phase `setMounted(true)` on the
+  next open, and no Sheet-based picker ever appeared. Keep the `else if (mounted)`.
 - **Bottom sheets need `KeyboardAvoidingView behavior="padding"` on Android too.** A `Modal` is its own
   window: the activity's resize for the keyboard never reaches it, and a text field there has the whole
   sheet covered by the keyboard (`budget-sheet.tsx` and `category-sheet.tsx` are the reference).
@@ -160,6 +281,10 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   the union of the rows' keys, so a key on only some rows nulls it on the rest. `carryForward`
   (`_shared/review.ts`) moves a pending row's memo and manual category onto the posted row that replaces
   it. The `/review` queue is a per-visit id snapshot kept outside `['transactions']` on purpose.
+  Since Phase 10 it is a deck of cards:
+  - Swipe right to accept, left to skip to the back; Undo reverses the last move.
+  - The deck logic is pure (`deckReducer`/`topCard` in `lib/review.ts`); the gestures use Reanimated 4 and Gesture Handler (`GestureHandlerRootView` wraps the root layout).
+  - Write shared values with `.set()` and read them with `.get()`, never `.value`: the React Compiler lint rejects `.value` writes.
 - Recurring streams are derived: detection (`_shared/recurring.ts`) runs at the end of every sync and
   owns every column except `dismissed`, which only the user writes. Never add `dismissed` to its
   upsert payload.
@@ -199,3 +324,11 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   AI usage, never transaction pulls. Any tier limit is enforced in an Edge Function, never the client,
   for the same reason `plaid_tokens` is server-only.
 - Sandbox login inside Plaid Link: `user_good` / `pass_good`. Test app user: `ph.leao2099+tuskytest@gmail.com` (email confirmation is ON for new signups; confirm via admin API or dashboard).
+  Second test user for herd tests (9c): "Kel Test", `ph.leao2099+tuskyherd@gmail.com`
+  (`706f7db5-…`), no banks, alone in its own herd.
+- **The auth session lives in the keystore, not AsyncStorage.** `lib/secure-storage.ts` wraps
+  `expo-secure-store` for supabase-js: it holds a long-lived refresh token, and AsyncStorage is an
+  unencrypted file. Android's keystore rejects values over ~2 KB, so a value is chunked behind a
+  manifest; a missing chunk reads as signed out, and keystore errors never throw. Old AsyncStorage
+  sessions migrate on first read. Never pass `storage: AsyncStorage` to `createClient` again.
+  See `docs/ops/security-review-2026-09-27.md`.

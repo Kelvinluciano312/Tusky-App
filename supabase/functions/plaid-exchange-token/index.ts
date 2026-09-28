@@ -1,6 +1,6 @@
 import { syncAccounts } from '../_shared/accounts.ts';
 import { isDuplicateLink, type LinkedAccount } from '../_shared/connections.ts';
-import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, jsonResponse } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, getPlaidClient, jsonResponse } from '../_shared/lib.ts';
 
 type ExchangeBody = {
   public_token: string;
@@ -37,12 +37,15 @@ Deno.serve(async (req) => {
     // 0. Refuse a duplicate BEFORE the exchange, as Plaid advises: no access
     //    token is ever created, so nothing is billed. Only live Items count —
     //    an archived one must not lock the user out of re-adding that bank.
+    //    Herd-wide, private accounts included: a second member linking the same
+    //    joint bank would be billed twice. The 409 never says whose it is.
     //    Without an institution_id there is nothing to compare.
+    const { herd_id: herdId } = await getCallerHerd(admin, user.id);
     if (body.institution_id) {
       const { data: existing, error: existingError } = await admin
         .from('accounts')
         .select('name, mask, plaid_items!inner(institution_id, status)')
-        .eq('user_id', user.id)
+        .eq('herd_id', herdId)
         .eq('plaid_items.institution_id', body.institution_id)
         .in('plaid_items.status', ['active', 'login_required']);
       if (existingError) throw existingError;
@@ -66,6 +69,7 @@ Deno.serve(async (req) => {
       .upsert(
         {
           user_id: user.id,
+          herd_id: herdId,
           plaid_item_id: exchange.item_id,
           institution_id: body.institution_id ?? null,
           institution_name: body.institution_name ?? null,

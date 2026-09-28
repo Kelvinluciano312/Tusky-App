@@ -2,6 +2,8 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 
 import { readFunctionError } from '@/lib/functions';
 import type { MerchantRule, MerchantRules } from '@/lib/merchants';
+import type { PresetLine } from '@/lib/presets';
+import type { SharedLine } from '@/lib/settle';
 import { supabase } from '@/lib/supabase';
 
 export type Account = {
@@ -16,10 +18,18 @@ export type Account = {
   available_balance: number | null;
   iso_currency_code: string;
   hidden: boolean;
+  /** Visible only to the member who connected it (Phase 9c). */
+  is_private: boolean;
+  /** Who connected it: the only member who can make it private. */
+  user_id: string;
+  /** Whose account it is (Phase 9d), the default payer of its transactions; null = Joint. */
+  owner_id: string | null;
+  /** Counts in net worth (Phase 10). Off keeps the account visible but out of the totals, unlike hidden. */
+  in_totals: boolean;
 };
 
 const ACCOUNT_COLUMNS =
-  'id, item_id, name, official_name, mask, type, subtype, current_balance, available_balance, iso_currency_code, hidden';
+  'id, item_id, user_id, owner_id, name, official_name, mask, type, subtype, current_balance, available_balance, iso_currency_code, hidden, is_private, in_totals';
 
 
 /**
@@ -76,7 +86,7 @@ export function useItemAccounts(itemId: string) {
  * Hiding an account, connecting or disconnecting a bank, and syncing must
  * refetch all of them, or one screen goes stale while the rest move.
  */
-export const HIDDEN_DEPENDENT_KEYS = [['accounts'], ['transactions'], ['reports'], ['net_worth'], ['recurring']];
+export const HIDDEN_DEPENDENT_KEYS = [['accounts'], ['transactions'], ['reports'], ['net_worth'], ['recurring'], ['settle']];
 
 /**
  * Hide or unhide one account. Optimistic on the bank screen's list, because a
@@ -108,7 +118,38 @@ export function useSetAccountHidden() {
   });
 }
 
-export type ItemStatus = 'active' | 'login_required' | 'archived';
+/**
+ * Count an account in net worth, or not (Phase 10). Optimistic like hiding;
+ * Home's total and the history chart refetch.
+ */
+export function useSetAccountInTotals() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ accountId, inTotals }: { accountId: string; itemId: string; inTotals: boolean }) => {
+      const { error } = await supabase.from('accounts').update({ in_totals: inTotals }).eq('id', accountId);
+      if (error) throw error;
+    },
+    onMutate: async ({ accountId, itemId, inTotals }) => {
+      const key = ['accounts', itemId];
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Account[]>(key);
+      queryClient.setQueryData<Account[]>(key, (old) =>
+        old?.map((a) => (a.id === accountId ? { ...a, in_totals: inTotals } : a)),
+      );
+      return { previous };
+    },
+    onError: (_err, { itemId }, context) => {
+      if (context?.previous) queryClient.setQueryData(['accounts', itemId], context.previous);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['net_worth'] });
+    },
+  });
+}
+
+export type ItemStatus ='active' | 'login_required' | 'archived';
 
 export type PlaidItem = {
   id: string;
@@ -116,6 +157,8 @@ export type PlaidItem = {
   institution_name: string | null;
   status: ItemStatus;
   created_at: string;
+  /** Who connected it: the only member who can reconnect or disconnect it. */
+  user_id: string;
 };
 
 export function usePlaidItems() {
@@ -124,7 +167,7 @@ export function usePlaidItems() {
     queryFn: async (): Promise<PlaidItem[]> => {
       const { data, error } = await supabase
         .from('plaid_items')
-        .select('id, institution_id, institution_name, status, created_at')
+        .select('id, institution_id, institution_name, status, created_at, user_id')
         .order('created_at', { ascending: true });
       if (error) throw error;
       return data;
@@ -183,20 +226,32 @@ export type Transaction = {
   pending: boolean;
   category_id: string | null;
   category_is_manual: boolean;
+  /** Where the category came from (Phase 12): manual, rule, learned, community, ai, plaid or fallback. */
+  category_source: string;
   /** The user's memo (Phase 8); null when none. */
   notes: string | null;
+  /**
+   * Whose expense it was (9d; since 11b the account's owner is who paid). Null =
+   * Joint, shared equally. Follows the account's owner until set by hand.
+   */
+  paid_by: string | null;
+  paid_by_is_manual: boolean;
+  /** A custom split (11b), member id -> percent; `paid_by` is then null. Null = none. */
+  split: Record<string, number> | null;
+  /** When it left the review queue (Phase 8); null = waiting. Pending rows are never queued. */
+  reviewed_at: string | null;
 };
 
 const PAGE_SIZE = 50;
 type PageCursor = { date: string; id: string } | null;
 
 const TRANSACTION_COLUMNS =
-  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, notes';
+  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, category_source, notes, paid_by, paid_by_is_manual, split, reviewed_at';
 
 /**
  * Keyset pagination on (date, id), NOT offset. Sync inserts rows while the user
  * scrolls; with OFFSET every insertion shifts later pages, duplicating and
- * skipping rows. The (user_id, date desc, id desc) index serves this directly.
+ * skipping rows. The (herd_id, date desc, id desc) index serves this directly.
  *
  * Hidden accounts leave the feed as well as net worth, as in Monarch. `!inner`
  * makes the embedded filter drop the transaction rather than null the embed.
@@ -248,6 +303,12 @@ export function useSetTransactionCategory() {
         .update({ category_id: categoryId, category_is_manual: true })
         .eq('id', transactionId);
       if (error) throw error;
+      // Phase 12a: teach the merchant's other unreviewed rows. Best effort: the
+      // choice itself is saved, and the next sync learns from it anyway.
+      const { error: learnError } = await supabase.functions.invoke('apply-learning', {
+        body: { transaction_id: transactionId },
+      });
+      if (learnError) console.warn('apply-learning failed', (await readFunctionError(learnError)).message);
     },
     onMutate: async ({ transactionId, categoryId }) => {
       await queryClient.cancelQueries({ queryKey: ['transactions'] });
@@ -257,7 +318,9 @@ export function useSetTransactionCategory() {
           ...old,
           pages: old.pages.map((page) =>
             page.map((t) =>
-              t.id === transactionId ? { ...t, category_id: categoryId, category_is_manual: true } : t,
+              t.id === transactionId
+                ? { ...t, category_id: categoryId, category_is_manual: true, category_source: 'manual' }
+                : t,
             ),
           ),
         },
@@ -272,6 +335,8 @@ export function useSetTransactionCategory() {
       // Budgets and reports read the same rows through a view; without this a
       // recategorized transaction moves the feed and leaves the budget bar stale.
       queryClient.invalidateQueries({ queryKey: ['reports'] });
+      // Only expenses count toward settle-up (11b), so a category can move a balance.
+      queryClient.invalidateQueries({ queryKey: ['settle'] });
     },
   });
 }
@@ -294,13 +359,39 @@ export type MonthlyTotal = {
  * bearing: `invalidateQueries({ queryKey: ['reports'] })` then covers every range
  * any screen has cached, which is what keeps budgets in step with the feed.
  */
-export function useMonthlyTotals(from: string, to: string) {
+export function useMonthlyTotals(from: string, to: string, enabled = true) {
   return useQuery({
+    // A caller that is mounted but not showing (the preset sheet) passes false,
+    // so its window is fetched when it opens rather than on every visit.
+    enabled,
     queryKey: ['reports', from, to],
     queryFn: async (): Promise<MonthlyTotal[]> => {
       const { data, error } = await supabase
         .from('monthly_category_totals')
         .select('month, category_id, iso_currency_code, total, transaction_count')
+        .gte('month', from)
+        .lte('month', to);
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+/** A `monthly_person_totals` row (Phase 11a): monthly_category_totals, split by whose expense it was. */
+export type MonthlyPersonTotal = MonthlyTotal & {
+  /** Null = Joint. */
+  paid_by: string | null;
+};
+
+/** Monthly spend per person and category, for Reports' "By person" card. Under `'reports'`, like the above. */
+export function useMonthlyPersonTotals(from: string, to: string, enabled = true) {
+  return useQuery({
+    queryKey: ['reports', 'person', from, to],
+    enabled,
+    queryFn: async (): Promise<MonthlyPersonTotal[]> => {
+      const { data, error } = await supabase
+        .from('monthly_person_totals')
+        .select('month, paid_by, category_id, iso_currency_code, total, transaction_count')
         .gte('month', from)
         .lte('month', to);
       if (error) throw error;
@@ -334,11 +425,11 @@ export function useBudgets() {
  * Create or change the budget for a category — one amount per category, applied
  * to every month.
  *
- * `user_id` is deliberately absent from the payload. PostgREST builds the insert
+ * `herd_id` is deliberately absent from the payload. PostgREST builds the insert
  * column list from the payload's keys, so an omitted column takes its default
- * (`auth.uid()`) rather than null, and Postgres resolves defaults before ON
- * CONFLICT arbitration. That keeps the repo's rule that no client query ever
- * names a user id, with the RLS with-check doing the actual enforcing.
+ * (`private.my_herd_id()`) rather than null, and Postgres resolves defaults before
+ * ON CONFLICT arbitration. That keeps the repo's rule that no client query ever
+ * names an owner, with the RLS with-check doing the actual enforcing.
  */
 export function useSetBudget() {
   const queryClient = useQueryClient();
@@ -347,7 +438,7 @@ export function useSetBudget() {
     mutationFn: async ({ categoryId, amount }: { categoryId: string; amount: number }) => {
       const { error } = await supabase
         .from('budgets')
-        .upsert({ category_id: categoryId, amount }, { onConflict: 'user_id,category_id' });
+        .upsert({ category_id: categoryId, amount }, { onConflict: 'herd_id,category_id' });
       if (error) throw error;
     },
     onSettled: () => {
@@ -366,6 +457,32 @@ export function useDeleteBudget() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
+    },
+  });
+}
+
+/**
+ * Apply a preset (Phase 13): the herd's budgets are replaced by these lines in
+ * one transaction, so a dropped connection never leaves half a budget. The
+ * function is security invoker, so the same herd policies as every other write
+ * apply. Reports refresh too: the bars on Budgets read the totals view.
+ */
+export function useReplaceBudgets() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (lines: PresetLine[]) => {
+      const { error } = await supabase.rpc('replace_budgets', {
+        p_lines: lines.map((l) => ({ category_id: l.categoryId, amount: l.amount })),
+      });
+      if (error) throw error;
+    },
+    // onSettled, not onSuccess: a failed replace may still have deleted before
+    // it failed to insert (the transaction protects the database, not this
+    // cache), so refetching after an error is what keeps the screen honest.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['budgets'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
     },
   });
 }
@@ -487,7 +604,7 @@ export function useCategoryOverride() {
           ? await supabase.from('category_overrides').delete().eq('category_id', categoryId)
           : await supabase
               .from('category_overrides')
-              .upsert({ category_id: categoryId, ...patch }, { onConflict: 'user_id,category_id' });
+              .upsert({ category_id: categoryId, ...patch }, { onConflict: 'herd_id,category_id' });
       if (error) throw error;
     },
     onMutate: async ({ categoryId, patch }) => {
@@ -511,7 +628,7 @@ export function useCategoryOverride() {
 
 /**
  * Add a custom category under a group. The payload names exactly the granted
- * columns; user_id, kind and sort_order come from defaults and the tree trigger.
+ * columns; herd_id, kind and sort_order come from defaults and the tree trigger.
  */
 export function useCreateCategory() {
   const queryClient = useQueryClient();
@@ -623,7 +740,9 @@ export function useSetMerchantRule() {
   });
 }
 
-export type TransactionDetail = Transaction & { accounts: { name: string; mask: string | null } | null };
+export type TransactionDetail = Transaction & {
+  accounts: { name: string; mask: string | null; owner_id: string | null; is_private: boolean; hidden: boolean } | null;
+};
 
 /** One transaction, with its account, for the detail screen. Under ['transactions'], so every feed invalidation refreshes it. */
 export function useTransaction(id: string) {
@@ -632,7 +751,7 @@ export function useTransaction(id: string) {
     queryFn: async (): Promise<TransactionDetail> => {
       const { data, error } = await supabase
         .from('transactions')
-        .select(`${TRANSACTION_COLUMNS}, accounts(name, mask)`)
+        .select(`${TRANSACTION_COLUMNS}, accounts(name, mask, owner_id, is_private, hidden)`)
         .eq('id', id)
         .single();
       if (error) throw error;
@@ -706,6 +825,25 @@ export function useMarkReviewed() {
   });
 }
 
+/**
+ * Review or un-review one transaction from its own screen. Un-reviewing puts it
+ * back in the queue. Refreshes the feed (its check marks) and the count.
+ */
+export function useSetReviewed() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ transactionId, reviewed }: { transactionId: string; reviewed: boolean }) => {
+      const { error } = await supabase
+        .from('transactions')
+        .update({ reviewed_at: reviewed ? new Date().toISOString() : null })
+        .eq('id', transactionId);
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+  });
+}
+
 export function useSetTransactionNotes() {
   const queryClient = useQueryClient();
 
@@ -729,3 +867,429 @@ export function useSetTransactionNotes() {
   });
 }
 
+
+export type Profile = { user_id: string; display_name: string; ai_categorize: boolean };
+
+/** The signed-in user's profile (Phase 9a). Created at signup by a trigger, so it always exists. */
+export function useProfile(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['profile', userId],
+    enabled: !!userId,
+    queryFn: async (): Promise<Profile> => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id, display_name, ai_categorize')
+        .eq('user_id', userId!)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useSetDisplayName() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ userId, displayName }: { userId: string; displayName: string }) => {
+      const { error } = await supabase.from('profiles').update({ display_name: displayName }).eq('user_id', userId);
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['profile'] }),
+  });
+}
+
+/**
+ * The AI fallback switch (12b). Off by default: nothing reaches a model until
+ * someone asks for it. Whether a herd may use it at all is decided server-side
+ * in `aiAllowed`, never here.
+ */
+export function useSetAiCategorize() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ userId, enabled }: { userId: string; enabled: boolean }) => {
+      const { error } = await supabase.from('profiles').update({ ai_categorize: enabled }).eq('user_id', userId);
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['profile'] }),
+  });
+}
+
+/**
+ * Crowd labels (12c): whether this user shares their category choices, with
+ * no name attached, to the pool every Tusky user benefits from. Written only
+ * through `set_consent`, which deletes what they shared when they withdraw.
+ */
+export function useCrowdConsent(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['consent', 'crowd_labels', userId],
+    enabled: !!userId,
+    queryFn: async (): Promise<boolean> => {
+      const { data, error } = await supabase
+        .from('consents')
+        .select('id')
+        .eq('user_id', userId!)
+        .eq('kind', 'crowd_labels')
+        .is('withdrawn_at', null)
+        .maybeSingle();
+      if (error) throw error;
+      return !!data;
+    },
+  });
+}
+
+export function useSetCrowdConsent() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (granted: boolean) => {
+      const { error } = await supabase.rpc('set_consent', { p_kind: 'crowd_labels', p_granted: granted });
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['consent'] }),
+  });
+}
+
+// Herds (Phase 9c). Reads go straight to the tables (RLS shows the caller's
+// herd only); invites, joining, leaving and removing go through the `herd`
+// function.
+
+export type HerdMember = { user_id: string; role: 'owner' | 'member'; joined_at: string; display_name: string };
+export type Herd = { id: string; name: string; members: HerdMember[] };
+
+/** The caller's herd with its members, oldest first. Every user has one. */
+export function useHerd() {
+  return useQuery({
+    queryKey: ['herd'],
+    queryFn: async (): Promise<Herd> => {
+      // No foreign key joins members to profiles (both point at auth.users), so three reads.
+      const [herd, members, profiles] = await Promise.all([
+        supabase.from('herds').select('id, name').single(),
+        supabase.from('herd_members').select('user_id, role, joined_at').order('joined_at'),
+        supabase.from('profiles').select('user_id, display_name'),
+      ]);
+      if (herd.error) throw herd.error;
+      if (members.error) throw members.error;
+      if (profiles.error) throw profiles.error;
+      const names = new Map(profiles.data.map((p) => [p.user_id, p.display_name as string]));
+      return {
+        ...herd.data,
+        members: members.data.map((m) => ({
+          ...(m as Omit<HerdMember, 'display_name'>),
+          display_name: names.get(m.user_id) ?? 'Member',
+        })),
+      };
+    },
+  });
+}
+
+export type HerdInvite = { code: string; expires_at: string };
+
+/** Open invites: not used yet and not expired. */
+export function useHerdInvites() {
+  return useQuery({
+    queryKey: ['herd', 'invites'],
+    queryFn: async (): Promise<HerdInvite[]> => {
+      const { data, error } = await supabase
+        .from('herd_invites')
+        .select('code, expires_at')
+        .is('accepted_at', null)
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at');
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+/** Owner only (RLS refuses anyone else, so the update changes no row). */
+export function useRenameHerd() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ herdId, name }: { herdId: string; name: string }) => {
+      const { data, error } = await supabase.from('herds').update({ name }).eq('id', herdId).select('id');
+      if (error) throw error;
+      if (data.length === 0) throw new Error('Only the herd owner can rename it.');
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['herd'] }),
+  });
+}
+
+async function callHerd<T>(body: Record<string, unknown>, fallback: string): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('herd', { body });
+  if (error) {
+    const { message } = await readFunctionError(error);
+    throw new Error(message ?? fallback);
+  }
+  return data as T;
+}
+
+export function useCreateInvite() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => callHerd<HerdInvite>({ action: 'create_invite' }, 'Could not create an invite.'),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['herd', 'invites'] }),
+  });
+}
+
+export function useRevokeInvite() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (code: string) => callHerd({ action: 'revoke_invite', code }, 'Could not cancel the invite.'),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['herd', 'invites'] }),
+  });
+}
+
+export type InvitePreview = {
+  herd_name: string;
+  inviter_name: string;
+  member_count: number;
+  expires_at: string;
+  /** Why the caller can't join, or null. */
+  blocked: string | null;
+};
+
+export function useInvitePreview(code: string | null) {
+  return useQuery({
+    queryKey: ['invite-preview', code],
+    enabled: !!code,
+    retry: false,
+    gcTime: 0,
+    queryFn: () => callHerd<InvitePreview>({ action: 'preview_invite', code }, 'Could not open this invite.'),
+  });
+}
+
+/**
+ * Joining, leaving and being removed change whose data every screen shows, so
+ * each resets the whole cache: every query drops its data and refetches.
+ */
+function useResetAll() {
+  const queryClient = useQueryClient();
+  return () => queryClient.resetQueries();
+}
+
+export function useJoinHerd() {
+  const resetAll = useResetAll();
+
+  return useMutation({
+    mutationFn: (input: { code: string; privateAccountIds: string[] }) =>
+      callHerd<{ herd_id: string; hidden_account_ids: string[] }>(
+        { action: 'join', code: input.code, private_account_ids: input.privateAccountIds },
+        'Could not join the herd.',
+      ),
+    onSuccess: () => resetAll(),
+  });
+}
+
+export function useLeaveHerd() {
+  const resetAll = useResetAll();
+
+  return useMutation({
+    mutationFn: () => callHerd({ action: 'leave' }, 'Could not leave the herd.'),
+    onSuccess: () => resetAll(),
+  });
+}
+
+export function useRemoveMember() {
+  const resetAll = useResetAll();
+
+  return useMutation({
+    mutationFn: (userId: string) =>
+      callHerd({ action: 'remove_member', user_id: userId }, 'Could not remove them.'),
+    onSuccess: () => resetAll(),
+  });
+}
+
+/**
+ * Whose account it is (Phase 9d). The database re-applies the new owner as
+ * payer to every row of the account nobody set by hand, so transactions refetch.
+ */
+export function useSetAccountOwner() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ accountId, ownerId }: { accountId: string; itemId: string; ownerId: string | null }) => {
+      const { error } = await supabase.from('accounts').update({ owner_id: ownerId }).eq('id', accountId);
+      if (error) throw error;
+    },
+    onMutate: async ({ accountId, itemId, ownerId }) => {
+      const key = ['accounts', itemId];
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Account[]>(key);
+      queryClient.setQueryData<Account[]>(key, (old) =>
+        old?.map((a) => (a.id === accountId ? { ...a, owner_id: ownerId } : a)),
+      );
+      return { previous };
+    },
+    onError: (_err, { itemId }, context) => {
+      if (context?.previous) queryClient.setQueryData(['accounts', itemId], context.previous);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      // A new owner re-applies to the account's rows (9d), which moves spending
+      // by person, and is who paid for them (11b), which moves balances.
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+      queryClient.invalidateQueries({ queryKey: ['settle'] });
+    },
+  });
+}
+
+/**
+ * Who one transaction was for, set by hand: a person, Joint (`paidBy` null), or
+ * a custom split (`split`, 11b). It no longer follows the account's owner.
+ * Choosing a person or Joint clears any split; saving a split makes `paid_by`
+ * null (the database does too).
+ */
+export function useSetPaidBy() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ transactionId, paidBy, split = null }: PaidByChoice) => {
+      const { error } = await supabase
+        .from('transactions')
+        .update({ paid_by: split ? null : paidBy, paid_by_is_manual: true, split })
+        .eq('id', transactionId);
+      if (error) throw error;
+    },
+    onMutate: async ({ transactionId, paidBy, split = null }) => {
+      const queryKey = ['transactions', 'detail', transactionId];
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<TransactionDetail>(queryKey);
+      if (previous) {
+        queryClient.setQueryData<TransactionDetail>(queryKey, {
+          ...previous,
+          paid_by: split ? null : paidBy,
+          paid_by_is_manual: true,
+          split,
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, { transactionId }, context) => {
+      if (context?.previous) queryClient.setQueryData(['transactions', 'detail', transactionId], context.previous);
+    },
+    // The whole prefix, not just the detail: the feed filters by payer, Reports
+    // totals by person (11a), and balances follow it (11b).
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+      queryClient.invalidateQueries({ queryKey: ['settle'] });
+    },
+  });
+}
+
+type PaidByChoice = { transactionId: string; paidBy: string | null; split?: Record<string, number> | null };
+
+// Settle-up (11b). Everything lives under ['settle'], which every mutation that
+// can move a balance invalidates: who a purchase was for, an account's owner,
+// hiding or privacy, a category, and settlements themselves.
+
+/** A `shared_lines` row: one purchase that makes someone owe someone. */
+export type SharedLineDetail = SharedLine & {
+  category_id: string | null;
+  merchant_name: string | null;
+  name: string;
+};
+
+export function useSharedLines(enabled = true) {
+  return useQuery({
+    queryKey: ['settle', 'lines'],
+    enabled,
+    queryFn: async (): Promise<SharedLineDetail[]> => {
+      const { data, error } = await supabase
+        .from('shared_lines')
+        .select('id, date, amount, funded_by, paid_by, split, category_id, merchant_name, name')
+        .order('date', { ascending: false })
+        .order('id', { ascending: false });
+      if (error) throw error;
+      return data as SharedLineDetail[];
+    },
+  });
+}
+
+export type SettlementRow = {
+  id: string;
+  from_user: string;
+  to_user: string;
+  amount: number;
+  date: string;
+  note: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+export function useSettlements(enabled = true) {
+  return useQuery({
+    queryKey: ['settle', 'settlements'],
+    enabled,
+    queryFn: async (): Promise<SettlementRow[]> => {
+      const { data, error } = await supabase
+        .from('settlements')
+        .select('id, from_user, to_user, amount, date, note, created_by, created_at')
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+/** Record a payment between two members: it moves the balance by its amount. */
+export function useRecordSettlement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (s: { from_user: string; to_user: string; amount: number; note: string | null }) => {
+      const { error } = await supabase.from('settlements').insert(s);
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['settle'] }),
+  });
+}
+
+/** Undo a recorded payment. */
+export function useDeleteSettlement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('settlements').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['settle'] }),
+  });
+}
+
+/**
+ * Make an account private (visible to you alone) or shared with the herd. Only
+ * its connector may; a trigger refuses anyone else. Optimistic on the bank
+ * screen, like hiding.
+ */
+export function useSetAccountPrivate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ accountId, isPrivate }: { accountId: string; itemId: string; isPrivate: boolean }) => {
+      const { error } = await supabase.from('accounts').update({ is_private: isPrivate }).eq('id', accountId);
+      if (error) throw error;
+    },
+    onMutate: async ({ accountId, itemId, isPrivate }) => {
+      const key = ['accounts', itemId];
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Account[]>(key);
+      queryClient.setQueryData<Account[]>(key, (old) =>
+        old?.map((a) => (a.id === accountId ? { ...a, is_private: isPrivate } : a)),
+      );
+      return { previous };
+    },
+    onError: (_err, { itemId }, context) => {
+      if (context?.previous) queryClient.setQueryData(['accounts', itemId], context.previous);
+    },
+    onSettled: () => {
+      for (const queryKey of HIDDEN_DEPENDENT_KEYS) queryClient.invalidateQueries({ queryKey });
+    },
+  });
+}

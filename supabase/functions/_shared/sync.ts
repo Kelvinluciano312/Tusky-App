@@ -2,9 +2,24 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import type { PlaidApi } from 'npm:plaid@30';
 
 import { buildSnapshotRows, syncAccounts } from './accounts.ts';
-import { type CategoryMap, pickCategoryId, resolveCategoryId, toSignedAmount } from './categorize.ts';
+import {
+  AI_MAX_PER_SYNC,
+  type AiAnswer,
+  type AiRow,
+  aiAllowed,
+  applyAnswers,
+  askClaude,
+  type AskFn,
+  buildAskList,
+  cacheKeyFor,
+  groupUpdates,
+  hasAnthropicKey,
+} from './ai.ts';
+import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from './categorize.ts';
+import { communityAnswers, communityCategory, crowdMerchants, type Tally } from './crowd.ts';
+import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
 import { ignoredCategoryIds, normalizeMerchant, refreshRecurring } from './recurring.ts';
-import { carryForward, type ExistingRow } from './review.ts';
+import { type CarriedPayer, carryForward, type ExistingRow } from './review.ts';
 
 const PAGE_SIZE = 500;
 const FIRST_SYNC_DAYS = 90;
@@ -47,7 +62,7 @@ export function describeError(err: unknown): string {
 const HANDLED = '__handled__';
 
 /**
- * Plaid code → category maps plus the fallback: everything resolveCategoryId
+ * Plaid code → category maps plus the fallback: everything resolveCategory
  * needs. Shared by sync and set-merchant-rule, so both resolve identically.
  */
 export async function loadCategoryMaps(
@@ -77,12 +92,89 @@ export async function loadCategoryMaps(
   return { categoryMap, detailedMap, fallbackId: fallback.id };
 }
 
+/** Merchant keys per labels query: keeps the PostgREST URL short. */
+/**
+ * Merchant keys per merchant_labels call. Each key returns at most
+ * 2 × LEARN.RECENT rows (both directions), so 40 keys stay under PostgREST's
+ * max_rows (1000), which would otherwise cut the answer silently.
+ */
+const LABEL_KEY_CHUNK = 40;
+
+/**
+ * The herd's labels (12a) for these merchants, keyed by merchant_key: rows
+ * categorized by hand, and guesses accepted in review, the most recent
+ * LEARN.RECENT per merchant and direction (the merchant_labels SQL function).
+ * Shared by sync, set-merchant-rule and apply-learning, so all three learn
+ * identically.
+ */
+export async function loadLabels(
+  admin: SupabaseClient,
+  herdId: string,
+  merchantKeys: string[],
+): Promise<Map<string, Label[]>> {
+  const byMerchant = new Map<string, Label[]>();
+  // A name with no letters has an empty key: it takes no rule, and teaches nothing.
+  const keys = [...new Set(merchantKeys.filter(Boolean))];
+  for (let i = 0; i < keys.length; i += LABEL_KEY_CHUNK) {
+    const { data, error } = await admin.rpc('merchant_labels', {
+      p_herd: herdId,
+      p_keys: keys.slice(i, i + LABEL_KEY_CHUNK),
+      p_limit: LEARN.RECENT,
+    });
+    if (error) throw new Error(`failed to load labels: ${error.message}`);
+    for (const r of (data ?? []) as (Omit<Label, 'amount'> & { merchant_key: string; amount: number | string })[]) {
+      const list = byMerchant.get(r.merchant_key) ?? [];
+      list.push({
+        amount: Number(r.amount),
+        category_id: r.category_id,
+        date: r.date,
+        user_id: r.user_id,
+        is_private: r.is_private,
+      });
+      byMerchant.set(r.merchant_key, list);
+    }
+  }
+  return byMerchant;
+}
+
+/**
+ * Merchants per community_tallies call. Each returns at most 12 bands
+ * (6 bands × 2 directions) × the categories voted for, so 25 stays well under
+ * PostgREST's max_rows (1000), which would otherwise cut the answer silently.
+ */
+const CROWD_MERCHANT_CHUNK = 25;
+
+/**
+ * The crowd's answers (12c) for these pool merchants, as crowdKey → category.
+ * Never throws: the crowd is a bonus, and a sync is never worth failing over it.
+ */
+export async function loadCommunity(
+  admin: SupabaseClient,
+  merchants: string[],
+): Promise<Map<string, string>> {
+  const unique = [...new Set(merchants.filter(Boolean))];
+  const tallies: Tally[] = [];
+  try {
+    for (let i = 0; i < unique.length; i += CROWD_MERCHANT_CHUNK) {
+      const { data, error } = await admin.rpc('community_tallies', {
+        p_merchants: unique.slice(i, i + CROWD_MERCHANT_CHUNK),
+      });
+      if (error) throw new Error(error.message);
+      tallies.push(...((data ?? []) as Tally[]));
+    }
+  } catch (err) {
+    console.warn(`crowd labels skipped: ${describeError(err)}`);
+    return new Map();
+  }
+  return communityAnswers(tallies);
+}
+
 /** Loads the taxonomy once per invocation. Throws if it cannot. */
 export async function loadSyncContext(admin: SupabaseClient, plaid: PlaidApi): Promise<SyncContext> {
   const { categoryMap, detailedMap, fallbackId } = await loadCategoryMaps(admin);
 
   const { data: categoryRows, error: categoryError } = await admin
-    .from('categories').select('id, kind, slug').is('user_id', null);
+    .from('categories').select('id, kind, slug').is('herd_id', null);
   if (categoryError) throw new Error(`failed to load categories: ${categoryError.message}`);
 
   return {
@@ -118,13 +210,110 @@ export async function claimItem(
 }
 
 /**
+ * The AI fallback (12b), run after the upsert over the rows every other source
+ * was unsure about. Never throws: a missed category is not worth failing a sync
+ * over, and the next sync retries. `ask` is injected for tests.
+ */
+export async function runAiPass(
+  admin: SupabaseClient,
+  item: { id: string; user_id: string; herd_id: string },
+  ask: AskFn = askClaude,
+): Promise<number> {
+  try {
+    if (!hasAnthropicKey() || !aiAllowed(item.herd_id)) return 0;
+
+    const { data: profile } = await admin
+      .from('profiles').select('ai_categorize').eq('user_id', item.user_id).maybeSingle();
+    if (!profile?.ai_categorize) return 0;
+
+    // Only this Item's rows, and only the ones nothing else could settle.
+    const { data: rowData, error: rowError } = await admin
+      .from('transactions')
+      .select('id, merchant_key, name, merchant_name, amount, pfc_primary, pfc_detailed, accounts!inner(is_private)')
+      .eq('item_id', item.id)
+      .eq('category_is_manual', false)
+      .in('category_source', ['plaid', 'fallback'])
+      .or('pfc_confidence.is.null,pfc_confidence.in.(LOW,UNKNOWN)');
+    if (rowError) throw rowError;
+    const rows: AiRow[] = (rowData ?? []).map((r) => ({
+      id: r.id,
+      merchant_key: r.merchant_key ?? '',
+      name: r.name,
+      merchant_name: r.merchant_name,
+      amount: Number(r.amount),
+      pfc_primary: r.pfc_primary,
+      pfc_detailed: r.pfc_detailed,
+      is_private: (r.accounts as unknown as { is_private: boolean }).is_private,
+    }));
+    if (rows.length === 0) return 0;
+
+    const keys = [...new Set(rows.map(cacheKeyFor))];
+    const { data: cacheRows } = await admin
+      .from('ai_category_cache').select('cache_key, category_id').in('cache_key', keys);
+    const cached = new Map(
+      (cacheRows ?? []).map((c) => [c.cache_key as string, c.category_id as string | null]),
+    );
+
+    const { data: categoryRows } = await admin
+      .from('categories')
+      .select('id, slug, name, parent_id')
+      .is('herd_id', null)
+      .not('parent_id', 'is', null);
+    const { data: groupRows } = await admin
+      .from('categories').select('id, name').is('herd_id', null).is('parent_id', null);
+    const groupName = new Map((groupRows ?? []).map((g) => [g.id as string, g.name as string]));
+    const categories = (categoryRows ?? [])
+      .filter((c) => c.slug)
+      .map((c) => ({
+        id: c.id as string,
+        slug: c.slug as string,
+        name: c.name as string,
+        parent_name: groupName.get(c.parent_id as string) ?? null,
+      }));
+
+    const { ask: toAsk, resolved } = buildAskList(rows, cached);
+    const sent = toAsk.slice(0, AI_MAX_PER_SYNC);
+    let answers: AiAnswer[] = [];
+    if (sent.length > 0) answers = await ask(sent, categories);
+    const { updates, cacheable, unanswered } = applyAnswers(rows, answers, categories, sent.map(cacheKeyFor));
+
+    // Cache hits update rows too, and cost nothing.
+    for (const [id, category_id] of resolved) updates.push({ id, category_id });
+
+    // Grouped and chunked: a warm cache can answer hundreds of rows at once, and
+    // one statement per row would add seconds to every sync.
+    for (const group of groupUpdates(updates)) {
+      const { error } = await admin
+        .from('transactions')
+        .update({ category_id: group.category_id, category_source: 'ai' })
+        .in('id', group.ids)
+        // Re-checked at write time: a row set by hand meanwhile stays put.
+        .eq('category_is_manual', false);
+      if (error) throw error;
+    }
+    const entries = [
+      ...cacheable.map((c) => ({ cache_key: c.key, category_id: c.category_id as string | null })),
+      // Asked and declined: remembered so no later sync pays to ask again.
+      ...unanswered.map((key) => ({ cache_key: key, category_id: null })),
+    ];
+    if (entries.length > 0) {
+      await admin.from('ai_category_cache').upsert(entries, { onConflict: 'cache_key' });
+    }
+    return updates.length;
+  } catch (err) {
+    console.warn(`ai pass skipped for item ${item.id}: ${describeError(err)}`);
+    return 0;
+  }
+}
+
+/**
  * Sync one Item. Shared by the user-triggered sync and the Plaid webhook, so
  * both paths claim, retry, preserve manual categories and advance the cursor
  * the same way. Never throws: failures come back as an ItemResult.
  */
 export async function syncItem(
   ctx: SyncContext,
-  item: { id: string; user_id: string },
+  item: { id: string; user_id: string; herd_id: string },
 ): Promise<ItemResult> {
   const { admin, plaid, categoryMap, detailedMap, fallbackId, transferCategoryIds } = ctx;
   const base: ItemResult = { item_id: item.id, status: 'synced', added: 0, modified: 0, removed: 0 };
@@ -160,9 +349,13 @@ export async function syncItem(
     }
 
     const { data: accountRows } = await admin
-      .from('accounts').select('id, plaid_account_id').eq('item_id', item.id);
+      .from('accounts').select('id, plaid_account_id, is_private').eq('item_id', item.id);
     const accountByPlaidId = new Map<string, string>(
       (accountRows ?? []).map((a) => [a.plaid_account_id, a.id]),
+    );
+    // Which private labels may teach a row depends on its account (12a).
+    const privateByPlaidId = new Map<string, boolean>(
+      (accountRows ?? []).map((a) => [a.plaid_account_id, a.is_private === true]),
     );
 
     // deno-lint-ignore no-explicit-any
@@ -186,7 +379,7 @@ export async function syncItem(
             // NOTE: options.transactions_url_taxonomy is NOT supported by the
             // Plaid-Version that plaid@30 pins — the API rejects it with
             // UNKNOWN_FIELDS. The account's default PFC taxonomy applies, so
-            // resolveCategoryId's uncategorized fallback is what protects us
+            // resolveCategory's uncategorized fallback is what protects us
             // if a primary we don't map shows up.
             ...(cursor ? {} : { options: { days_requested: FIRST_SYNC_DAYS } }),
             // deno-lint-ignore no-explicit-any
@@ -216,15 +409,26 @@ export async function syncItem(
 
     const upserts = [...added, ...modified];
     if (upserts.length > 0) {
-      // The owner's merchant rules outrank Plaid (a manual choice still wins,
+      // The herd's merchant rules outrank Plaid (a manual choice still wins,
       // in pickCategoryId). Keyed like transactions.merchant_key.
       const { data: ruleRows, error: ruleError } = await admin
         .from('merchant_rules')
         .select('merchant_key, category_id')
-        .eq('user_id', item.user_id)
+        .eq('herd_id', item.herd_id)
         .not('category_id', 'is', null);
       if (ruleError) throw ruleError;
       const ruleByMerchant = new Map((ruleRows ?? []).map((r) => [r.merchant_key, r.category_id as string]));
+
+      // The herd's own fixes (12a) for the merchants in this batch.
+      // deno-lint-ignore no-explicit-any
+      const merchantKeyOf = (t: any) => normalizeMerchant(t.merchant_name ?? t.name);
+      const labelsByMerchant = await loadLabels(admin, item.herd_id, upserts.map(merchantKeyOf));
+
+      // What the crowd agrees on (12c) for the merchants in this batch.
+      const communityByKey = await loadCommunity(
+        admin,
+        upserts.flatMap((t) => crowdMerchants(t.merchant_entity_id, merchantKeyOf(t))),
+      );
 
       // Read existing rows, and the pending rows these post from, so a manual
       // category or memo survives re-sync and pending → posted (carryForward).
@@ -233,9 +437,9 @@ export async function syncItem(
       ))];
       const { data: existingRows } = await admin
         .from('transactions')
-        .select('plaid_transaction_id, category_id, category_is_manual, notes')
+        .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split, corrected_from, category_source')
         .in('plaid_transaction_id', ids);
-      const { existingFor, notes: carriedNotes } = carryForward(
+      const { existingFor, notes: carriedNotes, payers: carriedPayers } = carryForward(
         upserts,
         new Map(((existingRows ?? []) as ExistingRow[]).map((r) => [r.plaid_transaction_id, r])),
       );
@@ -243,16 +447,32 @@ export async function syncItem(
       const rows = upserts
         .filter((t) => accountByPlaidId.has(t.account_id))
         .map((t) => {
-          const incoming = resolveCategoryId(
+          const existing = existingFor.get(t.transaction_id) ?? null;
+          const merchantKey = merchantKeyOf(t);
+          const category = pickCategory(existing, resolveCategory(
             {
-              rule: ruleByMerchant.get(normalizeMerchant(t.merchant_name ?? t.name)),
+              rule: ruleByMerchant.get(merchantKey),
+              // Only labels this row may learn from (private accounts).
+              learned: learnedCategory(
+                usableLabels(
+                  labelsByMerchant.get(merchantKey) ?? [],
+                  item.user_id,
+                  privateByPlaidId.get(t.account_id) ?? false,
+                ),
+                toSignedAmount(t.amount),
+              ),
+              // The crowd (12c). An answer it already gave this row stands, like an AI one.
+              community: existing?.category_source === 'community'
+                ? existing.category_id
+                : communityCategory(communityByKey, t.merchant_entity_id, merchantKey, toSignedAmount(t.amount)),
+              // An answer the AI pass gave survives Plaid modifying the row.
+              ai: existing?.category_source === 'ai' ? existing.category_id : null,
               detailed: t.personal_finance_category?.detailed,
               primary: t.personal_finance_category?.primary,
             },
             { detailed: detailedMap, primary: categoryMap },
             fallbackId,
-          );
-          const existing = existingFor.get(t.transaction_id) ?? null;
+          ));
           return {
             user_id: item.user_id,
             account_id: accountByPlaidId.get(t.account_id)!,
@@ -272,7 +492,11 @@ export async function syncItem(
             pfc_primary: t.personal_finance_category?.primary ?? null,
             pfc_detailed: t.personal_finance_category?.detailed ?? null,
             pfc_confidence: t.personal_finance_category?.confidence_level ?? null,
-            category_id: pickCategoryId(existing, incoming),
+            category_id: category.categoryId,
+            // Every row carries it: a bulk upsert sends the union of the rows' keys.
+            category_source: category.source,
+            // A fix made while pending still counts once posted (cat-quality.mjs).
+            corrected_from: existing?.corrected_from ?? null,
             category_is_manual: existing?.category_is_manual ?? false,
           };
         });
@@ -287,6 +511,27 @@ export async function syncItem(
         const { error } = await admin
           .from('transactions').update({ notes: c.notes })
           .eq('plaid_transaction_id', c.plaid_transaction_id).is('notes', null);
+        if (error) throw error;
+      }
+      // Who paid (9d): the database gave each new row its account's owner; a
+      // payer picked by hand on the pending row replaces it, never over one
+      // already picked on the posted row. A payer who has left the herd is not
+      // carried, and neither is a split (11b) naming one: the payer and split
+      // triggers would refuse it and fail the whole sync.
+      let members = new Set<string>();
+      if (carriedPayers.length > 0) {
+        const { data: memberRows, error: memberError } = await admin
+          .from('herd_members').select('user_id').eq('herd_id', item.herd_id);
+        if (memberError) throw memberError;
+        members = new Set((memberRows ?? []).map((m) => m.user_id as string));
+      }
+      const stillMembers = (p: CarriedPayer) =>
+        (p.paid_by === null || members.has(p.paid_by)) &&
+        (p.split === null || Object.keys(p.split).every((id) => members.has(id)));
+      for (const p of carriedPayers.filter(stillMembers)) {
+        const { error } = await admin
+          .from('transactions').update({ paid_by: p.paid_by, paid_by_is_manual: true, split: p.split })
+          .eq('plaid_transaction_id', p.plaid_transaction_id).eq('paid_by_is_manual', false);
         if (error) throw error;
       }
     }
@@ -311,13 +556,20 @@ export async function syncItem(
 
     result = { ...base, added: added.length, modified: modified.length, removed: removed.length };
 
+    // 12b, over what nothing else could settle. After the cursor and after
+    // `result` is latched, for the same two reasons the snapshot below is: it
+    // calls a third party, and a slow or dead model must not cost a full
+    // re-pagination next sync or turn a good sync into an error. Never throws.
+    const aiSet = await runAiPass(admin, item);
+    if (aiSet > 0) console.log(`item ${item.id}: AI categorized ${aiSet}`);
+
     // Last, and after `result` is latched: a failed chart row must not turn a
     // good sync into `status: 'error'`, nor cost a full re-pagination by landing
     // before the cursor advance. Not in `finally` either — that runs on the
     // login_required and error paths too, and a throw there would escape
     // syncItem, breaking the never-throws contract the webhook relies on.
     //
-    // Every account of the USER, not just this Item's: otherwise a day where one
+    // Every account of the HERD, not just this Item's: otherwise a day where one
     // Item synced and another did not would sum to a partial net worth and the
     // chart would sawtooth. An Item stuck on login_required keeps contributing
     // its last known balance, which is a deliberate carry-forward — stale, but
@@ -326,14 +578,14 @@ export async function syncItem(
     // buildSnapshotRows skips it.
     try {
       const { data: allAccounts } = await admin
-        .from('accounts').select('id, current_balance, plaid_items(status)').eq('user_id', item.user_id);
+        .from('accounts').select('id, user_id, current_balance, plaid_items(status)').eq('herd_id', item.herd_id);
       const snapshots = buildSnapshotRows(
         (allAccounts ?? []).map((a) => ({
           id: a.id,
+          user_id: a.user_id,
           current_balance: a.current_balance,
           archived: (a.plaid_items as { status?: string } | null)?.status === 'archived',
         })),
-        item.user_id,
       );
       if (snapshots.length > 0) {
         const { error } = await admin
@@ -349,12 +601,12 @@ export async function syncItem(
     // Never in `finally` — the login_required and error paths have no new data,
     // and a throw there would escape syncItem.
     try {
-      // The owner's custom transfer categories join the built-in ones. Loaded
-      // per Item, so the shared context never holds every user's rows.
+      // The herd's custom transfer categories join the built-in ones. Loaded
+      // per Item, so the shared context never holds every herd's rows.
       const { data: ownTransfers, error: ownError } = await admin
         .from('categories')
         .select('id, kind, slug')
-        .eq('user_id', item.user_id)
+        .eq('herd_id', item.herd_id)
         .eq('kind', 'transfer');
       if (ownError) throw ownError;
       await refreshRecurring(admin, item, [...transferCategoryIds, ...ignoredCategoryIds(ownTransfers ?? [])]);

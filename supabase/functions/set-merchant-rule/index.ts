@@ -1,12 +1,12 @@
-// Create, change or remove the caller's rule for one merchant: a category
+// Create, change or remove the caller's herd's rule for one merchant: a category
 // ("always categorize this merchant as X"), a display name, or both. When the
 // category part changes, every non-manual transaction for that merchant is
-// re-resolved with the same resolver sync uses, so removing a rule restores
-// Plaid's category. JWT-verified by default: no config.toml entry.
+// re-resolved with the same resolver sync uses, learning included, so removing
+// a rule restores what the herd's fixes taught, or else Plaid's category. JWT-verified by default: no config.toml entry.
 
-import { corsHeaders, getAdminClient, getAuthedUser, jsonResponse } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, jsonResponse } from '../_shared/lib.ts';
 import { mergeRule, planReresolve, validateRuleInput } from '../_shared/rules.ts';
-import { loadCategoryMaps } from '../_shared/sync.ts';
+import { loadCategoryMaps, loadLabels } from '../_shared/sync.ts';
 
 const CHUNK = 100;
 
@@ -27,15 +27,17 @@ Deno.serve(async (req) => {
   if ('error' in input) return jsonResponse({ error: input.error }, 400);
 
   try {
-    // The category must be one the caller can see: built-in, or their own.
+    const { herd_id: herdId } = await getCallerHerd(admin, user.id);
+
+    // The category must be one the caller can see: built-in, or their herd's.
     if (typeof input.category_id === 'string') {
       const { data: category, error } = await admin
         .from('categories')
-        .select('id, user_id')
+        .select('id, herd_id')
         .eq('id', input.category_id)
         .maybeSingle();
       if (error) throw error;
-      if (!category || (category.user_id !== null && category.user_id !== user.id)) {
+      if (!category || (category.herd_id !== null && category.herd_id !== herdId)) {
         return jsonResponse({ error: 'Unknown category' }, 404);
       }
     }
@@ -43,7 +45,7 @@ Deno.serve(async (req) => {
     const { data: existing, error: existingError } = await admin
       .from('merchant_rules')
       .select('category_id, display_name')
-      .eq('user_id', user.id)
+      .eq('herd_id', herdId)
       .eq('merchant_key', input.merchant_key)
       .maybeSingle();
     if (existingError) throw existingError;
@@ -53,13 +55,13 @@ Deno.serve(async (req) => {
       const { error } = await admin
         .from('merchant_rules')
         .delete()
-        .eq('user_id', user.id)
+        .eq('herd_id', herdId)
         .eq('merchant_key', input.merchant_key);
       if (error) throw error;
     } else {
       const { error } = await admin
         .from('merchant_rules')
-        .upsert({ user_id: user.id, merchant_key: input.merchant_key, ...merged }, { onConflict: 'user_id,merchant_key' });
+        .upsert({ herd_id: herdId, merchant_key: input.merchant_key, ...merged }, { onConflict: 'herd_id,merchant_key' });
       if (error) throw error;
     }
 
@@ -69,24 +71,31 @@ Deno.serve(async (req) => {
     if (before !== after) {
       const { data: rows, error: rowsError } = await admin
         .from('transactions')
-        .select('id, pfc_detailed, pfc_primary, category_id')
-        .eq('user_id', user.id)
+        .select('id, pfc_detailed, pfc_primary, category_id, category_source, amount, user_id, accounts!inner(is_private)')
+        .eq('herd_id', herdId)
         .eq('merchant_key', input.merchant_key)
         .eq('category_is_manual', false);
       if (rowsError) throw rowsError;
 
       const maps = await loadCategoryMaps(admin);
+      // Without a rule, the herd's own fixes (12a) come before Plaid again.
+      const labels = (await loadLabels(admin, herdId, [input.merchant_key])).get(input.merchant_key) ?? [];
       const plan = planReresolve(
-        rows ?? [],
+        (rows ?? []).map(({ accounts, ...r }) => ({
+          ...r,
+          amount: Number(r.amount),
+          is_private: (accounts as unknown as { is_private: boolean }).is_private,
+        })),
         after,
+        labels,
         { detailed: maps.detailedMap, primary: maps.categoryMap },
         maps.fallbackId,
       );
-      for (const { category_id, ids } of plan) {
+      for (const { category_id, category_source, ids } of plan) {
         for (let i = 0; i < ids.length; i += CHUNK) {
           const { error } = await admin
             .from('transactions')
-            .update({ category_id })
+            .update({ category_id, category_source })
             .in('id', ids.slice(i, i + CHUNK))
             // Re-checked at write time: a row set by hand meanwhile stays put.
             .eq('category_is_manual', false);

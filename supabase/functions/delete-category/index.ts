@@ -1,10 +1,10 @@
-// Delete one of the caller's custom categories. Its transactions (manual flags
+// Delete one of the caller's herd's custom categories. Its transactions (manual flags
 // kept) and recurring streams move to its group, its budget goes, and the row
 // goes last, so a failure part-way leaves a state a retry finishes.
 // JWT-verified by default: no config.toml entry.
 
 import { planCategoryDelete, readCategoryId } from '../_shared/categories.ts';
-import { corsHeaders, getAdminClient, getAuthedUser, jsonResponse } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, jsonResponse } from '../_shared/lib.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -25,17 +25,18 @@ Deno.serve(async (req) => {
   try {
     const { data: row, error: rowError } = await admin
       .from('categories')
-      .select('id, parent_id, user_id')
+      .select('id, parent_id, herd_id')
       .eq('id', categoryId)
       .maybeSingle();
     if (rowError) throw rowError;
-    const plan = planCategoryDelete(row, user.id);
+    const { herd_id: herdId } = await getCallerHerd(admin, user.id);
+    const plan = planCategoryDelete(row, herdId);
     if (!plan) return jsonResponse({ error: 'Unknown category' }, 404);
 
     const { count: moved, error: txError } = await admin
       .from('transactions')
       .update({ category_id: plan.moveTo }, { count: 'exact' })
-      .eq('user_id', user.id)
+      .eq('herd_id', herdId)
       .eq('category_id', categoryId);
     if (txError) throw txError;
 
@@ -44,7 +45,7 @@ Deno.serve(async (req) => {
     const { error: streamError } = await admin
       .from('recurring_streams')
       .update({ category_id: plan.moveTo })
-      .eq('user_id', user.id)
+      .eq('herd_id', herdId)
       .eq('category_id', categoryId);
     if (streamError) throw streamError;
 
@@ -53,14 +54,14 @@ Deno.serve(async (req) => {
     const { error: ruleError } = await admin
       .from('merchant_rules')
       .update({ category_id: plan.moveTo })
-      .eq('user_id', user.id)
+      .eq('herd_id', herdId)
       .eq('category_id', categoryId);
     if (ruleError) throw ruleError;
 
     const { error: budgetError } = await admin
       .from('budgets')
       .delete()
-      .eq('user_id', user.id)
+      .eq('herd_id', herdId)
       .eq('category_id', categoryId);
     if (budgetError) throw budgetError;
 
@@ -68,7 +69,7 @@ Deno.serve(async (req) => {
       .from('categories')
       .delete()
       .eq('id', categoryId)
-      .eq('user_id', user.id);
+      .eq('herd_id', herdId);
     if (deleteError) throw deleteError;
 
     return jsonResponse({ ok: true, moved: moved ?? 0 });

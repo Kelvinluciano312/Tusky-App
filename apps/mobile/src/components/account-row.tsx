@@ -5,13 +5,10 @@ import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { signedBalance } from '@/lib/accounts';
 import type { Account } from '@/lib/queries';
 
-/** Credit and loan balances count against you. */
-export function signedBalance(account: Account): number {
-  const balance = account.current_balance ?? 0;
-  return account.type === 'credit' || account.type === 'loan' ? -balance : balance;
-}
+export { signedBalance };
 
 type Props = {
   account: Account;
@@ -53,6 +50,7 @@ export function AccountRow({ account, onPress, trailing, dimmed = false }: Props
           <AppText variant="label">{account.name}</AppText>
           <AppText variant="caption" tone="dim">
             {detail}
+            {account.in_totals ? '' : ' · Not in totals'}
           </AppText>
         </View>
         <Amount value={signedBalance(account)} size={15} />

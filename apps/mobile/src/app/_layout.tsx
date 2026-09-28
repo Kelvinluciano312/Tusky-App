@@ -8,7 +8,9 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { AppState, useColorScheme } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { RealDataBanner } from '@/components/real-data-banner';
 import { Palette } from '@/constants/theme';
 import { SessionProvider, useSession } from '@/lib/session';
 
@@ -63,14 +65,18 @@ export default function RootLayout() {
   });
 
   return (
+    // Gestures anywhere in the app (the review deck's swipes) need this at the root.
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
         <ThemeProvider value={scheme === 'light' ? navThemes.light : navThemes.dark}>
           <StatusBar style={scheme === 'light' ? 'dark' : 'light'} />
           <RootNavigator fontsLoaded={fontsLoaded} />
+          <RealDataBanner />
         </ThemeProvider>
       </SessionProvider>
     </QueryClientProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -103,6 +109,12 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="transaction/[id]" options={{ headerShown: true, title: '' }} />
         {/* Pushed from Home's review card; the page sets "3 of 12" as its title. */}
         <Stack.Screen name="review" options={{ headerShown: true, title: 'Review' }} />
+        {/* Pushed from Settings; /join/[code] also opens from a tusky:///join/<code> invite link. */}
+        <Stack.Screen name="herd" options={{ headerShown: true, title: 'Herd' }} />
+        <Stack.Screen name="join-herd" options={{ headerShown: true, title: 'Join a herd' }} />
+        <Stack.Screen name="join/[code]" options={{ headerShown: true, title: 'Invite' }} />
+        {/* Pushed from Home's balance card and the herd screen (11b). */}
+        <Stack.Screen name="settle" options={{ headerShown: true, title: 'Settle up' }} />
       </Stack.Protected>
       <Stack.Protected guard={session === null}>
         <Stack.Screen name="(auth)" />

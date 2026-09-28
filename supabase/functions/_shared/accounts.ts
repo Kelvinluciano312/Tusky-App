@@ -4,6 +4,8 @@ import type { PlaidApi } from 'npm:plaid@30';
 /** An accounts row as this module writes and reads it. */
 export type AccountRow = {
   id: string;
+  /** Who connected it; each snapshot row keeps it, like every Plaid row (herd_id is filled in SQL). */
+  user_id: string;
   current_balance: number | null;
   /** On an archived (disconnected) Item: frozen, so never carried forward. */
   archived?: boolean;
@@ -63,7 +65,7 @@ export async function syncAccounts(
 }
 
 /**
- * Snapshot rows for one day, from every account the user holds.
+ * Snapshot rows for one day, from every account the herd holds.
  *
  * Every account, not just the synced Item's: otherwise a day where Item A synced
  * and Item B did not would sum to a partial net worth and the chart would
@@ -76,7 +78,7 @@ export async function syncAccounts(
  * `date` is omitted so the column default (current_date) applies — one clock,
  * and defaults resolve before ON CONFLICT arbitration.
  */
-export function buildSnapshotRows(accounts: AccountRow[], userId: string): SnapshotRow[] {
+export function buildSnapshotRows(accounts: AccountRow[]): SnapshotRow[] {
   return accounts
     .filter((a) => !a.archived)
     // Sorted so two concurrent invocations take row locks in the same order.
@@ -85,7 +87,7 @@ export function buildSnapshotRows(accounts: AccountRow[], userId: string): Snaps
     // a deterministic order that can deadlock and lose a write.
     .map((a) => ({
       account_id: a.id,
-      user_id: userId,
+      user_id: a.user_id,
       // Mirrors signedBalance's `?? 0`. The column is nullable and Plaid returns
       // null for some brokerage accounts; since this is one multi-row insert, a
       // single null would abort the whole day rather than one account.

@@ -8,18 +8,21 @@ import { CategorySheet, type SheetTarget } from '@/components/category-sheet';
 import { DetailLine as Line } from '@/components/detail-line';
 import { NoteSheet } from '@/components/note-sheet';
 import { RenameSheet } from '@/components/rename-sheet';
+import { WhoPaid } from '@/components/who-paid';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { useCategoryChoice } from '@/hooks/use-category-choice';
 import { useTheme } from '@/hooks/use-theme';
+import { setBy } from '@/lib/category-source';
 import { transactionName } from '@/lib/merchants';
 import {
   type Category,
   useCategories,
   useMerchantRules,
   useSetMerchantRule,
+  useSetReviewed,
   useSetTransactionNotes,
   useTransaction,
 } from '@/lib/queries';
@@ -33,6 +36,11 @@ function formatDate(iso: string): string {
   });
 }
 
+/** "Sep 25": when a transaction was reviewed (a timestamp, unlike the transaction's own date). */
+function shortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 /** One transaction: rename its merchant, recategorize it (once or always), and see where it came from. */
 export default function TransactionScreen() {
   const colors = useTheme();
@@ -44,6 +52,7 @@ export default function TransactionScreen() {
   const chooseCategory = useCategoryChoice();
   const setRule = useSetMerchantRule();
   const setNotes = useSetTransactionNotes();
+  const setReviewed = useSetReviewed();
   const [picking, setPicking] = useState(false);
   const [addTarget, setAddTarget] = useState<SheetTarget | null>(null);
   const [renaming, setRenaming] = useState(false);
@@ -103,7 +112,15 @@ export default function TransactionScreen() {
               {t.category_is_manual ? ', but this one was set by hand' : ''}.
             </AppText>
           ) : null}
+          <Line label="Set by" value={setBy(t.category_source)} dim />
           <Line label="Memo" value={t.notes ?? 'Add a memo'} dim={!t.notes} onPress={() => setNoting(true)} />
+          <WhoPaid transaction={t} />
+          <Line
+            label="Review"
+            value={t.reviewed_at ? `Reviewed ${shortDate(t.reviewed_at)} · tap to undo` : 'Not reviewed · tap to mark reviewed'}
+            dim={!t.reviewed_at}
+            onPress={() => setReviewed.mutate({ transactionId: t.id, reviewed: !t.reviewed_at }, { onError: failed })}
+          />
           <Line
             label="Account"
             value={`${t.accounts?.name ?? 'Account'}${t.accounts?.mask ? ` ···· ${t.accounts.mask}` : ''}`}

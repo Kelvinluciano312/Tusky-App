@@ -13,16 +13,33 @@ const plaid = getPlaidClient();
 
 /** Verification keys by kid, for the life of this instance. */
 const keyCache = new Map<string, PlaidJwk>();
+/**
+ * kids we already failed to fetch, and when. This endpoint is public, so
+ * without it anyone could spend our Plaid rate limit by sending a fresh bogus
+ * kid on every request. Short-lived, so a key that appears later is still picked
+ * up on the next delivery — Plaid retries a non-200 for 24h.
+ */
+const missCache = new Map<string, number>();
+const MISS_TTL_MS = 60_000;
+/** Plaid's key ids are UUIDs; anything else never reaches their API. */
+const KID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function getKey(kid: string): Promise<PlaidJwk | null> {
   const cached = keyCache.get(kid);
   if (cached) return cached;
+  if (!KID.test(kid)) return null;
+
+  const missedAt = missCache.get(kid);
+  if (missedAt !== undefined && Date.now() - missedAt < MISS_TTL_MS) return null;
+
   try {
     const { data } = await plaid.webhookVerificationKeyGet({ key_id: kid });
     const key = data.key as PlaidJwk;
     keyCache.set(kid, key);
+    missCache.delete(kid);
     return key;
   } catch (err) {
+    missCache.set(kid, Date.now());
     console.error(`webhook key ${kid} could not be fetched`, err);
     return null;
   }
@@ -60,7 +77,7 @@ Deno.serve(async (req) => {
   const admin = getAdminClient();
   const { data: item, error: itemError } = await admin
     .from('plaid_items')
-    .select('id, user_id')
+    .select('id, user_id, herd_id')
     .eq('plaid_item_id', body.item_id)
     .in('status', ['active', 'login_required'])
     .maybeSingle();

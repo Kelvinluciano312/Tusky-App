@@ -57,7 +57,7 @@ export function useConnectBank() {
                 const { status, message } = await readFunctionError(exchangeError);
                 if (status === 409 && message === 'duplicate') {
                   throw new Error(
-                    `${institution?.name ?? 'This bank'} is already connected. If it stopped syncing, use Reconnect in Settings.`,
+                    `${institution?.name ?? 'This bank'} is already connected in your herd. If it stopped syncing, whoever connected it can use Reconnect in Settings.`,
                   );
                 }
                 throw new Error('The bank responded, but saving the connection failed.');

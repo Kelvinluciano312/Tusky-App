@@ -7,7 +7,56 @@ const row = (id: string, over: Partial<ExistingRow> = {}): ExistingRow => ({
   category_id: 'cat-plaid',
   category_is_manual: false,
   notes: null,
+  paid_by: 'owner',
+  paid_by_is_manual: false,
+  split: null,
+  corrected_from: null,
+  category_source: 'plaid',
   ...over,
+});
+
+Deno.test('carryForward: a hand-picked payer, Joint included, moves to the posted row', () => {
+  const { payers } = carryForward(
+    [
+      { transaction_id: 'posted1', pending_transaction_id: 'p1' },
+      { transaction_id: 'posted2', pending_transaction_id: 'p2' },
+    ],
+    new Map([
+      ['p1', row('p1', { paid_by: 'kelvyn', paid_by_is_manual: true })],
+      ['p2', row('p2', { paid_by: null, paid_by_is_manual: true })],
+    ]),
+  );
+  assertEquals(payers, [
+    { plaid_transaction_id: 'posted1', paid_by: 'kelvyn', split: null },
+    { plaid_transaction_id: 'posted2', paid_by: null, split: null },
+  ]);
+});
+
+Deno.test('carryForward: a custom split moves to the posted row', () => {
+  const { payers } = carryForward(
+    [{ transaction_id: 'posted1', pending_transaction_id: 'p1' }],
+    new Map([['p1', row('p1', { paid_by: null, paid_by_is_manual: true, split: { pedro: 70, kelvyn: 30 } })]]),
+  );
+  assertEquals(payers, [{ plaid_transaction_id: 'posted1', paid_by: null, split: { pedro: 70, kelvyn: 30 } }]);
+});
+
+Deno.test("carryForward: a payer from the account's owner is not carried; the database sets it", () => {
+  const { payers } = carryForward(
+    [{ transaction_id: 'posted1', pending_transaction_id: 'p1' }],
+    new Map([['p1', row('p1')]]),
+  );
+  assertEquals(payers, []);
+});
+
+Deno.test('carryForward: an existing row keeps its own payer', () => {
+  const { payers } = carryForward(
+    [{ transaction_id: 'posted1', pending_transaction_id: 'p1' }],
+    new Map([
+      ['posted1', row('posted1')],
+      ['p1', row('p1', { paid_by: 'kelvyn', paid_by_is_manual: true })],
+    ]),
+  );
+  assertEquals(payers, []);
 });
 
 Deno.test('carryForward: a new posted row inherits its pending predecessor and its memo', () => {
@@ -52,4 +101,12 @@ Deno.test('carryForward: no predecessor, or one already gone, means nothing to k
   );
   assertEquals([...existingFor.values()], [null, null, null]);
   assertEquals(notes, []);
+});
+
+Deno.test('carryForward: a fixed pending row hands the posted row which source it corrected', () => {
+  const { existingFor } = carryForward(
+    [{ transaction_id: 'posted1', pending_transaction_id: 'p1' }],
+    new Map([['p1', row('p1', { category_id: 'cat-mine', category_is_manual: true, corrected_from: 'plaid' })]]),
+  );
+  assertEquals(existingFor.get('posted1')?.corrected_from, 'plaid');
 });

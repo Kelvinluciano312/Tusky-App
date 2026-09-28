@@ -1,30 +1,57 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { ChevronRight, Landmark, Store, Tags } from 'lucide-react-native';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ChevronRight, Landmark, Sparkles, Store, Tags, UserRound, Users, UsersRound } from 'lucide-react-native';
+import { useState } from 'react';
+import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { NameSheet } from '@/components/name-sheet';
+import { Chips } from '@/components/ui/chips';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useConnectBank } from '@/lib/plaid';
-import { type PlaidItem, usePlaidItems } from '@/lib/queries';
+import {
+  type PlaidItem,
+  useCrowdConsent,
+  useHerd,
+  usePlaidItems,
+  useProfile,
+  useSetAiCategorize,
+  useSetCrowdConsent,
+  useSetDisplayName,
+} from '@/lib/queries';
 import { useSession } from '@/lib/session';
-import { supabase } from '@/lib/supabase';
+import { type Backend, backendLabel } from '@/lib/environment';
+import { backend, realConfigured, supabase, switchBackend } from '@/lib/supabase';
 
 export default function SettingsScreen() {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
   const { session } = useSession();
+  const queryClient = useQueryClient();
+  const { data: profile } = useProfile(session?.user.id);
+  const setAiCategorize = useSetAiCategorize();
+  const { data: crowdOn } = useCrowdConsent(session?.user.id);
+  const setCrowd = useSetCrowdConsent();
+  const { data: herd } = useHerd();
+  const setName = useSetDisplayName();
+  const [naming, setNaming] = useState(false);
   const { data: items = [] } = usePlaidItems();
   const { connectBank, isConnecting, error } = useConnectBank();
 
   const live = items.filter((item) => item.status !== 'archived');
   const archived = items.filter((item) => item.status === 'archived');
 
+  const connectorName = (userId: string) =>
+    herd?.members.find((m) => m.user_id === userId)?.display_name ?? 'A former member';
+
   const bankRow = (item: PlaidItem) => {
     const broken = item.status === 'login_required';
+    // Only the member who connected a bank can repair it (Phase 9c).
+    const mine = item.user_id === session?.user.id;
     return (
       <Pressable
         key={item.id}
@@ -45,15 +72,19 @@ export default function SettingsScreen() {
           <AppText variant="label">{item.institution_name ?? 'Bank'}</AppText>
           {broken ? (
             <AppText variant="caption" tone="negative">
-              Sign-in expired
+              {mine ? 'Sign-in expired' : `Sign-in expired · ${connectorName(item.user_id)} can reconnect`}
             </AppText>
           ) : item.status === 'archived' ? (
             <AppText variant="caption" tone="dim">
               History kept
             </AppText>
+          ) : !mine ? (
+            <AppText variant="caption" tone="dim">
+              Connected by {connectorName(item.user_id)}
+            </AppText>
           ) : null}
         </View>
-        {broken ? (
+        {broken && mine ? (
           /* Update mode: repairs this Item in place rather than creating a
              duplicate connection. */
           <Button
@@ -74,6 +105,51 @@ export default function SettingsScreen() {
       style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: Spacing.md, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}>
       <AppText variant="display">Settings</AppText>
+
+      <Card style={{ gap: Spacing.sm }}>
+        <AppText variant="section" tone="dim">
+          You
+        </AppText>
+        <Pressable
+          onPress={() => setNaming(true)}
+          disabled={!profile}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: Spacing.sm,
+            paddingVertical: Spacing.xs,
+            backgroundColor: pressed ? colors.elevated : 'transparent',
+          })}>
+          <UserRound size={20} color={colors.brand} strokeWidth={1.75} />
+          <View style={{ flex: 1 }}>
+            <AppText variant="label">{profile?.display_name ?? ' '}</AppText>
+            <AppText variant="caption" tone="dim">
+              Your name in Tusky
+            </AppText>
+          </View>
+          <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
+        </Pressable>
+        <Pressable
+          onPress={() => router.push('/herd')}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: Spacing.sm,
+            paddingVertical: Spacing.xs,
+            backgroundColor: pressed ? colors.elevated : 'transparent',
+          })}>
+          <Users size={20} color={colors.brand} strokeWidth={1.75} />
+          <View style={{ flex: 1 }}>
+            <AppText variant="label">{herd?.name ?? ' '}</AppText>
+            <AppText variant="caption" tone="dim">
+              {!herd || herd.members.length === 1
+                ? 'Your herd · share Tusky with others'
+                : herd.members.map((m) => m.display_name).join(', ')}
+            </AppText>
+          </View>
+          <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
+        </Pressable>
+      </Card>
 
       <Card style={{ gap: Spacing.sm }}>
         <AppText variant="section" tone="dim">
@@ -146,25 +222,139 @@ export default function SettingsScreen() {
           </AppText>
           <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
         </Pressable>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: Spacing.sm,
+            paddingVertical: Spacing.xs,
+          }}>
+          <Sparkles size={20} color={colors.brand} strokeWidth={1.75} />
+          <View style={{ flex: 1 }}>
+            <AppText variant="label">Let AI sort the leftovers</AppText>
+            <AppText variant="caption" tone="dim">
+              Only for transactions nothing else could place. It sees the merchant, the amount,
+              the description your bank sent and your bank&apos;s guess &mdash; never your balances,
+              your accounts or who you are.
+            </AppText>
+          </View>
+          <Switch
+            accessibilityLabel="Let AI sort the leftovers"
+            trackColor={{ false: colors.elevated, true: colors.brand }}
+            value={profile?.ai_categorize ?? false}
+            disabled={!session?.user.id || setAiCategorize.isPending}
+            onValueChange={(enabled) => {
+              if (session?.user.id) {
+                setAiCategorize.mutate(
+                  { userId: session.user.id, enabled },
+                  {
+                    onError: () =>
+                      Alert.alert('Could not change that', 'Check your connection and try again.'),
+                  },
+                );
+              }
+            }}
+          />
+        </View>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: Spacing.sm,
+            paddingVertical: Spacing.xs,
+          }}>
+          <UsersRound size={20} color={colors.brand} strokeWidth={1.75} />
+          <View style={{ flex: 1 }}>
+            <AppText variant="label">Share my fixes, anonymously</AppText>
+            <AppText variant="caption" tone="dim">
+              When you fix a category, the merchant and your choice join a pool that helps
+              every Tusky user. Never your name, your accounts or exact amounts. A category comes
+              from the pool only once three people agree. Turning this off deletes what you
+              shared.
+            </AppText>
+          </View>
+          <Switch
+            accessibilityLabel="Share my fixes, anonymously"
+            trackColor={{ false: colors.elevated, true: colors.brand }}
+            value={crowdOn ?? false}
+            disabled={!session?.user.id || setCrowd.isPending}
+            onValueChange={(granted) =>
+              setCrowd.mutate(granted, {
+                onError: () => Alert.alert('Could not change that', 'Check your connection and try again.'),
+              })
+            }
+          />
+        </View>
       </Card>
 
       <Card style={{ gap: Spacing.sm }}>
         <AppText variant="section" tone="dim">
           Account
         </AppText>
-        <AppText>{session?.user.email}</AppText>
+        <AppText tone="dim">{session?.user.email}</AppText>
         <Button
           title="Sign out"
           variant="secondary"
           onPress={async () => {
             await supabase.auth.signOut();
+            // The next person to sign in on this device must never see this one's cached data.
+            queryClient.clear();
           }}
         />
       </Card>
 
+      {__DEV__ && realConfigured ? (
+        /* Dev builds only: release builds are always real data. Each side
+           keeps its own sign-in, so switching never signs you out. */
+        <Card style={{ gap: Spacing.sm }}>
+          <AppText variant="section" tone="dim">
+            Data (dev build)
+          </AppText>
+          <Chips
+            accessibilityLabel="Data source"
+            options={[
+              { value: 'sandbox' as Backend, label: 'Sandbox' },
+              { value: 'real' as Backend, label: 'Real data' },
+            ]}
+            selected={backend}
+            onSelect={(next) =>
+              Alert.alert(
+                next === 'real' ? 'Switch to real data?' : 'Switch to Sandbox?',
+                next === 'real'
+                  ? 'Tusky restarts on the production project, where banks are real. You sign in there separately.'
+                  : 'Tusky restarts on the Sandbox project with its test banks.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Switch', onPress: () => switchBackend(next) },
+                ],
+              )
+            }
+          />
+        </Card>
+      ) : null}
+
       <AppText variant="caption" tone="dim" style={{ textAlign: 'center' }}>
-        Tusky v0.1.0 · Plaid Sandbox
+        Tusky v0.1.0 · {backendLabel(backend)}
       </AppText>
+
+      {profile ? (
+        <NameSheet
+          key={String(naming)}
+          visible={naming}
+          current={profile.display_name}
+          isSaving={setName.isPending}
+          onSave={(displayName) =>
+            setName.mutate(
+              { userId: profile.user_id, displayName },
+              {
+                onSuccess: () => setNaming(false),
+                onError: (err) => Alert.alert('Could not save', err.message),
+              },
+            )
+          }
+          onClose={() => setNaming(false)}
+        />
+      ) : null}
     </ScrollView>
   );
 }

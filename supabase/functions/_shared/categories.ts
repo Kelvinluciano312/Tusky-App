@@ -14,14 +14,14 @@ export function readCategoryId(body: unknown): string | null {
   return typeof id === 'string' && UUID.test(id) ? id : null;
 }
 
-export type CategoryRow = { id: string; parent_id: string | null; user_id: string | null };
+export type CategoryRow = { id: string; parent_id: string | null; herd_id: string | null };
 
 /**
  * Where a deleted category's transactions and streams go: its group. Null means
- * "not yours to delete" — a built-in, another user's row, or no row at all —
+ * "not yours to delete" — a built-in, another herd's row, or no row at all —
  * and the handler answers all three with the same 404, so ids never leak.
  */
-export function planCategoryDelete(row: CategoryRow | null, callerId: string): { moveTo: string } | null {
-  if (!row || row.user_id !== callerId || row.parent_id === null) return null;
+export function planCategoryDelete(row: CategoryRow | null, callerHerdId: string): { moveTo: string } | null {
+  if (!row || row.herd_id !== callerHerdId || row.parent_id === null) return null;
   return { moveTo: row.parent_id };
 }
