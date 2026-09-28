@@ -37,6 +37,13 @@ npx -y supabase@2.118.0 secrets list --project-ref awiwcgrisyzimzxgddxu
 
 **`label_pepper` (Vault, Phase 12c).** The HMAC key for `community_labels.contributor`, created once per project by SQL, never in the repo or chat: `select vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'label_pepper', 'HMAC pepper for community_labels.contributor (Phase 12c)');`. Without it, contributions are silently skipped. Never rotate it: every contributor would split into two, and withdrawal could no longer find their old rows.
 
+**Cron (Vault + function secret, Phase 14b).** The daily `plan-enforcer` job reads two Vault secrets, `cron_secret` and `project_url`, and the function compares the header with its `CRON_SECRET`. Create both once per project, **before** the 14b migration is pushed; without them the cron call fails harmlessly and nothing is enforced. In Git Bash, so the value lives only in a shell variable and is never printed:
+
+```sh
+S=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))") && npx -y supabase@2.118.0 db query --linked --project-ref awiwcgrisyzimzxgddxu "select vault.create_secret('$S', 'cron_secret', 'plan-enforcer cron secret (Phase 14b)')" >/dev/null && npx -y supabase@2.118.0 secrets set --project-ref awiwcgrisyzimzxgddxu CRON_SECRET="$S" >/dev/null && echo set
+npx -y supabase@2.118.0 db query --linked --project-ref awiwcgrisyzimzxgddxu "select vault.create_secret('https://awiwcgrisyzimzxgddxu.supabase.co', 'project_url', 'This project''s URL, for cron jobs (Phase 14b)')"
+```
+
 ## Settings outside the repo
 
 - **Auth:** email confirmation is OFF while only Pedro and Kelvyn use it. Turn it ON before anyone else gets access.

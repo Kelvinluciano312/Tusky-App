@@ -2,6 +2,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 
 import { readFunctionError } from '@/lib/functions';
 import type { MerchantRule, MerchantRules } from '@/lib/merchants';
+import type { PlanInfo } from '@/lib/plan-banner';
 import type { PresetLine } from '@/lib/presets';
 import { orderQueue } from '@/lib/review';
 import type { SharedLine } from '@/lib/settle';
@@ -888,6 +889,23 @@ export function useProfile(userId: string | undefined) {
         .single();
       if (error) throw error;
       return data;
+    },
+  });
+}
+
+/** The signed-in user's plan (Phase 14): my_plan() plus the 7-day window's start. */
+export function usePlan(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['plan'],
+    enabled: !!userId,
+    queryFn: async (): Promise<PlanInfo> => {
+      const [plan, sub] = await Promise.all([
+        supabase.rpc('my_plan').single(),
+        supabase.from('subscriptions').select('over_limit_since').eq('user_id', userId!).maybeSingle(),
+      ]);
+      if (plan.error) throw plan.error;
+      if (sub.error) throw sub.error;
+      return { ...(plan.data as Omit<PlanInfo, 'over_limit_since'>), over_limit_since: sub.data?.over_limit_since ?? null };
     },
   });
 }

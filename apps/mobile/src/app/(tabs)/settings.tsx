@@ -6,6 +6,7 @@ import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NameSheet } from '@/components/name-sheet';
+import { PlanBanner } from '@/components/plan-banner';
 import { Chips } from '@/components/ui/chips';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
@@ -150,6 +151,8 @@ export default function SettingsScreen() {
           <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
         </Pressable>
       </Card>
+
+      <PlanBanner userId={session?.user.id} />
 
       <Card style={{ gap: Spacing.sm }}>
         <AppText variant="section" tone="dim">

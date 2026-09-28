@@ -304,6 +304,16 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     at Plaid if a race tipped the plan over: only the bank past the limit in link order goes.
   - `scripts/plan-check.sql` proves the resolver on dev. Spec:
     `docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md`.
+  - **Lifecycle (14b).** `plan-enforcer` runs daily (pg_cron → pg_net, 09:00 UTC) and is public, so it
+    checks `x-cron-secret` against `CRON_SECRET` first. Vault holds `cron_secret` and `project_url`
+    per project; without them the job does nothing. Free archives every bank at once; a smaller plan
+    opens a 7-day window (`subscriptions.over_limit_since`), then archives the newest past the
+    limit. `{ "dry_run": true }` reports without acting. The app's `planBanner` (`lib/plan-banner.ts`)
+    warns 3 days before a trial ends and through the window.
+  - **Reconnect merge (14b).** Every sync runs `mergeReconnected` (`_shared/merge.ts`): accounts of the
+    same connector, institution, name and mask on an archived Item pair with the new ones; in the
+    overlap, edits move to the twin (date, amount, merchant_key) and the kept rows are deleted. It
+    runs every sync because Plaid delivers history in stages, and it never overwrites a value.
 - **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op
   `setMounted(false)` on a closed sheet made React drop the render-phase `setMounted(true)` on the
   next open, and no Sheet-based picker ever appeared. Keep the `else if (mounted)`.
