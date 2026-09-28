@@ -112,3 +112,13 @@ Deno.test('a re-resolve leaves an AI-categorized row where the AI put it', () =>
   };
   assertEquals(planReresolve([row], null, [], { detailed: {}, primary: {} }, 'c-uncat'), []);
 });
+
+Deno.test('planReresolve keeps a community answer, but the herd\'s own rule still wins', () => {
+  const crowdRow = row('r-crowd', 'TRANSPORTATION_TAXIS_AND_RIDE_SHARES', 'TRANSPORTATION', 'cat-crowd', 'community');
+  // No rule, no labels: the crowd's answer stands, even over a confident Plaid code.
+  assertEquals(planReresolve([crowdRow], null, [], MAPS, 'cat-none'), []);
+  // A rule outranks it.
+  assertEquals(planReresolve([crowdRow], 'cat-rule', [], MAPS, 'cat-none'), [
+    { category_id: 'cat-rule', category_source: 'rule', ids: ['r-crowd'] },
+  ]);
+});

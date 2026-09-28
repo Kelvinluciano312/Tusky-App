@@ -92,3 +92,26 @@ Deno.test('an AI answer outranks Plaid, and yields to a rule or what the herd ta
     source: 'learned',
   });
 });
+
+Deno.test('resolveCategory precedence around community: learned > community > ai > plaid', () => {
+  const plaid = { detailed: 'FOOD_AND_DRINK_COFFEE', primary: 'FOOD_AND_DRINK' };
+  assertEquals(
+    resolveCategory({ rule: 'cat-rule', community: 'cat-crowd', ...plaid }, MAPS, FALLBACK),
+    { categoryId: 'cat-rule', source: 'rule' },
+  );
+  assertEquals(
+    resolveCategory({ learned: 'cat-learned', community: 'cat-crowd', ...plaid }, MAPS, FALLBACK),
+    { categoryId: 'cat-learned', source: 'learned' },
+  );
+  assertEquals(
+    resolveCategory({ community: 'cat-crowd', ai: 'cat-ai', ...plaid }, MAPS, FALLBACK),
+    { categoryId: 'cat-crowd', source: 'community' },
+  );
+  assertEquals(
+    resolveCategory({ community: 'cat-crowd', ...plaid }, MAPS, FALLBACK),
+    { categoryId: 'cat-crowd', source: 'community' },
+  );
+  assertEquals(resolveCategory({ community: 'cat-crowd' }, MAPS, FALLBACK), { categoryId: 'cat-crowd', source: 'community' });
+  // A null community answer is no answer.
+  assertEquals(resolveCategory({ community: null, ...plaid }, MAPS, FALLBACK), { categoryId: 'cat-coffee', source: 'plaid' });
+});

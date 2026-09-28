@@ -88,6 +88,10 @@ export function planReresolve(
       {
         rule: ruleCategoryId,
         learned: learnedCategory(usableLabels(labels, row.user_id, row.is_private), row.amount),
+        // A crowd answer stands, like an AI one: re-resolving must not take back
+        // a category the user was already shown. The herd's own rule or fixes
+        // still outrank it.
+        community: row.category_source === 'community' ? row.category_id : null,
         // An answer the AI pass gave stands: re-resolving must not take back a
         // category the user has already been shown.
         ai: row.category_source === 'ai' ? row.category_id : null,

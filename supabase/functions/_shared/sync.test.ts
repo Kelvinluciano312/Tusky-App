@@ -2,7 +2,7 @@ import { assertEquals } from 'jsr:@std/assert';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
 import type { AiCategory, AiRow } from './ai.ts';
-import { runAiPass } from './sync.ts';
+import { loadCommunity, runAiPass } from './sync.ts';
 
 // A fake PostgREST client. Every builder method records itself and returns the
 // builder; awaiting the chain pops the next planned response for
@@ -201,4 +201,19 @@ Deno.test('runAiPass: with no API key nothing is read and nothing is asked', asy
   } finally {
     if (had !== undefined) Deno.env.set('ANTHROPIC_API_KEY', had);
   }
+});
+
+Deno.test('loadCommunity never throws: a failed read means no crowd answers', async () => {
+  const admin = { rpc: () => Promise.resolve({ data: null, error: { message: 'boom' } }) } as unknown as SupabaseClient;
+  assertEquals((await loadCommunity(admin, ['k:shell'])).size, 0);
+});
+
+Deno.test('loadCommunity applies the threshold to what the database tallied', async () => {
+  const admin = {
+    rpc: () => Promise.resolve({
+      data: [{ merchant: 'k:shell', direction: 'out', amount_band: 2, category_id: 'gas', votes: 3 }],
+      error: null,
+    }),
+  } as unknown as SupabaseClient;
+  assertEquals((await loadCommunity(admin, ['k:shell'])).get('k:shell|out|2'), 'gas');
 });
