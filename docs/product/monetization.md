@@ -1,6 +1,6 @@
 # Monetization — direction, not a commitment
 
-Status: idea recorded 2026-09-22. Nothing here is built, and no price is fixed.
+Status: idea recorded 2026-09-22. **Decided 2026-09-28 in `docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md`**, which overrides this file where they differ: Free is a 30-day Tusk trial (2 banks) and then read-only; a Tusk Herd plan exists; billing goes through the stores via RevenueCat, not Stripe; idle-bank removal is dropped.
 
 Tusky will stay usable for free and charge for the parts that cost us money or clearly save the user
 money. Three tiers:

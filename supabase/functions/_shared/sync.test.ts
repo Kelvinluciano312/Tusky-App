@@ -20,7 +20,7 @@ function fakeAdmin(plan: Record<string, Resp[]>) {
     let current: Call = { table, verb: '?', filters: [] };
     // deno-lint-ignore no-explicit-any
     const q: any = {};
-    for (const verb of ['select', 'update', 'upsert', 'insert', 'delete']) {
+    for (const verb of ['select', 'update', 'upsert', 'insert', 'delete', 'rpc']) {
       q[verb] = (payload?: unknown) => {
         current = { table, verb, payload, filters: [] };
         calls.push(current);
@@ -45,13 +45,20 @@ function fakeAdmin(plan: Record<string, Resp[]>) {
   };
 
   return {
-    admin: { from: (table: string) => make(table) } as unknown as SupabaseClient,
+    admin: {
+      from: (table: string) => make(table),
+      rpc: (fn: string, args: unknown) => make(fn).rpc(args),
+    } as unknown as SupabaseClient,
     calls,
     of: (table: string, verb: string) => calls.filter((c) => c.table === table && c.verb === verb),
   };
 }
 
 const ITEM = { id: 'item-1', user_id: 'user-1', herd_id: 'herd-1' };
+
+/** plan_for's answer for a connector on a plan with (or without) AI. */
+const PLAN_AI = { data: { plan: 'tusk', source: 'own', expires_at: null, max_banks: 10, history_days: 730, ai: true, scope: 'self', banks_used: 1 } };
+const PLAN_FREE = { data: { plan: 'free', source: 'free', expires_at: null, max_banks: 0, history_days: 0, ai: false, scope: 'self', banks_used: 0 } };
 
 // The built-ins the pass loads: a group and one of its children.
 const CATEGORY_ROWS = [
@@ -108,23 +115,40 @@ Deno.test('jevEnabled: without a key nothing is read', async () => {
 
 Deno.test('jevEnabled: a user who has not opted in gets no Jev decisions', async () => {
   await withKey(async () => {
-    const { admin, of } = fakeAdmin({ 'profiles:select': [{ data: { ai_categorize: false } }] });
+    const { admin, of } = fakeAdmin({ 'plan_for:rpc': [PLAN_AI], 'profiles:select': [{ data: { ai_categorize: false } }] });
     assertEquals(await jevEnabled(admin, ITEM), false);
     // The connector's own switch.
     assertEquals(of('profiles', 'select')[0].filters, [['eq', 'user_id', 'user-1']]);
   });
 });
 
-Deno.test('jevEnabled: key, seam and switch together turn it on', async () => {
+Deno.test('jevEnabled: key, plan and switch together turn it on', async () => {
   await withKey(async () => {
-    const { admin } = fakeAdmin({ 'profiles:select': [{ data: { ai_categorize: true } }] });
+    const { admin, of } = fakeAdmin({ 'plan_for:rpc': [PLAN_AI], 'profiles:select': [{ data: { ai_categorize: true } }] });
     assertEquals(await jevEnabled(admin, ITEM), true);
+    // The connector's plan, not the herd's or the caller's.
+    assertEquals(of('plan_for', 'rpc')[0].payload, { p_user: 'user-1' });
+  });
+});
+
+Deno.test('jevEnabled: a plan without AI means off, and the switch is never read', async () => {
+  await withKey(async () => {
+    const { admin, of } = fakeAdmin({ 'plan_for:rpc': [PLAN_FREE], 'profiles:select': [{ data: { ai_categorize: true } }] });
+    assertEquals(await jevEnabled(admin, ITEM), false);
+    assertEquals(of('profiles', 'select').length, 0);
+  });
+});
+
+Deno.test('jevEnabled: a failed plan read means off, never a thrown sync', async () => {
+  await withKey(async () => {
+    const { admin } = fakeAdmin({ 'plan_for:rpc': [{ data: null, error: { message: 'boom' } }] });
+    assertEquals(await jevEnabled(admin, ITEM), false);
   });
 });
 
 Deno.test('jevEnabled: a failed profile read means off, never a thrown sync', async () => {
   await withKey(async () => {
-    const { admin } = fakeAdmin({ 'profiles:select': [{ data: null, error: { message: 'boom' } }] });
+    const { admin } = fakeAdmin({ 'plan_for:rpc': [PLAN_AI], 'profiles:select': [{ data: null, error: { message: 'boom' } }] });
     assertEquals(await jevEnabled(admin, ITEM), false);
   });
 });

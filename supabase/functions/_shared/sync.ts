@@ -9,7 +9,6 @@ import {
   type AiLevel,
   type AiRow,
   type AiVerdict,
-  aiAllowed,
   applyAnswers,
   type AskFn,
   buildAskList,
@@ -21,6 +20,7 @@ import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from 
 import { communityAnswers, communityCategory, crowdMerchants, type Tally } from './crowd.ts';
 import { askJev, hasJevKey, JEV_CONCURRENCY, JEV_PASS_BUDGET_MS, type JevAsk, mapLimit } from './jev.ts';
 import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
+import { aiAllowed, loadPlan } from './plans.ts';
 import {
   ignoredCategoryIds,
   jevRecurringDecide,
@@ -220,16 +220,18 @@ export async function claimItem(
 }
 
 /**
- * Whether Jev may decide anything for this Item (12d). It needs a key, the
- * subscriber seam, and the connector's own switch: one switch covers every
- * surface, off by default. Checked once per sync. Never throws: unsure means no.
+ * Whether Jev may decide anything for this Item (12d). It needs a key, a plan
+ * that includes AI (14a: the connector's plan), and the connector's own switch:
+ * one switch covers every surface, off by default. Checked once per sync.
+ * Never throws: unsure means no.
  */
 export async function jevEnabled(
   admin: SupabaseClient,
   item: { user_id: string; herd_id: string },
 ): Promise<boolean> {
   try {
-    if (!hasJevKey() || !aiAllowed(item.herd_id)) return false;
+    if (!hasJevKey()) return false;
+    if (!aiAllowed(await loadPlan(admin, item.user_id))) return false;
     const { data, error } = await admin
       .from('profiles').select('ai_categorize').eq('user_id', item.user_id).maybeSingle();
     if (error) return false;
