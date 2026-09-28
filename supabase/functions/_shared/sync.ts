@@ -5,18 +5,21 @@ import { buildSnapshotRows, syncAccounts } from './accounts.ts';
 import {
   AI_MAX_PER_SYNC,
   type AiAnswer,
+  type AiCategory,
+  type AiLevel,
   type AiRow,
+  type AiVerdict,
   aiAllowed,
   applyAnswers,
-  askClaude,
   type AskFn,
   buildAskList,
   cacheKeyFor,
   groupUpdates,
-  hasAnthropicKey,
+  jevCategorizer,
 } from './ai.ts';
 import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from './categorize.ts';
 import { communityAnswers, communityCategory, crowdMerchants, type Tally } from './crowd.ts';
+import { hasJevKey } from './jev.ts';
 import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
 import { ignoredCategoryIds, normalizeMerchant, refreshRecurring } from './recurring.ts';
 import { type CarriedPayer, carryForward, type ExistingRow } from './review.ts';
@@ -210,22 +213,37 @@ export async function claimItem(
 }
 
 /**
- * The AI fallback (12b), run after the upsert over the rows every other source
- * was unsure about. Never throws: a missed category is not worth failing a sync
+ * Whether Jev may decide anything for this Item (12d). It needs a key, the
+ * subscriber seam, and the connector's own switch: one switch covers every
+ * surface, off by default. Checked once per sync. Never throws: unsure means no.
+ */
+export async function jevEnabled(
+  admin: SupabaseClient,
+  item: { user_id: string; herd_id: string },
+): Promise<boolean> {
+  try {
+    if (!hasJevKey() || !aiAllowed(item.herd_id)) return false;
+    const { data, error } = await admin
+      .from('profiles').select('ai_categorize').eq('user_id', item.user_id).maybeSingle();
+    if (error) return false;
+    return data?.ai_categorize === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The AI fallback (12b; answered by Jev since 12d), run after the upsert over
+ * the rows every other source was unsure about. The caller has already checked
+ * jevEnabled. Never throws: a missed category is not worth failing a sync
  * over, and the next sync retries. `ask` is injected for tests.
  */
 export async function runAiPass(
   admin: SupabaseClient,
   item: { id: string; user_id: string; herd_id: string },
-  ask: AskFn = askClaude,
+  ask: AskFn = jevCategorizer(),
 ): Promise<number> {
   try {
-    if (!hasAnthropicKey() || !aiAllowed(item.herd_id)) return 0;
-
-    const { data: profile } = await admin
-      .from('profiles').select('ai_categorize').eq('user_id', item.user_id).maybeSingle();
-    if (!profile?.ai_categorize) return 0;
-
     // Only this Item's rows, and only the ones nothing else could settle.
     const { data: rowData, error: rowError } = await admin
       .from('transactions')
@@ -249,52 +267,72 @@ export async function runAiPass(
 
     const keys = [...new Set(rows.map(cacheKeyFor))];
     const { data: cacheRows } = await admin
-      .from('ai_category_cache').select('cache_key, category_id').in('cache_key', keys);
-    const cached = new Map(
-      (cacheRows ?? []).map((c) => [c.cache_key as string, c.category_id as string | null]),
+      .from('ai_category_cache').select('cache_key, category_id, confidence, level').in('cache_key', keys);
+    const cached = new Map<string, AiVerdict | null>(
+      (cacheRows ?? []).map((c) => [
+        c.cache_key as string,
+        c.category_id
+          ? {
+            category_id: c.category_id as string,
+            confidence: c.confidence === null || c.confidence === undefined ? null : Number(c.confidence),
+            level: (c.level as AiLevel | null) ?? null,
+          }
+          : null,
+      ]),
     );
 
+    // Every built-in, groups included: since 12d a sure group is an answer too.
     const { data: categoryRows } = await admin
-      .from('categories')
-      .select('id, slug, name, parent_id')
-      .is('herd_id', null)
-      .not('parent_id', 'is', null);
-    const { data: groupRows } = await admin
-      .from('categories').select('id, name').is('herd_id', null).is('parent_id', null);
-    const groupName = new Map((groupRows ?? []).map((g) => [g.id as string, g.name as string]));
-    const categories = (categoryRows ?? [])
-      .filter((c) => c.slug)
-      .map((c) => ({
-        id: c.id as string,
-        slug: c.slug as string,
-        name: c.name as string,
-        parent_name: groupName.get(c.parent_id as string) ?? null,
-      }));
+      .from('categories').select('id, slug, name, parent_id').is('herd_id', null);
+    const slugById = new Map((categoryRows ?? []).map((c) => [c.id as string, c.slug as string | null]));
+    const categories: AiCategory[] = (categoryRows ?? []).flatMap((c): AiCategory[] => {
+      if (!c.slug) return [];
+      const base = { id: c.id as string, slug: c.slug as string, name: c.name as string };
+      if (c.parent_id === null) return [{ ...base, parent_slug: null }];
+      const parent = slugById.get(c.parent_id as string);
+      // A child whose group has no slug cannot be placed in the fan-out.
+      return parent ? [{ ...base, parent_slug: parent }] : [];
+    });
 
     const { ask: toAsk, resolved } = buildAskList(rows, cached);
     const sent = toAsk.slice(0, AI_MAX_PER_SYNC);
     let answers: AiAnswer[] = [];
     if (sent.length > 0) answers = await ask(sent, categories);
-    const { updates, cacheable, unanswered } = applyAnswers(rows, answers, categories, sent.map(cacheKeyFor));
+    // Only the keys Jev actually answered, with a category or an explicit
+    // decline. A key whose call failed is neither written nor remembered, so
+    // the next sync asks again.
+    const sentKeys = new Set(sent.map(cacheKeyFor));
+    const answered = [...new Set(answers.map((a) => a.key))].filter((k) => sentKeys.has(k));
+    const { updates, cacheable, unanswered } = applyAnswers(rows, answers, categories, answered);
 
     // Cache hits update rows too, and cost nothing.
-    for (const [id, category_id] of resolved) updates.push({ id, category_id });
+    for (const [id, verdict] of resolved) updates.push({ id, ...verdict });
 
     // Grouped and chunked: a warm cache can answer hundreds of rows at once, and
     // one statement per row would add seconds to every sync.
     for (const group of groupUpdates(updates)) {
       const { error } = await admin
         .from('transactions')
-        .update({ category_id: group.category_id, category_source: 'ai' })
+        .update({
+          category_id: group.verdict.category_id,
+          category_source: 'ai',
+          ai_confidence: group.verdict.confidence,
+          ai_level: group.verdict.level,
+        })
         .in('id', group.ids)
         // Re-checked at write time: a row set by hand meanwhile stays put.
         .eq('category_is_manual', false);
       if (error) throw error;
     }
     const entries = [
-      ...cacheable.map((c) => ({ cache_key: c.key, category_id: c.category_id as string | null })),
+      ...cacheable.map((c) => ({
+        cache_key: c.key,
+        category_id: c.category_id as string | null,
+        confidence: c.confidence,
+        level: c.level,
+      })),
       // Asked and declined: remembered so no later sync pays to ask again.
-      ...unanswered.map((key) => ({ cache_key: key, category_id: null })),
+      ...unanswered.map((key) => ({ cache_key: key, category_id: null, confidence: null, level: null })),
     ];
     if (entries.length > 0) {
       await admin.from('ai_category_cache').upsert(entries, { onConflict: 'cache_key' });
@@ -556,12 +594,15 @@ export async function syncItem(
 
     result = { ...base, added: added.length, modified: modified.length, removed: removed.length };
 
-    // 12b, over what nothing else could settle. After the cursor and after
-    // `result` is latched, for the same two reasons the snapshot below is: it
-    // calls a third party, and a slow or dead model must not cost a full
-    // re-pagination next sync or turn a good sync into an error. Never throws.
-    const aiSet = await runAiPass(admin, item);
-    if (aiSet > 0) console.log(`item ${item.id}: AI categorized ${aiSet}`);
+    // 12b/12d: Jev's decisions. After the cursor and after `result` is latched,
+    // for the same two reasons the snapshot below is: it calls a third party,
+    // and a slow or dead vendor must not cost a full re-pagination next sync or
+    // turn a good sync into an error. The gate is read once. Never throws.
+    const jevOn = await jevEnabled(admin, item);
+    if (jevOn) {
+      const aiSet = await runAiPass(admin, item);
+      if (aiSet > 0) console.log(`item ${item.id}: AI categorized ${aiSet}`);
+    }
 
     // Last, and after `result` is latched: a failed chart row must not turn a
     // good sync into `status: 'error'`, nor cost a full re-pagination by landing

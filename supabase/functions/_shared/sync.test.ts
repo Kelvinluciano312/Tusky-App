@@ -2,7 +2,7 @@ import { assertEquals } from 'jsr:@std/assert';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
 import type { AiCategory, AiRow } from './ai.ts';
-import { loadCommunity, runAiPass } from './sync.ts';
+import { jevEnabled, loadCommunity, runAiPass } from './sync.ts';
 
 // A fake PostgREST client. Every builder method records itself and returns the
 // builder; awaiting the chain pops the next planned response for
@@ -52,8 +52,11 @@ function fakeAdmin(plan: Record<string, Resp[]>) {
 
 const ITEM = { id: 'item-1', user_id: 'user-1', herd_id: 'herd-1' };
 
-const CATEGORY_ROWS = [{ id: 'c-fuel', slug: 'gas', name: 'Gas', parent_id: 'g-transport' }];
-const GROUP_ROWS = [{ id: 'g-transport', name: 'Transportation' }];
+// The built-ins the pass loads: a group and one of its children.
+const CATEGORY_ROWS = [
+  { id: 'g-transport', slug: 'transportation', name: 'Transportation', parent_id: null },
+  { id: 'c-fuel', slug: 'gas', name: 'Gas', parent_id: 'g-transport' },
+];
 
 const txRow = (over: Partial<Record<string, unknown>> = {}) => ({
   id: 't1',
@@ -67,140 +70,214 @@ const txRow = (over: Partial<Record<string, unknown>> = {}) => ({
   ...over,
 });
 
-/** The reads runAiPass makes, in order, once it is past the profile gate. */
+/** The reads runAiPass makes, in order. The gate (jevEnabled) was checked before it. */
 function readPlan(rows: unknown[], cache: unknown[] = []): Record<string, Resp[]> {
   return {
-    'profiles:select': [{ data: { ai_categorize: true } }],
     'transactions:select': [{ data: rows }],
     'ai_category_cache:select': [{ data: cache }],
-    'categories:select': [{ data: CATEGORY_ROWS }, { data: GROUP_ROWS }],
+    'categories:select': [{ data: CATEGORY_ROWS }],
   };
 }
 
 const withKey = async (body: () => Promise<void>) => {
-  const had = Deno.env.get('ANTHROPIC_API_KEY');
-  Deno.env.set('ANTHROPIC_API_KEY', 'sk-ant-test');
+  const had = Deno.env.get('JEV_API_KEY');
+  Deno.env.set('JEV_API_KEY', 'jev-test');
   try {
     await body();
   } finally {
-    if (had === undefined) Deno.env.delete('ANTHROPIC_API_KEY');
-    else Deno.env.set('ANTHROPIC_API_KEY', had);
+    if (had === undefined) Deno.env.delete('JEV_API_KEY');
+    else Deno.env.set('JEV_API_KEY', had);
   }
 };
 
-const answerGas = (rows: AiRow[], _cats: AiCategory[]) =>
-  Promise.resolve(rows.map((r) => ({ key: `${r.merchant_key}|out|2`, slug: 'gas' })));
+const gasAnswer = (r: AiRow) => ({ key: `${r.merchant_key}|out|2`, slug: 'gas', confidence: 0.97, level: 'child' as const });
+const answerGas = (rows: AiRow[], _cats: AiCategory[]) => Promise.resolve(rows.map(gasAnswer));
 
-Deno.test('runAiPass: a user who has not opted in is never sent anywhere', async () => {
+Deno.test('jevEnabled: without a key nothing is read', async () => {
+  const had = Deno.env.get('JEV_API_KEY');
+  Deno.env.delete('JEV_API_KEY');
+  try {
+    const { admin, calls } = fakeAdmin({ 'profiles:select': [{ data: { ai_categorize: true } }] });
+    assertEquals(await jevEnabled(admin, ITEM), false);
+    assertEquals(calls.length, 0);
+  } finally {
+    if (had !== undefined) Deno.env.set('JEV_API_KEY', had);
+  }
+});
+
+Deno.test('jevEnabled: a user who has not opted in gets no Jev decisions', async () => {
   await withKey(async () => {
-    const { admin, calls, of } = fakeAdmin({ 'profiles:select': [{ data: { ai_categorize: false } }] });
-    let asked = false;
-    const set = await runAiPass(admin, ITEM, () => {
-      asked = true;
-      return Promise.resolve([]);
-    });
-    assertEquals(set, 0);
-    assertEquals(asked, false);
-    // Not even read: the switch is checked before anything is loaded.
-    assertEquals(of('transactions', 'select').length, 0);
-    assertEquals(calls.filter((c) => c.verb === 'update' || c.verb === 'upsert').length, 0);
+    const { admin, of } = fakeAdmin({ 'profiles:select': [{ data: { ai_categorize: false } }] });
+    assertEquals(await jevEnabled(admin, ITEM), false);
+    // The connector's own switch.
+    assertEquals(of('profiles', 'select')[0].filters, [['eq', 'user_id', 'user-1']]);
   });
 });
 
-Deno.test('runAiPass: answers are written grouped, stamped `ai`, and only over rows still not manual', async () => {
+Deno.test('jevEnabled: key, seam and switch together turn it on', async () => {
   await withKey(async () => {
-    const rows = [txRow({ id: 't1' }), txRow({ id: 't2', amount: -49 })];
-    const { admin, of } = fakeAdmin(readPlan(rows));
-    const set = await runAiPass(admin, ITEM, answerGas);
-
-    assertEquals(set, 2);
-    const writes = of('transactions', 'update');
-    // One statement for both rows, not one each.
-    assertEquals(writes.length, 1);
-    assertEquals(writes[0].payload, { category_id: 'c-fuel', category_source: 'ai' });
-    assertEquals(writes[0].filters, [
-      ['in', 'id', ['t1', 't2']],
-      // A row someone categorized by hand between the read and the write stays put.
-      ['eq', 'category_is_manual', false],
-    ]);
+    const { admin } = fakeAdmin({ 'profiles:select': [{ data: { ai_categorize: true } }] });
+    assertEquals(await jevEnabled(admin, ITEM), true);
   });
 });
 
-Deno.test('runAiPass: a private account\'s merchant never reaches the global cache', async () => {
+Deno.test('jevEnabled: a failed profile read means off, never a thrown sync', async () => {
   await withKey(async () => {
-    const rows = [txRow({ id: 'p1', accounts: { is_private: true } })];
-    const { admin, of } = fakeAdmin(readPlan(rows));
-    const set = await runAiPass(admin, ITEM, answerGas);
-
-    // The row still gets its category.
-    assertEquals(set, 1);
-    assertEquals(of('transactions', 'update').length, 1);
-    // But which merchants someone keeps private is not a fact other herds learn.
-    assertEquals(of('ai_category_cache', 'upsert').length, 0);
+    const { admin } = fakeAdmin({ 'profiles:select': [{ data: null, error: { message: 'boom' } }] });
+    assertEquals(await jevEnabled(admin, ITEM), false);
   });
 });
 
-Deno.test('runAiPass: a shared answer is cached, and a merchant the model declined is cached as null', async () => {
-  await withKey(async () => {
-    const rows = [txRow({ id: 't1' }), txRow({ id: 't2', merchant_key: 'mystery', name: 'POS DEBIT 88213' })];
-    const { admin, of } = fakeAdmin(readPlan(rows));
-    const set = await runAiPass(admin, ITEM, (asked) =>
-      // Answers the first, declines the second — as the prompt tells it to.
-      Promise.resolve(asked.filter((r) => r.merchant_key === 'shell').map((r) => ({
-        key: `${r.merchant_key}|out|2`,
-        slug: 'gas',
-      }))));
+Deno.test('runAiPass: Jev is offered the built-in groups and their children', async () => {
+  const { admin, of } = fakeAdmin(readPlan([txRow()]));
+  let offered: AiCategory[] = [];
+  await runAiPass(admin, ITEM, (rows, cats) => {
+    offered = cats;
+    return answerGas(rows, cats);
+  });
+  assertEquals(offered, [
+    { id: 'g-transport', slug: 'transportation', name: 'Transportation', parent_slug: null },
+    { id: 'c-fuel', slug: 'gas', name: 'Gas', parent_slug: 'transportation' },
+  ]);
+  // Built-ins only: a herd's custom category must never reach the global cache.
+  assertEquals(of('categories', 'select')[0].filters, [['is', 'herd_id', null]]);
+});
 
-    assertEquals(set, 1);
-    const cached = of('ai_category_cache', 'upsert');
-    assertEquals(cached.length, 1);
-    assertEquals(cached[0].payload, [
-      { cache_key: 'shell|out|2', category_id: 'c-fuel' },
-      // Without this row, the same unanswerable merchant is sent again every sync.
-      { cache_key: 'mystery|out|2', category_id: null },
-    ]);
+Deno.test('runAiPass: answers are written grouped, stamped `ai` with their confidence, and only over rows still not manual', async () => {
+  const rows = [txRow({ id: 't1' }), txRow({ id: 't2', amount: -49 })];
+  const { admin, of } = fakeAdmin(readPlan(rows));
+  const set = await runAiPass(admin, ITEM, answerGas);
+
+  assertEquals(set, 2);
+  const writes = of('transactions', 'update');
+  assertEquals(writes.length, 1);
+  assertEquals(writes[0].payload, {
+    category_id: 'c-fuel',
+    category_source: 'ai',
+    ai_confidence: 0.97,
+    ai_level: 'child',
+  });
+  assertEquals(writes[0].filters, [
+    ['in', 'id', ['t1', 't2']],
+    // A row someone categorized by hand between the read and the write stays put.
+    ['eq', 'category_is_manual', false],
+  ]);
+});
+
+Deno.test('runAiPass: a group-level answer lands on the group', async () => {
+  const { admin, of } = fakeAdmin(readPlan([txRow()]));
+  await runAiPass(admin, ITEM, (asked) =>
+    Promise.resolve(asked.map((r) => ({
+      key: `${r.merchant_key}|out|2`,
+      slug: 'transportation',
+      confidence: 0.93,
+      level: 'group' as const,
+    }))));
+  assertEquals(of('transactions', 'update')[0].payload, {
+    category_id: 'g-transport',
+    category_source: 'ai',
+    ai_confidence: 0.93,
+    ai_level: 'group',
+  });
+});
+
+Deno.test("runAiPass: a private account's merchant never reaches the global cache", async () => {
+  const rows = [txRow({ id: 'p1', accounts: { is_private: true } })];
+  const { admin, of } = fakeAdmin(readPlan(rows));
+  const set = await runAiPass(admin, ITEM, answerGas);
+
+  assertEquals(set, 1);
+  assertEquals(of('transactions', 'update').length, 1);
+  assertEquals(of('ai_category_cache', 'upsert').length, 0);
+});
+
+Deno.test('runAiPass: a shared answer is cached with its confidence, and a declined merchant is cached as null', async () => {
+  const rows = [txRow({ id: 't1' }), txRow({ id: 't2', merchant_key: 'mystery', name: 'POS DEBIT 88213' })];
+  const { admin, of } = fakeAdmin(readPlan(rows));
+  const set = await runAiPass(admin, ITEM, (asked) =>
+    Promise.resolve(asked.map((r) =>
+      r.merchant_key === 'shell'
+        ? gasAnswer(r)
+        // Jev chose "none of these fits": an explicit decline.
+        : { key: `${r.merchant_key}|out|2`, slug: null }
+    )));
+
+  assertEquals(set, 1);
+  const cached = of('ai_category_cache', 'upsert');
+  assertEquals(cached.length, 1);
+  assertEquals(cached[0].payload, [
+    { cache_key: 'shell|out|2', category_id: 'c-fuel', confidence: 0.97, level: 'child' },
+    // Without this row, the same unplaceable merchant is sent again every sync.
+    { cache_key: 'mystery|out|2', category_id: null, confidence: null, level: null },
+  ]);
+});
+
+Deno.test('runAiPass: a merchant whose call failed is neither written nor remembered', async () => {
+  const rows = [txRow({ id: 't1' }), txRow({ id: 't2', merchant_key: 'mystery', name: 'POS DEBIT 88213' })];
+  const { admin, of } = fakeAdmin(readPlan(rows));
+  // Only shell came back: mystery's call failed (a 503, a timeout, the budget).
+  const set = await runAiPass(admin, ITEM, (asked) =>
+    Promise.resolve(asked.filter((r) => r.merchant_key === 'shell').map(gasAnswer)));
+
+  assertEquals(set, 1);
+  // Remembering mystery as declined would stop us ever asking about it again.
+  assertEquals(of('ai_category_cache', 'upsert')[0].payload, [
+    { cache_key: 'shell|out|2', category_id: 'c-fuel', confidence: 0.97, level: 'child' },
+  ]);
+});
+
+Deno.test('runAiPass: a cache hit carries its confidence onto the row and asks nothing', async () => {
+  const { admin, of } = fakeAdmin(
+    readPlan([txRow()], [{ cache_key: 'shell|out|2', category_id: 'c-fuel', confidence: 0.96, level: 'child' }]),
+  );
+  let asked = false;
+  const set = await runAiPass(admin, ITEM, () => {
+    asked = true;
+    return Promise.resolve([]);
+  });
+  assertEquals(asked, false);
+  assertEquals(set, 1);
+  assertEquals(of('transactions', 'update')[0].payload, {
+    category_id: 'c-fuel',
+    category_source: 'ai',
+    ai_confidence: 0.96,
+    ai_level: 'child',
+  });
+});
+
+Deno.test('runAiPass: a 12b-era cache hit has no confidence, and says so', async () => {
+  const { admin, of } = fakeAdmin(
+    readPlan([txRow()], [{ cache_key: 'shell|out|2', category_id: 'c-fuel', confidence: null, level: null }]),
+  );
+  await runAiPass(admin, ITEM, () => Promise.resolve([]));
+  assertEquals(of('transactions', 'update')[0].payload, {
+    category_id: 'c-fuel',
+    category_source: 'ai',
+    ai_confidence: null,
+    ai_level: null,
   });
 });
 
 Deno.test('runAiPass: a cached null answer costs nothing and asks nothing', async () => {
-  await withKey(async () => {
-    const rows = [txRow({ id: 't1' })];
-    const { admin, of } = fakeAdmin(
-      readPlan(rows, [{ cache_key: 'shell|out|2', category_id: null }]),
-    );
-    let asked = false;
-    const set = await runAiPass(admin, ITEM, () => {
-      asked = true;
-      return Promise.resolve([]);
-    });
-    assertEquals(asked, false);
-    assertEquals(set, 0);
-    assertEquals(of('transactions', 'update').length, 0);
-    // Already known: nothing to write back.
-    assertEquals(of('ai_category_cache', 'upsert').length, 0);
+  const { admin, of } = fakeAdmin(
+    readPlan([txRow({ id: 't1' })], [{ cache_key: 'shell|out|2', category_id: null, confidence: null, level: null }]),
+  );
+  let asked = false;
+  const set = await runAiPass(admin, ITEM, () => {
+    asked = true;
+    return Promise.resolve([]);
   });
+  assertEquals(asked, false);
+  assertEquals(set, 0);
+  assertEquals(of('transactions', 'update').length, 0);
+  assertEquals(of('ai_category_cache', 'upsert').length, 0);
 });
 
-Deno.test('runAiPass: a model that fails costs the sync nothing', async () => {
-  await withKey(async () => {
-    const { admin, calls } = fakeAdmin(readPlan([txRow()]));
-    const set = await runAiPass(admin, ITEM, () => Promise.reject(new Error('402 out of credit')));
-    // A missed category is never worth failing a sync over.
-    assertEquals(set, 0);
-    assertEquals(calls.filter((c) => c.verb === 'update' || c.verb === 'upsert').length, 0);
-  });
-});
-
-Deno.test('runAiPass: with no API key nothing is read and nothing is asked', async () => {
-  const had = Deno.env.get('ANTHROPIC_API_KEY');
-  Deno.env.delete('ANTHROPIC_API_KEY');
-  try {
-    const { admin, calls } = fakeAdmin(readPlan([txRow()]));
-    assertEquals(await runAiPass(admin, ITEM, () => Promise.reject(new Error('must not be called'))), 0);
-    assertEquals(calls.length, 0);
-  } finally {
-    if (had !== undefined) Deno.env.set('ANTHROPIC_API_KEY', had);
-  }
+Deno.test('runAiPass: a vendor that fails costs the sync nothing', async () => {
+  const { admin, calls } = fakeAdmin(readPlan([txRow()]));
+  const set = await runAiPass(admin, ITEM, () => Promise.reject(new Error('jev: HTTP 402')));
+  assertEquals(set, 0);
+  assertEquals(calls.filter((c) => c.verb === 'update' || c.verb === 'upsert').length, 0);
 });
 
 Deno.test('loadCommunity never throws: a failed read means no crowd answers', async () => {
