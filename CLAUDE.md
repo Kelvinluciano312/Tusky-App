@@ -198,7 +198,7 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   live Item. Archived Items never block a relink.
 - **Categories are two levels** (Phase 7a). The 16 original rows are the groups (`parent_id` null) and
   keep their ids; 61 children hang off them. `categories_enforce_tree` allows a parent only if it is a
-  built-in group, and copies the group's `kind` onto the child. Sync resolves **manual > rule (7c) > learned (12a) > ai (12b) >
+  built-in group, and copies the group's `kind` onto the child. Sync resolves **manual > rule (7c) > learned (12a) > community (12c) > ai (12b) >
   Plaid detailed (`plaid_detailed_map`) > Plaid primary (`plaid_category_map`, whose entries are
   groups) > uncategorized**: `resolveCategory` in `_shared/categorize.ts`, with `pickCategory` on
   top. `credit_card_payment` is transfer-kind, so it leaves spending and cash flow, but
@@ -245,6 +245,19 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   cursor advance, beside the snapshot pass, because a slow model must never cost a re-pagination;
   and a cache row with a null `category_id` means "asked and declined", which is what stops us
   paying to ask about the same unplaceable merchant on every sync.
+- **Crowd labels** (Phase 12c). Contributions are written only by the `security definer` trigger
+  `ae_transactions_crowd_label`, for the acting user (`auth.uid()`) with active `crowd_labels` consent
+  — never by a service-role rule, sync, or `apply-learning` write. `community_labels` has no user,
+  herd or account column and no client grants at all: the pool is server-only. `contributor` is an
+  HMAC of the user's id under the Vault secret `label_pepper`, so one person casts one vote per
+  merchant/direction/band and withdrawal can find and delete their own rows. Serving needs at least 3
+  distinct contributors and at least 70% agreement (`communityAnswers` in `_shared/crowd.ts`); below
+  that, nothing is served, so one person's label never leaks through another user's category.
+  `private.amount_band` is the SQL twin of `amountBand`, the same bands 12b's AI cache key uses. A
+  community answer is sticky like an AI one: `community` is a source in `resolveCategory`, so a later
+  re-resolve does not take back an answer already shown. Consent (`consents`, kind `crowd_labels`) is
+  written only through `set_consent` — never a direct client write — and withdrawing deletes that
+  user's contributions.
 - **Preset budgets** (Phase 13). `lib/presets.ts` is pure: it takes the last 3 full months of
   `monthly_category_totals`, takes a median per line, and caps each bucket by a share of the median
   income (whole dollars, so pennies of income read as none). Built-in group slugs decide needs from

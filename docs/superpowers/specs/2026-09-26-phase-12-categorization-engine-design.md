@@ -190,7 +190,7 @@ it is an opt-in switch, a hard per-sync cap, and one place a subscription check 
     user's category.
 - **`rls-check.mjs`** proves:
   - no member can read `community_labels`;
-  - no member can read another user's `credit_ledger` or `consents`;
+  - no member can read another user's `consents`, or write one except through `set_consent`;
   - `category_source` and `corrected_from` are not client-writable.
 
 ## Known and accepted
@@ -203,6 +203,16 @@ it is an opt-in switch, a hard per-sync cap, and one place a subscription check 
   categories already do.
 - **AI answers are shared across users through the cache.** Only merchant-level text goes in, so
   nothing personal is shared.
+- **Community answers are sticky, with no backfill sweep.** A row synced before its merchant reaches
+  the 3-contributor / 70% threshold keeps whatever it already had; it only picks up `community` the
+  next time Plaid sends it and sync re-resolves it.
+- **Only the user's own by-hand action contributes.** A fix or a review-accept the user makes
+  themselves triggers a contribution; a service-role write — a rule application, a sync-driven
+  resolve, or `apply-learning` touching unreviewed rows — never does, even though all three can change
+  `category_id`.
+- **Merchant lookup falls back from entity id to normalized name.** `merchant_entity_id` is sparse on
+  older rows until Plaid re-sends them, so the crowd keys on `'k:' || merchant_key` until then; two
+  banks may name one merchant differently in that window.
 
 ## Deferred
 
