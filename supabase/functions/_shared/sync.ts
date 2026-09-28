@@ -21,7 +21,13 @@ import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from 
 import { communityAnswers, communityCategory, crowdMerchants, type Tally } from './crowd.ts';
 import { askJev, hasJevKey, JEV_CONCURRENCY, JEV_PASS_BUDGET_MS, type JevAsk, mapLimit } from './jev.ts';
 import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
-import { ignoredCategoryIds, normalizeMerchant, refreshRecurring } from './recurring.ts';
+import {
+  ignoredCategoryIds,
+  jevRecurringDecide,
+  normalizeMerchant,
+  type RecurringDecide,
+  refreshRecurring,
+} from './recurring.ts';
 import { type CarriedPayer, carryForward, type ExistingRow } from './review.ts';
 import { groupTriage, readTriage, TRIAGE_PER_SYNC, triageQuestions, type TriageRow, triageState } from './triage.ts';
 
@@ -734,7 +740,20 @@ export async function syncItem(
         .eq('herd_id', item.herd_id)
         .eq('kind', 'transfer');
       if (ownError) throw ownError;
-      await refreshRecurring(admin, item, [...transferCategoryIds, ...ignoredCategoryIds(ownTransfers ?? [])]);
+      // 12d: Jev breaks ties on near misses only when this sync's gate is open.
+      let decide: RecurringDecide | undefined;
+      if (jevOn) {
+        const { data: names, error: namesError } = await admin
+          .from('categories').select('id, name').or(`herd_id.is.null,herd_id.eq.${item.herd_id}`);
+        if (namesError) throw namesError;
+        decide = jevRecurringDecide(askJev, new Map((names ?? []).map((c) => [c.id as string, c.name as string])));
+      }
+      await refreshRecurring(
+        admin,
+        item,
+        [...transferCategoryIds, ...ignoredCategoryIds(ownTransfers ?? [])],
+        decide,
+      );
     } catch (err) {
       console.warn(`recurring refresh failed for item ${item.id}: ${describeError(err)}`);
     }
