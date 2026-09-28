@@ -301,7 +301,7 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   - `plaid-create-link-token` and `plaid-exchange-token` refuse a new bank with
     `402 { error: 'plan_limit', plan, max_banks }`. Update mode is never refused. Link-token sets
     `days_requested` from the plan. Exchange-token checks again after recording the Item and removes it
-    at Plaid if a race tipped the plan over.
+    at Plaid if a race tipped the plan over: only the bank past the limit in link order goes.
   - `scripts/plan-check.sql` proves the resolver on dev. Spec:
     `docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md`.
 - **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op

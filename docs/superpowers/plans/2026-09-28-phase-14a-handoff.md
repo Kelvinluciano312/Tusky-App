@@ -22,7 +22,8 @@ access. There is no store yet: plans are set by writing `subscriptions` rows.
     `transactions.days_requested` from the plan. Before this, every bank got Plaid's default of
     90 days.
   - `plaid-exchange-token` checks before the exchange, and again after recording the Item. If a
-    race tipped the plan over, it removes the Item at Plaid.
+    race tipped the plan over, only the bank past the limit in link order is removed at
+    Plaid, so two racing links never cost the user both banks (fixed after the final review).
   - `jevEnabled` now asks the connector's plan; the `aiAllowed` placeholder is gone from `ai.ts`.
 - **App:** a refused bank shows why ("Your free trial has ended…", or "Your plan connects up to N
   banks…"). The paywall and Plan screen are 14c.
