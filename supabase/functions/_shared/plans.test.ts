@@ -1,7 +1,16 @@
 import { assertEquals, assertRejects } from 'jsr:@std/assert';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
-import { aiAllowed, canAddBank, historyDays, loadPlan, overLimit, planLimitBody, type PlanState } from './plans.ts';
+import {
+  aiAllowed,
+  canAddBank,
+  historyDays,
+  loadPlan,
+  overLimit,
+  pastLimit,
+  planLimitBody,
+  type PlanState,
+} from './plans.ts';
 
 const plan = (over: Partial<PlanState> = {}): PlanState => ({
   plan: 'tusklet', source: 'own', expires_at: null, max_banks: 3, history_days: 365, ai: true, scope: 'self', banks_used: 0,
@@ -20,6 +29,27 @@ Deno.test('canAddBank: free has no banks at all', () => {
 Deno.test('overLimit: only past the limit, never at it', () => {
   assertEquals(overLimit(plan({ banks_used: 3 })), false);
   assertEquals(overLimit(plan({ banks_used: 4 })), true);
+});
+
+// Two links race past the pre-check: 1 bank in use, limit 2, A and B both recorded.
+const RACE = [
+  { id: 'old', created_at: '2026-09-01T00:00:00Z' },
+  { id: 'b', created_at: '2026-09-28T10:00:01Z' },
+  { id: 'a', created_at: '2026-09-28T10:00:00Z' },
+];
+
+Deno.test('pastLimit: after a race only the newest link is removed, the other stays', () => {
+  assertEquals(pastLimit(RACE, 'a', 2), false);
+  assertEquals(pastLimit(RACE, 'b', 2), true);
+});
+
+Deno.test('pastLimit: an established bank is never the one removed', () => {
+  assertEquals(pastLimit(RACE, 'old', 2), false);
+});
+
+Deno.test('pastLimit: equal times fall back to id, so both calls agree', () => {
+  const tie = [{ id: 'x', created_at: '2026-09-28T10:00:00Z' }, { id: 'y', created_at: '2026-09-28T10:00:00Z' }];
+  assertEquals([pastLimit(tie, 'x', 1), pastLimit(tie, 'y', 1)], [false, true]);
 });
 
 Deno.test('historyDays stays inside what Plaid accepts', () => {

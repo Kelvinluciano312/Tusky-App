@@ -38,6 +38,23 @@ export function overLimit(p: PlanState): boolean {
   return p.banks_used > p.max_banks;
 }
 
+/**
+ * Whether this Item is one of the banks past the limit, counting live Items in
+ * link order (created_at, then id). After two links race past the check, both
+ * recounts agree that only the newest is extra, so exactly that one goes; an
+ * established bank is never the one removed.
+ */
+export function pastLimit(
+  items: { id: string; created_at: string }[],
+  itemId: string,
+  maxBanks: number,
+): boolean {
+  const order = [...items].sort((x, y) =>
+    x.created_at === y.created_at ? (x.id < y.id ? -1 : 1) : (x.created_at < y.created_at ? -1 : 1)
+  );
+  return order.findIndex((i) => i.id === itemId) >= maxBanks;
+}
+
 /** Plaid's transactions.days_requested accepts 1..730. */
 export function historyDays(p: PlanState): number {
   return Math.min(730, Math.max(1, p.history_days));

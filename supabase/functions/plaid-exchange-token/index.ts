@@ -1,7 +1,7 @@
 import { syncAccounts } from '../_shared/accounts.ts';
 import { isDuplicateLink, type LinkedAccount } from '../_shared/connections.ts';
 import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, getPlaidClient, jsonResponse } from '../_shared/lib.ts';
-import { canAddBank, loadPlan, overLimit, planLimitBody } from '../_shared/plans.ts';
+import { canAddBank, loadPlan, overLimit, pastLimit, planLimitBody } from '../_shared/plans.ts';
 
 type ExchangeBody = {
   public_token: string;
@@ -97,10 +97,20 @@ Deno.serve(async (req) => {
     if (tokenError) throw tokenError;
 
     // 3b. Two links at once can both pass the check above. Count again now the
-    //     Item exists; if this one tipped the plan over, remove it at Plaid (the
-    //     only thing that stops the bill) and forget it.
+    //     Item exists. If the plan is over, only the banks past the limit in link
+    //     order go, so both racing calls agree on the one to remove: at Plaid
+    //     (the only thing that stops the bill), then here.
     const after = await loadPlan(admin, user.id);
+    let extra = false;
     if (overLimit(after)) {
+      const scoped = admin.from('plaid_items').select('id, created_at').neq('status', 'archived');
+      const { data: live, error: liveError } = await (after.scope === 'herd'
+        ? scoped.eq('herd_id', herdId)
+        : scoped.eq('user_id', user.id));
+      if (liveError) throw liveError;
+      extra = pastLimit(live ?? [], item.id, after.max_banks);
+    }
+    if (extra) {
       await plaid.itemRemove({ access_token: exchange.access_token });
       await admin.from('plaid_items').delete().eq('id', item.id);
       console.log(`over plan limit after link, removed: user ${user.id}, item ${item.id}`);
