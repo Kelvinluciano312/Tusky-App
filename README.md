@@ -11,16 +11,23 @@ A personal finance app — connect your banks, see your net worth, track spendin
 - ✅ **Phase 3** — budgets per category, spending-by-category donut and cash-flow reports
 - ✅ **Phase 4** — net worth history: balances refresh on every sync, daily snapshots, trend line on Home
 - ✅ **Phase 5** — recurring transactions and bills radar: detected bills, subscriptions and paychecks, Upcoming on Home, price-change flags
-- ✅ **Phase 6** — connections & control: disconnect a bank (keep its history or delete it), hide/unhide accounts, duplicate connections refused, database grants closed. Its last step, the Plaid key switch, waits on a go-ahead — [spec](docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md)
-- 🚧 **Phase 7** — categories, in three milestones — [spec](docs/superpowers/specs/2026-09-24-phase-7-categories-design.md)
+- ✅ **Phase 6** — connections & control: disconnect a bank (keep its history or delete it), hide/unhide accounts, duplicate connections refused, database grants closed — [spec](docs/superpowers/specs/2026-09-23-phase-6-connections-control-design.md)
+- ✅ **Phase 7** — categories, in three milestones — [spec](docs/superpowers/specs/2026-09-24-phase-7-categories-design.md)
   - ✅ **7a** — the 16 categories become groups over 61 finer ones from Plaid's detailed codes; budgets on a group or a category; Reports by group with a drill-in; card payments are transfers but stay on the bills radar
   - ✅ **7b** — rename, recolour and hide the built-in categories; add your own under any group, and delete them (their transactions move to the group); a Categories screen in Settings
   - ✅ **7c** — merchant rules ("always categorize this merchant as X", past and future, never over a manual choice) and merchant renames that show everywhere; a transaction screen and a rules screen
-- 🚧 **Phase 12** — the categorization engine — [spec](docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md)
+- ✅ **Phase 8** — transaction review: a queue of new transactions to confirm, with a memo and category on each; a pending row's memo and category carry over when it posts — [spec](docs/superpowers/specs/2026-09-25-phase-8-transaction-review-design.md)
+- ✅ **Phase 9** — herds (shared households): display names, a personal herd per user, invite codes to join, leave and remove, private accounts, and who paid on every account and transaction — [spec](docs/superpowers/specs/2026-09-25-phase-9-herds-design.md)
+  - 🚧 **Track P** — the production project (real banks) is live, with the functions deployed and secrets set. It waits on Plaid's production access for the big OAuth banks — [runbook](docs/ops/production.md)
+- ✅ **Phase 10** — Review becomes a swipeable deck (right accepts, left skips, undo); Home groups accounts by type
+- ✅ **Phase 11** — shared money: spending by person in Reports, a payer filter on the feed, splits per transaction, and settle-up — [spec](docs/superpowers/specs/2026-09-26-phase-11-shared-money-design.md)
+- ✅ **Phase 12** — the categorization engine — [spec](docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md)
   - ✅ **12a** — Tusky learns each merchant's category from your fixes (split by amount), flags its guesses in review, and records where every category came from
-  - 🚧 **12b** — an opt-in AI pass over the transactions nothing else could place, with a shared answer cache. Built and tested; the live model call is waiting on credit on the Anthropic account
-  - ✅ **12c** — opt-in crowd labels: a fix or an accepted guess quietly teaches the crowd pool (consent off by default, one-time prompt after a third fix); new transactions from ≥3 contributors at ≥70% agreement take the crowd's category. Done, pending merge
+  - ✅ **12b** — an opt-in AI pass over the transactions nothing else could place, with a shared answer cache
+  - ✅ **12c** — opt-in crowd labels: a fix or an accepted guess quietly teaches the crowd pool (consent off by default, one-time prompt after a third fix); new transactions from ≥3 contributors at ≥70% agreement take the crowd's category
+  - ✅ **12d** — Jev (TypeSafe AI) makes the structured decisions: the AI category pass, triage that puts likely fixes first in Review, a hint to split shared costs, and tie-breaks for recurring bills — [spec](docs/superpowers/specs/2026-09-27-phase-12d-jev-decisions-design.md)
 - ✅ **Phase 13** — preset budgets: a whole budget in one tap from your own income and spending (Match my spending, 50/30/20, 70/20/10) — [spec](docs/superpowers/specs/2026-09-26-phase-13-preset-budgets-design.md)
+- 💭 **Next: monetization** — a free tier plus two subscriptions (Tusklet, Tusk) via Stripe — [notes](docs/product/monetization.md)
 
 ## Architecture
 
