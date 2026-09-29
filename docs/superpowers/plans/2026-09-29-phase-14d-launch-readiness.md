@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** planned, not started. Pedro asked to keep it planned (2026-09-29). **Before Task 1:** 14c's live Test Store run (14c plan, Task 7) is done, and the decisions below have answers.
+**Status:** in progress (2026-09-29). The decisions below have answers. RevenueCat's Test Store is set up on dev. 14c's live Test Store run (14c plan, Task 7) goes first.
 
 **Goal:** Make purchases ready to sell on Google Play (14d-1) and then the App Store (14d-2). That means:
 - finish the purchase polish 14c's review deferred;
@@ -42,6 +42,14 @@
 | D3 | Webhook and `plan-refresh` racing near a renewal (14c minor) | **Accept and document.** Both re-read RevenueCat, and the next event corrects the row. A conditional write would cost a retry loop for a window of seconds. |
 | D4 | iOS testing | Needs an **iPhone** and an **Apple Developer account** ($99/yr). Without them, 14d-2 waits and 14d-1 ships alone. |
 | D5 | Legal pages | Play and Apple both want a **privacy policy URL**. Play also wants a **web page for account deletion requests** (a page with an email address is enough). Where do these live: GitHub Pages, Notion, or a domain? |
+
+**Answers (Pedro, 2026-09-29):**
+
+- **D1, D2, D3:** as recommended.
+- **D4:** no iPhone yet, so 14d-2 waits.
+- **D5:** GitHub Pages, from a `site/` folder in this repo (the repo is public). A domain can point at it later. The app links the pages from a Legal card in Settings, as well as from the paywall (Task 4b).
+- **D6 (new): the package name is `com.ouroborosstudios.tusky`.** The Play Console app already uses it, and Play locks the name at the first upload. Task 6 renames the app from `com.tusky.app`, just before the first build. Native Plaid Link refuses a package name that isn't on Plaid's allowed list, so Kelvyn adds the new name in the Plaid dashboard (dev and production) first. Task 5 still links a bank under the old name.
+- **Prices** in RevenueCat's Test Store are placeholders. Pedro sets the real ones in the Play Console, and the paywall shows whatever the store returns.
 
 ## Global Constraints
 
@@ -898,6 +906,29 @@ git commit -m "feat(app): the paywall switches periods, explains outcomes, and l
 
 ---
 
+### Task 4b: Legal pages on GitHub Pages (D5)
+
+**Files:**
+- Create: `site/index.html`, `site/privacy.html`, `site/delete-account.html`, `site/style.css`
+- Create: `.github/workflows/pages.yml` (deploys `site/` only, on pushes to `master` that touch it)
+- Modify: `apps/mobile/src/constants/legal.ts` (add `DELETE_URL`, and default `PRIVACY_URL` to the Pages URL)
+- Modify: `apps/mobile/src/app/(tabs)/settings.tsx` (a Legal card: Privacy policy, Terms of use, Delete account help)
+
+- [ ] **Step 1: The pages.** Plain static HTML with no build step and no trackers.
+  - **Privacy:** what Tusky stores, based on the schema: account email; bank data through Plaid; categories, notes and splits; subscription status through RevenueCat and the stores. Also cover:
+    - who processes it: Supabase, Plaid, RevenueCat, Google and Apple, and TypeSafe AI for merchant text only, when AI categorizing is on;
+    - crowd labels: opt-in, anonymous, and withdrawn with the consent;
+    - retention and deletion;
+    - a contact email.
+  - **Delete account:** how to delete in the app (Settings → Delete account), what gets deleted, what a shared herd keeps, and the email to write to if you can't sign in.
+  - The contact address is Pedro's to choose. Ask before publishing; until then, use `ph.leao2099+tusky@gmail.com`.
+- [ ] **Step 2: The workflow.** `actions/upload-pages-artifact` over `site/`, then `actions/deploy-pages`. **Pedro (repo admin)** sets Settings → Pages → Source to **GitHub Actions** once. The URL is then `https://kelvinluciano312.github.io/Tusky-App/`.
+- [ ] **Step 3: The app.** `PRIVACY_URL` defaults to `<pages>/privacy.html` and `DELETE_URL` to `<pages>/delete-account.html`, both still overridable by env. Settings gets a Legal card with three links, below the Account card.
+- [ ] **Step 4:** Typecheck, lint, test. Check the three links on the emulator (`emu.mjs ui`). The pages 404 until the workflow runs on master, which is expected before the merge.
+- [ ] **Step 5: Commit** `feat: privacy and account-deletion pages on GitHub Pages, linked from Settings (Phase 14d)`
+
+---
+
 ### Task 5: Delete account in the app
 
 **Files:**
@@ -1074,7 +1105,8 @@ npx eas-cli env:create --environment preview --name EXPO_PUBLIC_REVENUECAT_KEY -
 
 - [ ] **Step 5: The first Play build and upload** (Pedro)
 
-1. Pedro creates the app in the Play Console (package `com.tusky.app`), if it is not there yet.
+0. **The rename (D6).** Only after Kelvyn has added `com.ouroborosstudios.tusky` to Plaid's allowed Android package names. Change `android.package` and `ios.bundleIdentifier` in `app.json`, and the Play fallback URL in `lib/purchases.ts` (and the test for it, if there is one). Update the docs that name the package: `CLAUDE.md`, `README.md`, `docs/ops/production.md`. Then rebuild the dev client on the emulator and the phone. It installs as a new app, so sign in again; the old `com.tusky.app` can be uninstalled. Check that Plaid Link still opens on the emulator.
+1. The Play Console app already exists (`com.ouroborosstudios.tusky`, draft).
 2. Run: `npx eas-cli build --platform android --profile playtest` (interactive the first time: answer **Yes** to "Generate a new Android Keystore?", so EAS keeps the upload key).
 3. Pedro downloads the `.aab` from the build page and uploads it by hand to **Internal testing** (Google requires the first upload by hand), then adds himself and Kelvyn as testers.
 4. Later uploads: `npx eas-cli submit --platform android --profile playtest`, once Pedro has put a Play service-account key in EAS (`eas credentials`).
@@ -1107,7 +1139,7 @@ Pedro does Steps 1 and 2. The purchases run on his phone, installed from the int
 - Setup → License testing: add Pedro's and Kelvyn's Google accounts.
 
 - [ ] **Step 2: RevenueCat** (Pedro)
-- Add a Play Store app (`com.tusky.app`) with a Google Cloud service account that has the Play permissions RevenueCat lists, and set up Real-time developer notifications (RevenueCat's Pub/Sub guide).
+- Add a Play Store app (`com.ouroborosstudios.tusky`) with a Google Cloud service account that has the Play permissions RevenueCat lists, and set up Real-time developer notifications (RevenueCat's Pub/Sub guide).
 - Import the six Play products. Attach each to its entitlement and to the matching package in `default` (e.g. `tusk_monthly` gets `tusk:monthly`).
 - Edit the dev webhook: environment **Sandbox**, all apps.
 - Copy the Play public key (`goog_…`) into the `preview` EAS env (Task 6 Step 4). Rebuild and upload `playtest`.
@@ -1222,7 +1254,7 @@ test('manage is offered for store subscriptions only', () => {
 
 test('manage falls back to the platform store page', () => {
   assert.equal(manageFallbackUrl('ios'), 'https://apps.apple.com/account/subscriptions');
-  assert.equal(manageFallbackUrl('android'), 'https://play.google.com/store/account/subscriptions?package=com.tusky.app');
+  assert.equal(manageFallbackUrl('android'), 'https://play.google.com/store/account/subscriptions?package=com.ouroborosstudios.tusky');
 });
 ```
 
@@ -1258,7 +1290,7 @@ export function canManage(p: PlanDetail, now: Date): boolean {
 export function manageFallbackUrl(platform: string): string {
   return platform === 'ios'
     ? 'https://apps.apple.com/account/subscriptions'
-    : 'https://play.google.com/store/account/subscriptions?package=com.tusky.app';
+    : 'https://play.google.com/store/account/subscriptions?package=com.ouroborosstudios.tusky';
 }
 ```
 
@@ -1315,7 +1347,7 @@ Pedro does Steps 1 and 2 and holds the iPhone.
 - [ ] **Step 1: Apple** (Pedro)
   - Apple Developer Program ($99/yr).
   - App Store Connect → Agreements: sign the **Paid Apps** agreement and fill in tax and banking. Sandbox purchases fail without it.
-  - Create the app with bundle id `com.tusky.app`.
+  - Create the app with bundle id `com.ouroborosstudios.tusky`.
   - Create one subscription group, "Tusky", with six auto-renewable products: `tusklet_monthly`, `tusklet_yearly`, `tusk_monthly`, `tusk_yearly`, `tusk_herd_monthly`, `tusk_herd_yearly`, at the spec's prices. Rank them in the group with Tusk Herd highest, then Tusk, then Tusklet.
   - Users and Access → Sandbox: create a sandbox Apple ID.
 - [ ] **Step 2: RevenueCat** (Pedro)
