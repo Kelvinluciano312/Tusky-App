@@ -108,6 +108,9 @@ test('buying over an active Play plan: rank decides, and monthly to yearly is an
   assert.equal(productChange(['tusk:monthly'], 'tusk', 'monthly'), null);
   assert.equal(productChange([], 'tusk', 'monthly'), null);
   assert.equal(productChange(['something_else'], 'tusk', 'monthly'), null);
+  // One Play subscription per plan and period (tusk_monthly:<base plan>).
+  assert.deepEqual(productChange(['tusk_monthly:p1m'], 'tusk', 'yearly'), { oldProductIdentifier: 'tusk_monthly', upgrade: true });
+  assert.deepEqual(productChange(['tusk_herd_yearly:yearly'], 'tusklet', 'yearly'), { oldProductIdentifier: 'tusk_herd_yearly', upgrade: false });
 });
 
 test('store names', () => {
@@ -124,6 +127,9 @@ test('the period of a product, from Play, App Store and Test Store ids', () => {
   assert.equal(periodOf('tusk:yearly'), 'yearly');
   assert.equal(periodOf('tusk_herd_monthly'), 'monthly');
   assert.equal(periodOf('tusk'), null);
+  assert.equal(periodOf('tusk_monthly:monthly'), 'monthly');
+  assert.equal(periodOf('tusk_herd_yearly:base'), 'yearly');
+  assert.equal(activePeriod(['tusk_yearly:p1y'], 'tusk'), 'yearly');
   assert.equal(periodOf('tusk_herd_yearly_v2'), 'yearly');
   assert.equal(activePeriod(['tusk_monthly_v2'], 'tusk'), 'monthly');
   assert.equal(activePeriod(['tusklet:monthly', 'tusk_herd_yearly'], 'tusk_herd'), 'yearly');

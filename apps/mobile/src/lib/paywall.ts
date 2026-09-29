@@ -115,9 +115,13 @@ export function storeName(store: string | null): 'Play Store' | 'App Store' {
 /** A store product id can't be reused once deleted, so a remade one gets a `_v2` suffix. */
 const PERIOD_SUFFIX = /_(monthly|yearly)(?:_v\d+)?$/;
 
-/** `tusk:yearly` (Play) or `tusk_yearly` / `tusk_yearly_v2` (App Store, Test Store). */
+/**
+ * `tusk:yearly` or `tusk_yearly:<base plan>` (Play: subscription, then base
+ * plan), or `tusk_yearly` / `tusk_yearly_v2` (App Store, Test Store).
+ */
 export function periodOf(productId: string): Period | null {
-  const p = productId.includes(':') ? productId.split(':')[1] : productId.match(PERIOD_SUFFIX)?.[1];
+  const [sub, basePlan] = productId.split(':');
+  const p = basePlan === 'monthly' || basePlan === 'yearly' ? basePlan : sub.match(PERIOD_SUFFIX)?.[1];
   return p === 'monthly' || p === 'yearly' ? p : null;
 }
 
@@ -144,7 +148,8 @@ export function productChange(
   const oldPeriod = periodOf(id);
   if (old === target && oldPeriod === period) return null;
   const rank = ORDER.indexOf(target as PaidPlan) - ORDER.indexOf(old);
-  return { oldProductIdentifier: old, upgrade: rank > 0 || (rank === 0 && period === 'yearly') };
+  // Play wants the subscription id without its base plan.
+  return { oldProductIdentifier: id.split(':')[0], upgrade: rank > 0 || (rank === 0 && period === 'yearly') };
 }
 
 export function tierAction(i: {
