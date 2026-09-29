@@ -1349,3 +1349,22 @@ export function useSetAccountPrivate() {
     },
   });
 }
+
+/**
+ * Delete my account (Phase 14d). The server removes every bank at Plaid first;
+ * if one fails, nothing is deleted and trying again finishes the job.
+ */
+export function useDeleteAccount() {
+  return useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.functions.invoke('delete-account');
+      if (!error) return;
+      const { message } = await readFunctionError(error);
+      if (message === 'plaid_failed') {
+        throw new Error('A bank could not be disconnected at Plaid, so nothing was deleted. Try again in a few minutes.');
+      }
+      if (message === 'busy') throw new Error('A bank is syncing right now. Try again in a minute.');
+      throw new Error('Your account could not be deleted. Try again in a moment.');
+    },
+  });
+}

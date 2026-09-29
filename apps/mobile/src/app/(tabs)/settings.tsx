@@ -14,11 +14,13 @@ import { Card } from '@/components/ui/card';
 import { DELETE_URL, PRIVACY_URL, TERMS_URL } from '@/constants/legal';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { bankUsage, PLAN_NAMES } from '@/lib/paywall';
+import { bankUsage, deleteWarning, PLAN_NAMES } from '@/lib/paywall';
+import { manageSubscriptionsUrl } from '@/lib/purchases';
 import { useConnectBank } from '@/lib/plaid';
 import {
   type PlaidItem,
   useCrowdConsent,
+  useDeleteAccount,
   useHerd,
   usePlaidItems,
   usePlan,
@@ -46,6 +48,7 @@ export default function SettingsScreen() {
   const { data: items = [] } = usePlaidItems();
   const { connectBank, isConnecting, error, planLimited } = useConnectBank();
   const { data: plan } = usePlan(session?.user.id);
+  const deleteAccount = useDeleteAccount();
 
   const live = items.filter((item) => item.status !== 'archived');
   const archived = items.filter((item) => item.status === 'archived');
@@ -326,6 +329,40 @@ export default function SettingsScreen() {
             await supabase.auth.signOut();
             // The next person to sign in on this device must never see this one's cached data.
             queryClient.clear();
+          }}
+        />
+        <Button
+          title="Delete account"
+          variant="ghost"
+          loading={deleteAccount.isPending}
+          onPress={() => {
+            const confirm = () =>
+              Alert.alert(
+                'Delete your account?',
+                'Tusky disconnects your banks and deletes everything you have tracked. If you share a herd, it keeps what belongs to the herd. This cannot be undone.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: () =>
+                      deleteAccount.mutate(undefined, {
+                        onSuccess: async () => {
+                          await supabase.auth.signOut();
+                          queryClient.clear();
+                        },
+                        onError: (err) => Alert.alert('Could not delete your account', err.message),
+                      }),
+                  },
+                ],
+              );
+            const warning = plan ? deleteWarning(plan, new Date()) : null;
+            if (!warning) return confirm();
+            Alert.alert('Cancel your subscription first', warning, [
+              { text: 'Not now', style: 'cancel' },
+              { text: 'Manage subscription', onPress: async () => Linking.openURL(await manageSubscriptionsUrl()) },
+              { text: 'Delete anyway', style: 'destructive', onPress: confirm },
+            ]);
           }}
         />
       </Card>
