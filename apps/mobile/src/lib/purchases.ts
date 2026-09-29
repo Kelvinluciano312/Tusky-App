@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Purchases, { PURCHASES_ERROR_CODE, STORE_REPLACEMENT_MODE, type PurchasesPackage } from 'react-native-purchases';
 
-import { type PaidPlan, productChange } from '@/lib/paywall';
+import { type PaidPlan, type Period, productChange } from '@/lib/paywall';
 import { ensurePurchaser } from '@/lib/purchaser';
 import { backend, supabase } from '@/lib/supabase';
 
@@ -63,21 +63,51 @@ export function useOfferings() {
   });
 }
 
-async function refreshPlan(queryClient: ReturnType<typeof useQueryClient>) {
-  const { error } = await supabase.functions.invoke('plan-refresh');
-  if (error) console.warn('plan-refresh failed; the webhook will catch up', error);
+/**
+ * Ask the server to re-read RevenueCat, then refetch the plan. Unconfirmed
+ * (a failed call, the cooldown, or a webhook still on its way): refetch twice
+ * more, so the plan appears without a reload.
+ */
+async function refreshPlan(queryClient: ReturnType<typeof useQueryClient>): Promise<boolean> {
+  const { data, error } = await supabase.functions.invoke('plan-refresh');
+  const confirmed = !error && (data?.result === 'written' || data?.result === 'unchanged');
   await queryClient.invalidateQueries({ queryKey: ['plan'] });
+  void queryClient.invalidateQueries({ queryKey: ['purchases', 'active'] });
+  if (!confirmed) {
+    for (const ms of [15_000, 60_000]) setTimeout(() => void queryClient.invalidateQueries({ queryKey: ['plan'] }), ms);
+  }
+  return confirmed;
+}
+
+/** My running store products (`tusk:monthly` …), for the paywall's period switch. Display only. */
+export function useActiveProducts() {
+  return useQuery({
+    queryKey: ['purchases', 'active'],
+    enabled: purchasesEnabled,
+    queryFn: async (): Promise<string[]> => {
+      await identified;
+      return (await Purchases.getCustomerInfo()).activeSubscriptions;
+    },
+  });
 }
 
 export function useBuy() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ pkg, plan }: { pkg: PurchasesPackage; plan: PaidPlan }): Promise<'bought' | 'cancelled'> => {
+    mutationFn: async ({
+      pkg,
+      plan,
+      period,
+    }: {
+      pkg: PurchasesPackage;
+      plan: PaidPlan;
+      period: Period;
+    }): Promise<{ outcome: 'bought' | 'deferred' | 'cancelled'; confirmed: boolean }> => {
       await readyToBuy();
       // Play replaces a running plan; Test Store keys (test_…) have no Play subscription to replace.
       const change = apiKey.startsWith('test_')
         ? null
-        : productChange((await Purchases.getCustomerInfo()).activeSubscriptions, plan);
+        : productChange((await Purchases.getCustomerInfo()).activeSubscriptions, plan, period);
       try {
         await Purchases.purchasePackage(
           pkg,
@@ -88,11 +118,13 @@ export function useBuy() {
           },
         );
       } catch (err) {
-        if ((err as { code?: string }).code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR) return 'cancelled';
+        if ((err as { code?: string }).code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR) {
+          return { outcome: 'cancelled', confirmed: true };
+        }
         throw err;
       }
-      await refreshPlan(queryClient);
-      return 'bought';
+      const confirmed = await refreshPlan(queryClient);
+      return { outcome: change && !change.upgrade ? 'deferred' : 'bought', confirmed };
     },
   });
 }
