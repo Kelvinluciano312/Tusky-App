@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Chips } from '@/components/ui/chips';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { paywallTiers, planSummary } from '@/lib/paywall';
+import { ownPaidPlan, paywallTiers, planSummary } from '@/lib/paywall';
 import { purchasesEnabled, useBuy, useOfferings, useRestore } from '@/lib/purchases';
 import { useHerd, useHerdPayer, usePlan, usePlanLimits } from '@/lib/queries';
 import { useSession } from '@/lib/session';
@@ -35,6 +35,7 @@ export default function PaywallScreen() {
   const [period, setPeriod] = useState<Period>('yearly');
 
   const tiers = paywallTiers(packages, limits);
+  const own = plan ? ownPaidPlan(plan, new Date()) : null;
   const payerName = herd?.members.find((m) => m.user_id === payerId)?.display_name ?? null;
   const failed = (title: string) => (err: Error) => Alert.alert(title, err.message);
 
@@ -60,7 +61,8 @@ export default function PaywallScreen() {
         <Card style={{ gap: Spacing.xs }}>
           <AppText variant="section">You are already covered</AppText>
           <AppText tone="dim">
-            {planSummary(plan, new Date(), payerName).detail}. You do not need a plan of your own.
+            {planSummary(plan, new Date(), payerName).detail}.{' '}
+            {own ? 'You also pay for a plan yourself; you can cancel it in the Play Store.' : 'You do not need a plan of your own.'}
           </AppText>
         </Card>
       ) : null}
@@ -77,7 +79,7 @@ export default function PaywallScreen() {
 
       {tiers.map((tier) => {
         const pkg = tier[period] ?? tier.monthly ?? tier.yearly;
-        const current = plan?.source === 'own' && plan.plan === tier.plan && plan.status !== 'expired';
+        const current = own === tier.plan;
         return (
           <Card key={tier.plan} style={{ gap: Spacing.sm }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>

@@ -893,7 +893,7 @@ export function useProfile(userId: string | undefined) {
   });
 }
 
-/** The signed-in user's plan (Phase 14): my_plan() plus their own row's window, status and store. */
+/** The signed-in user's plan (Phase 14): my_plan() plus their own row (window, status, store, plan, expiry). */
 export function usePlan(userId: string | undefined) {
   return useQuery({
     queryKey: ['plan'],
@@ -901,15 +901,17 @@ export function usePlan(userId: string | undefined) {
     queryFn: async (): Promise<PlanDetail> => {
       const [plan, sub] = await Promise.all([
         supabase.rpc('my_plan').single(),
-        supabase.from('subscriptions').select('over_limit_since, status, store').eq('user_id', userId!).maybeSingle(),
+        supabase.from('subscriptions').select('over_limit_since, status, store, plan, expires_at').eq('user_id', userId!).maybeSingle(),
       ]);
       if (plan.error) throw plan.error;
       if (sub.error) throw sub.error;
       return {
-        ...(plan.data as Omit<PlanDetail, 'over_limit_since' | 'status' | 'store'>),
+        ...(plan.data as Omit<PlanDetail, 'over_limit_since' | 'status' | 'store' | 'own_plan' | 'own_expires_at'>),
         over_limit_since: sub.data?.over_limit_since ?? null,
         status: sub.data?.status ?? null,
         store: sub.data?.store ?? null,
+        own_plan: sub.data?.plan ?? null,
+        own_expires_at: sub.data?.expires_at ?? null,
       };
     },
   });

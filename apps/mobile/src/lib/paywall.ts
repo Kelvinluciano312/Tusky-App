@@ -16,7 +16,13 @@ export const PLAN_NAMES: Record<string, string> = {
   tusk_herd: 'Tusk Herd',
 };
 
-export type PlanDetail = PlanInfo & { status: string | null; store: string | null };
+/** The effective plan, plus my own `subscriptions` row: its status, store, plan and expiry. */
+export type PlanDetail = PlanInfo & {
+  status: string | null;
+  store: string | null;
+  own_plan: string | null;
+  own_expires_at: string | null;
+};
 export type PlanLimits = { id: string; max_banks: number; history_days: number; scope: 'self' | 'herd' };
 export type PackageLike = { identifier: string; product: { identifier: string; priceString: string } };
 export type Tier<P extends PackageLike> = {
@@ -64,6 +70,20 @@ export function planSummary(p: PlanDetail, now: Date, payerName: string | null):
     return { title, detail: "Your payment didn't go through. Update it in the Play Store to keep your banks." };
   }
   return { title, detail: p.expires_at ? `Paid through ${shortDate(p.expires_at)}` : 'Active' };
+}
+
+const BOUGHT = new Set(['play', 'app_store', 'test']);
+
+/**
+ * The plan I pay for myself, if it is still running. It can differ from the
+ * effective plan: a herd mate's Tusk Herd outranks my own Tusklet, and I still
+ * need to find my own subscription to cancel it.
+ */
+export function ownPaidPlan(p: PlanDetail, now: Date): string | null {
+  if (!p.own_plan || !p.store || !BOUGHT.has(p.store)) return null;
+  if (p.status !== 'active' && p.status !== 'grace') return null;
+  if (p.own_expires_at !== null && Date.parse(p.own_expires_at) <= now.getTime()) return null;
+  return p.own_plan;
 }
 
 export function bankUsage(used: number, max: number): string {

@@ -3,12 +3,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { bankUsage, herdPayer, type PlanDetail, planSummary, paywallTiers, productChange } from './paywall.ts';
+import { bankUsage, herdPayer, ownPaidPlan, type PlanDetail, planSummary, paywallTiers, productChange } from './paywall.ts';
 
 const NOW = new Date('2026-10-10T12:00:00Z');
 const detail = (over: Partial<PlanDetail>): PlanDetail => ({
   plan: 'tusk', source: 'own', expires_at: null, max_banks: 10, banks_used: 2, over_limit_since: null,
-  status: 'active', store: 'play', ...over,
+  status: 'active', store: 'play', own_plan: 'tusk', own_expires_at: null, ...over,
 });
 const LIMITS = [
   { id: 'free', max_banks: 0, history_days: 0, scope: 'self' as const },
@@ -92,4 +92,17 @@ test('buying over an active Play plan changes the product; rank decides upgrade'
   assert.deepEqual(productChange(['tusk:monthly'], 'tusk'), { oldProductIdentifier: 'tusk', upgrade: false });
   assert.equal(productChange([], 'tusk'), null);
   assert.equal(productChange(['something_else'], 'tusk'), null);
+});
+
+test('a plan I pay for myself shows even while a herd mate covers me', () => {
+  const covered = detail({ plan: 'tusk_herd', source: 'herd', own_plan: 'tusklet', own_expires_at: '2026-11-01T00:00:00Z' });
+  assert.equal(ownPaidPlan({ ...covered, store: 'play', status: 'active' }, NOW), 'tusklet');
+});
+
+test('trial, comp, lapsed and expired rows are not a paid plan of my own', () => {
+  assert.equal(ownPaidPlan(detail({ store: 'trial', own_plan: 'trial' }), NOW), null);
+  assert.equal(ownPaidPlan(detail({ store: 'comp' }), NOW), null);
+  assert.equal(ownPaidPlan(detail({ status: 'expired' }), NOW), null);
+  assert.equal(ownPaidPlan(detail({ own_plan: 'tusk', own_expires_at: '2026-10-09T00:00:00Z' }), NOW), null);
+  assert.equal(ownPaidPlan(detail({ status: 'grace', own_expires_at: '2026-10-12T00:00:00Z' }), NOW), 'tusk');
 });

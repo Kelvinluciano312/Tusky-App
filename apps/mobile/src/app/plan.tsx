@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { bankUsage, planSummary } from '@/lib/paywall';
+import { bankUsage, ownPaidPlan, PLAN_NAMES, planSummary } from '@/lib/paywall';
 import { manageSubscriptionsUrl, purchasesEnabled, useRestore } from '@/lib/purchases';
 import { useHerd, useHerdPayer, usePlan } from '@/lib/queries';
 import { useSession } from '@/lib/session';
@@ -28,7 +28,8 @@ export default function PlanScreen() {
 
   const payerName = herd?.members.find((m) => m.user_id === payerId)?.display_name ?? null;
   const summary = planSummary(plan, new Date(), payerName);
-  const paysForHerd = plan.source === 'own' && plan.plan === 'tusk_herd' && plan.status !== 'expired';
+  const own = ownPaidPlan(plan, new Date());
+  const paysForHerd = own === 'tusk_herd';
 
   return (
     <ScrollView
@@ -41,13 +42,18 @@ export default function PlanScreen() {
         <AppText variant="label" style={{ marginTop: Spacing.sm }}>
           {bankUsage(plan.banks_used, plan.max_banks)}
         </AppText>
+        {own && plan.source === 'herd' ? (
+          <AppText variant="caption" tone="dim" style={{ marginTop: Spacing.sm }}>
+            You also pay for {PLAN_NAMES[own]} yourself. While the herd plan covers you, you can cancel yours.
+          </AppText>
+        ) : null}
       </Card>
 
       <Button title="See plans" onPress={() => router.push('/paywall')} />
       {paysForHerd ? (
         <Button title="Invite someone to your herd" variant="secondary" onPress={() => router.push('/herd')} />
       ) : null}
-      {plan.source === 'own' && plan.store === 'play' ? (
+      {own && plan.store === 'play' ? (
         <Button
           title="Manage subscription"
           variant="secondary"
