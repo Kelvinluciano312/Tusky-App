@@ -2,6 +2,7 @@
   "expo": {
     "name": "Tusky",
     "slug": "tusky",
+    "owner": "ouroborosstudioss-team",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -53,6 +54,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d03876ea-66da-42a2-9b9c-d17309acca6b"
+      }
     }
   }
 }
