@@ -124,6 +124,8 @@ test('the period of a product, from Play, App Store and Test Store ids', () => {
   assert.equal(periodOf('tusk:yearly'), 'yearly');
   assert.equal(periodOf('tusk_herd_monthly'), 'monthly');
   assert.equal(periodOf('tusk'), null);
+  assert.equal(periodOf('tusk_herd_yearly_v2'), 'yearly');
+  assert.equal(activePeriod(['tusk_monthly_v2'], 'tusk'), 'monthly');
   assert.equal(activePeriod(['tusklet:monthly', 'tusk_herd_yearly'], 'tusk_herd'), 'yearly');
   assert.equal(activePeriod(['tusklet:monthly'], 'tusk'), null);
 });

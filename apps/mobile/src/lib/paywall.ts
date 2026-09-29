@@ -112,13 +112,16 @@ export function storeName(store: string | null): 'Play Store' | 'App Store' {
   return store === 'app_store' ? 'App Store' : 'Play Store';
 }
 
-/** `tusk:yearly` (Play) or `tusk_yearly` (App Store, Test Store). */
+/** A store product id can't be reused once deleted, so a remade one gets a `_v2` suffix. */
+const PERIOD_SUFFIX = /_(monthly|yearly)(?:_v\d+)?$/;
+
+/** `tusk:yearly` (Play) or `tusk_yearly` / `tusk_yearly_v2` (App Store, Test Store). */
 export function periodOf(productId: string): Period | null {
-  const p = productId.includes(':') ? productId.split(':')[1] : productId.match(/_(monthly|yearly)$/)?.[1];
+  const p = productId.includes(':') ? productId.split(':')[1] : productId.match(PERIOD_SUFFIX)?.[1];
   return p === 'monthly' || p === 'yearly' ? p : null;
 }
 
-const baseOf = (productId: string) => productId.split(':')[0].replace(/_(monthly|yearly)$/, '');
+const baseOf = (productId: string) => productId.split(':')[0].replace(PERIOD_SUFFIX, '');
 
 /** The period of my running subscription to `plan`, from RevenueCat's active product ids. */
 export function activePeriod(active: string[], plan: string): Period | null {
