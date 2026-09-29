@@ -145,9 +145,38 @@ export async function syncSubscriber(
   return 'written';
 }
 
+/** The app may ask for a refresh once per 10 seconds; RevenueCat's rate limit is shared with the webhook. */
+export const REFRESH_COOLDOWN_MS = 10_000;
+
+export type RefreshStore = SubStore & { claimRefresh(userId: string, now: Date): Promise<boolean> };
+
+/** plan-refresh: claim the cooldown first, so a loop of calls never reaches RevenueCat. */
+export async function refreshCaller(
+  db: RefreshStore,
+  rc: RcClient,
+  userId: string,
+  now: Date,
+  allowTest: boolean,
+): Promise<'too_soon' | 'written' | 'unchanged' | 'no_row'> {
+  if (!(await db.claimRefresh(userId, now))) return 'too_soon';
+  return syncSubscriber(db, rc, userId, now, allowTest);
+}
+
 /** The service-role store. The update names four columns: over_limit_since is plan-enforcer's. */
-export function adminSubStore(admin: SupabaseClient): SubStore {
+export function adminSubStore(admin: SupabaseClient): RefreshStore {
   return {
+    async claimRefresh(userId, now) {
+      // One conditional update: two racing calls cannot both claim.
+      const since = new Date(now.getTime() - REFRESH_COOLDOWN_MS).toISOString();
+      const { data, error } = await admin
+        .from('subscriptions')
+        .update({ refreshed_at: now.toISOString() })
+        .eq('user_id', userId)
+        .or(`refreshed_at.is.null,refreshed_at.lt.${since}`)
+        .select('user_id');
+      if (error) throw error;
+      return (data ?? []).length > 0;
+    },
     async read(userId) {
       const { data, error } = await admin
         .from('subscriptions').select('plan, store, status, expires_at').eq('user_id', userId).maybeSingle();

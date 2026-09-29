@@ -921,7 +921,7 @@ git commit -m "feat(app): the paywall switches periods, explains outcomes, and l
     - retention and deletion;
     - a contact email.
   - **Delete account:** how to delete in the app (Settings → Delete account), what gets deleted, what a shared herd keeps, and the email to write to if you can't sign in.
-  - The contact address is Pedro's to choose. Ask before publishing; until then, use `ph.leao2099+tusky@gmail.com`.
+  - The contact address is `ouroboros2043@gmail.com` (Pedro, 2026-09-29).
 - [ ] **Step 2: The workflow.** `actions/upload-pages-artifact` over `site/`, then `actions/deploy-pages`. **Pedro (repo admin)** sets Settings → Pages → Source to **GitHub Actions** once. The URL is then `https://kelvinluciano312.github.io/Tusky-App/`.
 - [ ] **Step 3: The app.** `PRIVACY_URL` defaults to `<pages>/privacy.html` and `DELETE_URL` to `<pages>/delete-account.html`, both still overridable by env. Settings gets a Legal card with three links, below the Account card.
 - [ ] **Step 4:** Typecheck, lint, test. Check the three links on the emulator (`emu.mjs ui`). The pages 404 until the workflow runs on master, which is expected before the merge.
