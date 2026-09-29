@@ -32,7 +32,7 @@ npx eas-cli env:set --environment preview --name EXPO_PUBLIC_REVENUECAT_KEY --va
 - `EXPO_PUBLIC_PROD_SUPABASE_URL` and `EXPO_PUBLIC_PROD_SUPABASE_KEY`;
 - **at launch only**, `EXPO_PUBLIC_PROD_REVENUECAT_KEY`. Until then, production's paywall says plans are coming soon.
 
-The legal URLs default to the GitHub Pages copies (`constants/legal.ts`), so no env var is needed for them.
+The legal URLs default to the studio site, `studiosouroboros.com/tusky/privacy` and `/delete-account` (`constants/legal.ts`; the pages live in the Ouroboros-Inc repo under `public/tusky/`), so no env var is needed for them.
 
 ## Building and uploading
 

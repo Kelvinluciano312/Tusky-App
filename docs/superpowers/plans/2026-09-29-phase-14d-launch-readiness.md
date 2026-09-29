@@ -47,7 +47,7 @@
 
 - **D1, D2, D3:** as recommended.
 - **D4:** no iPhone yet, so 14d-2 waits.
-- **D5:** GitHub Pages, from a `site/` folder in this repo (the repo is public). A domain can point at it later. The app links the pages from a Legal card in Settings, as well as from the paywall (Task 4b).
+- **D5:** GitHub Pages, from a `site/` folder in this repo (the repo is public). A domain can point at it later. The app links the pages from a Legal card in Settings, as well as from the paywall (Task 4b). **Changed 2026-09-29:** the pages moved to the studio site, `studiosouroboros.com/tusky/privacy` and `/delete-account` (Ouroboros-Inc repo, `public/tusky/`); `site/` and the Pages workflow are gone.
 - **D6 (new): the package name is `com.ouroborosstudios.tusky`.** The Play Console app already uses it, and Play locks the name at the first upload. Task 6 renames the app from `com.tusky.app`, just before the first build. Native Plaid Link refuses a package name that isn't on Plaid's allowed list, so Kelvyn adds the new name in the Plaid dashboard (dev and production) first. Task 5 still links a bank under the old name.
 - **Prices** in RevenueCat's Test Store are placeholders. Pedro sets the real ones in the Play Console, and the paywall shows whatever the store returns.
 
