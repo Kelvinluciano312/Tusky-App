@@ -67,7 +67,7 @@ npx supabase secrets set --env-file supabase/functions/.env   # PLAID_CLIENT_ID 
 npx supabase functions deploy plaid-create-link-token plaid-exchange-token --use-api
 ```
 
-Also register your Android package name (`com.tusky.app`) under **Allowed Android package names** in the Plaid dashboard (API settings), or native Link will refuse to open.
+Also register your Android package name (`com.ouroborosstudios.tusky`) under **Allowed Android package names** in the Plaid dashboard (API settings), or native Link will refuse to open.
 
 ## Repo conventions
 

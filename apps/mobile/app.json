@@ -10,10 +10,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.tusky.app"
+      "bundleIdentifier": "com.ouroborosstudios.tusky"
     },
     "android": {
-      "package": "com.tusky.app",
+      "package": "com.ouroborosstudios.tusky",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

@@ -51,7 +51,7 @@ question. JS edits hot-reload via Metro — never rebuild for them.
 **Pedro's phone, remotely (Pixel 10 Pro, arm64, wireless adb):**
 - The phone reaches this PC's Metro over Tailscale. The PC's Tailscale IP is `100.108.96.124`, and a firewall rule "Metro over Tailscale" allows port 8081 on that interface only.
 - Start Metro with `$env:REACT_NATIVE_PACKAGER_HOSTNAME='100.108.96.124'; npx expo start --dev-client`.
-- The phone then opens `http://100.108.96.124:8081`. When wireless adb is up, `adb shell am start -a android.intent.action.VIEW -d "exp+tusky://expo-development-client/?url=http%3A%2F%2F100.108.96.124%3A8081" com.tusky.app` opens it for him.
+- The phone then opens `http://100.108.96.124:8081`. When wireless adb is up, `adb shell am start -a android.intent.action.VIEW -d "exp+tusky://expo-development-client/?url=http%3A%2F%2F100.108.96.124%3A8081" com.ouroborosstudios.tusky` opens it for him.
 - A white screen with no bundle request in Metro means the phone cannot reach the PC: check the firewall and Tailscale.
 - **A Metro that outlived its Claude session hangs.** It still answers `/status`, but bundle requests stall, so the phone shows a white screen. After any new session, kill whatever listens on 8081 and start Metro fresh. Test with a real bundle fetch (`/node_modules/expo-router/entry.bundle?platform=android&dev=true`), not `/status`.
 - A native rebuild needs wireless adb, which works only on the same Wi-Fi: `npx expo run:android --device Pixel_10_Pro`. Expo matches the model name, not the adb serial.

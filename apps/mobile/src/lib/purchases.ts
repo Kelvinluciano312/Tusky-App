@@ -143,5 +143,5 @@ export function useRestore() {
 /** Cancelling and changing payment happen in the store. */
 export async function manageSubscriptionsUrl(): Promise<string> {
   const info = await Purchases.getCustomerInfo().catch(() => null);
-  return info?.managementURL || 'https://play.google.com/store/account/subscriptions?package=com.tusky.app';
+  return info?.managementURL || 'https://play.google.com/store/account/subscriptions?package=com.ouroborosstudios.tusky';
 }
