@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Purchases, { PURCHASES_ERROR_CODE, STORE_REPLACEMENT_MODE, type PurchasesPackage } from 'react-native-purchases';
 
 import { type PaidPlan, productChange } from '@/lib/paywall';
+import { ensurePurchaser } from '@/lib/purchaser';
 import { backend, supabase } from '@/lib/supabase';
 
 /**
@@ -18,13 +19,16 @@ const apiKey =
 export const purchasesEnabled = apiKey !== '';
 
 let configured = false;
-/** Settles once RevenueCat knows who is signed in; a purchase waits for it. */
+/** The Supabase user RevenueCat should be on. */
+let expectedUser: string | null = null;
+/** Settles once RevenueCat knows who is signed in; a purchase waits for it. Calls run in order. */
 let identified: Promise<void> = Promise.resolve();
 
 /** RevenueCat's user is always the Supabase user, so a purchase can never be anonymous. */
 export function identifyPurchaser(userId: string | null): Promise<void> {
   if (!purchasesEnabled) return Promise.resolve();
-  identified = (async () => {
+  expectedUser = userId;
+  identified = identified.then(async () => {
     if (!configured) {
       if (!userId) return;
       Purchases.configure({ apiKey, appUserID: userId });
@@ -34,8 +38,17 @@ export function identifyPurchaser(userId: string | null): Promise<void> {
     } else {
       await Purchases.logOut().catch(() => {}); // already anonymous
     }
-  })().catch((err) => console.warn('RevenueCat identify failed', err));
+  }).catch((err) => console.warn('RevenueCat identify failed', err));
   return identified;
+}
+
+/** Buy or restore only as the signed-in user; a failed identify is retried here, or refused. */
+async function readyToBuy() {
+  await identified;
+  await ensurePurchaser(expectedUser, {
+    current: () => Purchases.getAppUserID(),
+    logIn: (id) => Purchases.logIn(id),
+  });
 }
 
 export function useOfferings() {
@@ -60,7 +73,7 @@ export function useBuy() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ pkg, plan }: { pkg: PurchasesPackage; plan: PaidPlan }): Promise<'bought' | 'cancelled'> => {
-      await identified;
+      await readyToBuy();
       // Play replaces a running plan; Test Store keys (test_…) have no Play subscription to replace.
       const change = apiKey.startsWith('test_')
         ? null
@@ -88,7 +101,7 @@ export function useRestore() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      await identified;
+      await readyToBuy();
       await Purchases.restorePurchases();
       await refreshPlan(queryClient);
     },
