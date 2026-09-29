@@ -1,6 +1,14 @@
 import { assertEquals } from 'jsr:@std/assert';
 
-import { type RcSubscriber, type SubRow, subscriptionFromRc } from './revenuecat.ts';
+import {
+  eventUserIds,
+  type RcClient,
+  type RcSubscriber,
+  type SubRow,
+  type SubStore,
+  subscriptionFromRc,
+  syncSubscriber,
+} from './revenuecat.ts';
 
 const NOW = new Date('2026-10-10T12:00:00Z');
 const FUTURE = '2026-11-10T12:00:00Z';
@@ -104,4 +112,68 @@ Deno.test('entitlements we do not sell and unknown stores are ignored', () => {
 Deno.test('no current row means nothing to write', () => {
   const s = sub({ tusk: { product: 'tusk:monthly', expires: FUTURE } }, { 'tusk:monthly': { store: 'play_store' } });
   assertEquals(subscriptionFromRc(s, null, NOW, false), null);
+});
+
+const U1 = '0b7c7d55-6f6b-4a57-9d63-2d6f0f7c1a01';
+const U2 = '0b7c7d55-6f6b-4a57-9d63-2d6f0f7c1a02';
+
+Deno.test('eventUserIds: a purchase names its user', () => {
+  assertEquals(eventUserIds({ event: { type: 'INITIAL_PURCHASE', app_user_id: U1 } }), [U1]);
+});
+
+Deno.test('eventUserIds: a transfer names both sides', () => {
+  assertEquals(
+    eventUserIds({ event: { type: 'TRANSFER', transferred_from: [U1, '$RCAnonymousID:abc'], transferred_to: [U2] } }),
+    [U1, U2],
+  );
+});
+
+Deno.test('eventUserIds: anonymous ids, test events and junk name nobody', () => {
+  assertEquals(eventUserIds({ event: { type: 'TEST', app_user_id: '$RCAnonymousID:abc' } }), []);
+  assertEquals(eventUserIds({ event: { type: 'RENEWAL', app_user_id: 42 } }), []);
+  assertEquals(eventUserIds(null), []);
+  assertEquals(eventUserIds('nope'), []);
+});
+
+function memoryStore(rows: Record<string, SubRow>): SubStore & { writes: [string, SubRow][] } {
+  const writes: [string, SubRow][] = [];
+  return {
+    writes,
+    read: (id) => Promise.resolve(rows[id] ?? null),
+    write: (id, row) => {
+      writes.push([id, row]);
+      return Promise.resolve();
+    },
+  };
+}
+const rcWith = (s: RcSubscriber): RcClient => ({ subscriber: () => Promise.resolve(s) });
+const LIVE_TUSK = sub({ tusk: { product: 'tusk:monthly', expires: FUTURE } }, { 'tusk:monthly': { store: 'play_store' } });
+
+Deno.test('syncSubscriber: a caller who just bought is written at once', async () => {
+  const db = memoryStore({ [U1]: TRIAL });
+  assertEquals(await syncSubscriber(db, rcWith(LIVE_TUSK), U1, NOW, false), 'written');
+  assertEquals(db.writes, [[U1, { plan: 'tusk', store: 'play', status: 'active', expires_at: FUTURE }]]);
+});
+
+Deno.test('syncSubscriber: the same state twice writes nothing the second time', async () => {
+  const db = memoryStore({ [U1]: { plan: 'tusk', store: 'play', status: 'active', expires_at: FUTURE } });
+  assertEquals(await syncSubscriber(db, rcWith(LIVE_TUSK), U1, NOW, false), 'unchanged');
+  assertEquals(db.writes, []);
+});
+
+Deno.test('syncSubscriber: a user we do not know is skipped', async () => {
+  const db = memoryStore({});
+  assertEquals(await syncSubscriber(db, rcWith(LIVE_TUSK), U1, NOW, false), 'no_row');
+});
+
+Deno.test('syncSubscriber: a RevenueCat failure throws, so the webhook answers 500 and is retried', async () => {
+  const db = memoryStore({ [U1]: TRIAL });
+  const down: RcClient = { subscriber: () => Promise.reject(new Error('RevenueCat 503')) };
+  let threw = false;
+  try {
+    await syncSubscriber(db, down, U1, NOW, false);
+  } catch {
+    threw = true;
+  }
+  assertEquals([threw, db.writes.length], [true, 0]);
 });

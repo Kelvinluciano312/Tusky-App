@@ -1,3 +1,5 @@
+import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
+
 /**
  * Purchases (Phase 14c). RevenueCat knows what a user bought; this turns its
  * subscriber record into our `subscriptions` row. The record is always fetched
@@ -73,4 +75,83 @@ export function subscriptionFromRc(
   if (!PURCHASED.has(current.store) || ours.length === 0) return null;
   const last = ours.reduce((a, b) => (Date.parse(b.until ?? '') > Date.parse(a.until ?? '') ? b : a));
   return { plan: last.plan, store: last.store, status: 'expired', expires_at: last.until };
+}
+
+export type RcClient = { subscriber(appUserId: string): Promise<RcSubscriber> };
+
+/** RevenueCat's REST API (v1), with the project's secret key. Throws on anything but 2xx. */
+export function revenueCatClient(secretKey: string): RcClient {
+  return {
+    async subscriber(appUserId) {
+      const res = await fetch(`https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`, {
+        headers: { Authorization: `Bearer ${secretKey}`, Accept: 'application/json' },
+      });
+      if (!res.ok) throw new Error(`RevenueCat ${res.status}`);
+      const body = await res.json();
+      const s = body?.subscriber ?? {};
+      return { entitlements: s.entitlements ?? {}, subscriptions: s.subscriptions ?? {} };
+    },
+  };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Whose state to re-fetch for a webhook. Only the ids are read from the body.
+ * A transfer (a restore on another account) changes both sides. Anonymous
+ * RevenueCat ids are never ours: the app logs in with the Supabase id first.
+ */
+export function eventUserIds(body: unknown): string[] {
+  const e = (body as { event?: Record<string, unknown> } | null)?.event;
+  if (!e || typeof e !== 'object') return [];
+  const raw = e.type === 'TRANSFER'
+    ? [e.transferred_from, e.transferred_to].flatMap((x) => (Array.isArray(x) ? x : []))
+    : [e.app_user_id];
+  return [...new Set(raw.filter((x): x is string => typeof x === 'string' && UUID.test(x)))];
+}
+
+export type SubStore = {
+  read(userId: string): Promise<SubRow | null>;
+  write(userId: string, row: SubRow): Promise<void>;
+};
+
+const same = (a: SubRow, b: SubRow) =>
+  a.plan === b.plan && a.store === b.store && a.status === b.status &&
+  (a.expires_at === null
+    ? b.expires_at === null
+    : b.expires_at !== null && Date.parse(a.expires_at) === Date.parse(b.expires_at));
+
+/** Re-read one user from RevenueCat and write what it calls for. RevenueCat failures throw. */
+export async function syncSubscriber(
+  db: SubStore,
+  rc: RcClient,
+  userId: string,
+  now: Date,
+  allowTest: boolean,
+): Promise<'written' | 'unchanged' | 'no_row'> {
+  const current = await db.read(userId);
+  if (!current) return 'no_row';
+  const next = subscriptionFromRc(await rc.subscriber(userId), current, now, allowTest);
+  if (!next || same(next, current)) return 'unchanged';
+  await db.write(userId, next);
+  return 'written';
+}
+
+/** The service-role store. The update names four columns: over_limit_since is plan-enforcer's. */
+export function adminSubStore(admin: SupabaseClient): SubStore {
+  return {
+    async read(userId) {
+      const { data, error } = await admin
+        .from('subscriptions').select('plan, store, status, expires_at').eq('user_id', userId).maybeSingle();
+      if (error) throw error;
+      return data as SubRow | null;
+    },
+    async write(userId, row) {
+      const { error } = await admin
+        .from('subscriptions')
+        .update({ plan: row.plan, store: row.store, status: row.status, expires_at: row.expires_at })
+        .eq('user_id', userId);
+      if (error) throw error;
+    },
+  };
 }
