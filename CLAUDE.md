@@ -5,8 +5,8 @@ Approved plan/phases: see README Status. Phases 0–13 are merged, including Pha
 (12a–12d, `docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md`). Phase 9's
 Track P (production) is live and waits only on Plaid's production access for OAuth banks. Now:
 Phase 14, monetization (`docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md`),
-milestones 14a (plans and limits) → 14b (lifecycle, reconnect merge) → 14c (purchases). 14c
-(purchases) is on `pedro-14c`.
+milestones 14a (plans and limits) → 14b (lifecycle, reconnect merge) → 14c (purchases), all merged
+→ 14d (launch readiness: Play Billing, account deletion, release builds), on `pedro-14d`.
 
 **Plaid keys per project.** Dev stays on Sandbox, and all general testing happens there. Production
 keys live only in the production project's secrets. Phase 6's old "key switch" step is superseded by
@@ -324,6 +324,21 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     only where `PLAID_ENV=sandbox`). `EXPO_PUBLIC_PROD_REVENUECAT_KEY` stays empty until launch, so
     production's paywall says plans are coming soon. The paywall's prices come from the store and its
     limits from `plans`; packages are `<plan>_monthly` / `<plan>_yearly` in the `default` offering.
+  - **Store products (14d).** Play has one subscription per plan and period (`tusk_monthly`, …), so
+    RevenueCat's ids read `tusk_monthly:<base plan>`; Test Store products may carry `_v2`. `periodOf`
+    and `baseOf` (`lib/paywall.ts`) accept every form, and `productChange` hands Play the old
+    subscription id without its base plan. A higher plan or monthly → yearly applies now (proration);
+    anything else waits for renewal. `plan-refresh` answers 429 `too_soon` within 10 s of the last
+    refresh (`subscriptions.refreshed_at`, claimed in one conditional update); the app then refetches
+    the plan at 15 s and 60 s.
+  - **Deleting an account (14d).** `delete-account` (logic in `_shared/account.ts`): leave the herd if
+    others remain, then `/item/remove` every live Item and stop on the first failure (502
+    `plaid_failed`, nothing deleted: the token is the only way to stop Plaid's billing), then delete
+    the personal herd and the auth user (the cascade does the rest), then ask RevenueCat to forget the
+    purchaser (errors only warned). It does not cancel a store subscription; the app warns first
+    (`deleteWarning`). A deleted member's settlements go with them.
+  - **Release builds.** EAS profiles and the Play upload flow: `docs/ops/release.md`. `playtest` talks
+    to dev. Legal pages live in `site/` (GitHub Pages); `constants/legal.ts` holds the URLs.
 - **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op
   `setMounted(false)` on a closed sheet made React drop the render-phase `setMounted(true)` on the
   next open, and no Sheet-based picker ever appeared. Keep the `else if (mounted)`.
@@ -375,9 +390,8 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   `SYNC_UPDATES_AVAILABLE`. Two guards — the function 403s unless `PLAID_ENV=sandbox`, and the
   bank screen's (`app/bank/[id].tsx`) buttons that call it are behind `__DEV__` so they are stripped from release builds.
   Never expose it in production.
-- **Monetization is planned but unbuilt** — free tier plus two subscriptions (Tusklet, Tusk) via
-  Stripe; see `docs/product/monetization.md` before designing anything that touches limits or cost.
-  Two facts that change designs: Plaid bills **per connected Item per month, not per pull** (syncing
+- **Monetization cost facts** (plans themselves: Phase 14 above; background in
+  `docs/product/monetization.md`). Two facts that change designs: Plaid bills **per connected Item per month, not per pull** (syncing
   is free; `/transactions/refresh`, which we do not use, is the per-request exception), and **only
   `/item/remove` stops that billing** — disconnecting does not. Credits are therefore metered against
   AI usage, never transaction pulls. Any tier limit is enforced in an Edge Function, never the client,
