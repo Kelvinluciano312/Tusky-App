@@ -12,6 +12,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { RealDataBanner } from '@/components/real-data-banner';
 import { Palette } from '@/constants/theme';
+import { identifyPurchaser } from '@/lib/purchases';
 import { SessionProvider, useSession } from '@/lib/session';
 
 SplashScreen.preventAutoHideAsync();
@@ -83,6 +84,12 @@ export default function RootLayout() {
 function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { session, isLoading } = useSession();
   const ready = fontsLoaded && !isLoading;
+  const userId = session?.user.id ?? null;
+
+  // RevenueCat's user follows the Supabase user (Phase 14c).
+  useEffect(() => {
+    void identifyPurchaser(userId);
+  }, [userId]);
 
   useEffect(() => {
     if (ready) {
