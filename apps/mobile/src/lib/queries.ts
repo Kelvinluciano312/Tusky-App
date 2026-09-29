@@ -2,7 +2,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 
 import { readFunctionError } from '@/lib/functions';
 import type { MerchantRule, MerchantRules } from '@/lib/merchants';
-import type { PlanInfo } from '@/lib/plan-banner';
+import { herdPayer, type PlanDetail, type PlanLimits } from '@/lib/paywall';
 import type { PresetLine } from '@/lib/presets';
 import { orderQueue } from '@/lib/review';
 import type { SharedLine } from '@/lib/settle';
@@ -893,19 +893,50 @@ export function useProfile(userId: string | undefined) {
   });
 }
 
-/** The signed-in user's plan (Phase 14): my_plan() plus the 7-day window's start. */
+/** The signed-in user's plan (Phase 14): my_plan() plus their own row's window, status and store. */
 export function usePlan(userId: string | undefined) {
   return useQuery({
     queryKey: ['plan'],
     enabled: !!userId,
-    queryFn: async (): Promise<PlanInfo> => {
+    queryFn: async (): Promise<PlanDetail> => {
       const [plan, sub] = await Promise.all([
         supabase.rpc('my_plan').single(),
-        supabase.from('subscriptions').select('over_limit_since').eq('user_id', userId!).maybeSingle(),
+        supabase.from('subscriptions').select('over_limit_since, status, store').eq('user_id', userId!).maybeSingle(),
       ]);
       if (plan.error) throw plan.error;
       if (sub.error) throw sub.error;
-      return { ...(plan.data as Omit<PlanInfo, 'over_limit_since'>), over_limit_since: sub.data?.over_limit_since ?? null };
+      return {
+        ...(plan.data as Omit<PlanDetail, 'over_limit_since' | 'status' | 'store'>),
+        over_limit_since: sub.data?.over_limit_since ?? null,
+        status: sub.data?.status ?? null,
+        store: sub.data?.store ?? null,
+      };
+    },
+  });
+}
+
+/** Every plan's limits (Phase 14c): the paywall's lines come from here, not from the app. */
+export function usePlanLimits() {
+  return useQuery({
+    queryKey: ['plans'],
+    queryFn: async (): Promise<PlanLimits[]> => {
+      const { data, error } = await supabase.from('plans').select('id, max_banks, history_days, scope').order('rank');
+      if (error) throw error;
+      return data as PlanLimits[];
+    },
+  });
+}
+
+/** Who pays for the herd's Tusk Herd. RLS shows me only herd mates' Tusk Herd rows. */
+export function useHerdPayer(userId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['plan', 'payer'],
+    enabled: !!userId && enabled,
+    queryFn: async (): Promise<string | null> => {
+      const { data, error } = await supabase
+        .from('subscriptions').select('user_id, status, expires_at').eq('plan', 'tusk_herd');
+      if (error) throw error;
+      return herdPayer(data ?? [], userId!, new Date());
     },
   });
 }
