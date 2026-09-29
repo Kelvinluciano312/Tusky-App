@@ -72,7 +72,15 @@ export function subscriptionFromRc(
   if (live) {
     return { plan: live.plan, store: live.store, status: live.billing ? 'grace' : 'active', expires_at: live.until };
   }
-  if (!PURCHASED.has(current.store) || ours.length === 0) return null;
+  if (!PURCHASED.has(current.store)) return null;
+  if (ours.length === 0) {
+    // Nothing of ours left: a restore moved the purchase to another account.
+    // The client throws on any failed fetch, so an outage never looks like this.
+    const ended = current.expires_at !== null && Date.parse(current.expires_at) < now.getTime()
+      ? current.expires_at
+      : now.toISOString();
+    return { ...current, status: 'expired', expires_at: ended };
+  }
   const last = ours.reduce((a, b) => (Date.parse(b.until ?? '') > Date.parse(a.until ?? '') ? b : a));
   return { plan: last.plan, store: last.store, status: 'expired', expires_at: last.until };
 }

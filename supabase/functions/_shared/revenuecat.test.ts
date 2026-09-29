@@ -177,3 +177,16 @@ Deno.test('syncSubscriber: a RevenueCat failure throws, so the webhook answers 5
   }
   assertEquals([threw, db.writes.length], [true, 0]);
 });
+
+Deno.test('a record emptied by a transfer expires the row we wrote, from now', () => {
+  const row: SubRow = { plan: 'tusk', store: 'play', status: 'active', expires_at: FUTURE };
+  assertEquals(subscriptionFromRc(sub({}), row, NOW, false), {
+    plan: 'tusk', store: 'play', status: 'expired', expires_at: NOW.toISOString(),
+  });
+});
+
+Deno.test('syncSubscriber: after a restore elsewhere, the old account loses the plan', async () => {
+  const db = memoryStore({ [U1]: { plan: 'tusk_herd', store: 'play', status: 'active', expires_at: FUTURE } });
+  assertEquals(await syncSubscriber(db, rcWith(sub({})), U1, NOW, false), 'written');
+  assertEquals(db.writes[0][1].status, 'expired');
+});
