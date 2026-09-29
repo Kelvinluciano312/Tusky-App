@@ -120,6 +120,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="herd" options={{ headerShown: true, title: 'Herd' }} />
         <Stack.Screen name="join-herd" options={{ headerShown: true, title: 'Join a herd' }} />
         <Stack.Screen name="join/[code]" options={{ headerShown: true, title: 'Invite' }} />
+        <Stack.Screen name="plan" options={{ headerShown: true, title: 'Plan' }} />
         <Stack.Screen name="paywall" options={{ headerShown: true, title: 'Plans', presentation: 'modal' }} />
         {/* Pushed from Home's balance card and the herd screen (11b). */}
         <Stack.Screen name="settle" options={{ headerShown: true, title: 'Settle up' }} />
