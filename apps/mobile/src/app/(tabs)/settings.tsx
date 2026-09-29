@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { ChevronRight, CreditCard, Landmark, Sparkles, Store, Tags, UserRound, Users, UsersRound } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NameSheet } from '@/components/name-sheet';
@@ -11,6 +11,7 @@ import { Chips } from '@/components/ui/chips';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { DELETE_URL, PRIVACY_URL, TERMS_URL } from '@/constants/legal';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { bankUsage, PLAN_NAMES } from '@/lib/paywall';
@@ -358,6 +359,21 @@ export default function SettingsScreen() {
           />
         </Card>
       ) : null}
+
+      {/* Both stores want these reachable in the app; kept quiet at the bottom. */}
+      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: Spacing.md }}>
+        {[
+          { label: 'Privacy', url: PRIVACY_URL },
+          { label: 'Terms', url: TERMS_URL },
+          { label: 'Account deletion', url: DELETE_URL },
+        ].map((l) => (
+          <Pressable key={l.label} accessibilityRole="link" onPress={() => void Linking.openURL(l.url)}>
+            <AppText variant="caption" tone="dim" style={{ textDecorationLine: 'underline' }}>
+              {l.label}
+            </AppText>
+          </Pressable>
+        ))}
+      </View>
 
       <AppText variant="caption" tone="dim" style={{ textAlign: 'center' }}>
         Tusky v0.1.0 · {backendLabel(backend)}

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tusky Privacy Policy</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Tusky Privacy Policy</h1>
+  <p class="meta">Effective September 29, 2026</p>
+
+  <p>Tusky is a personal finance app made by Ouroboros Studios. This page explains what Tusky
+  collects, why, who else handles it, and how to delete it. We do not sell your data, and Tusky
+  shows no ads.</p>
+
+  <h2>What we collect</h2>
+  <ul>
+    <li><strong>Your account:</strong> your email address and the display name you choose.</li>
+    <li><strong>Bank data, when you connect a bank:</strong> account names, the last digits of
+      account numbers, balances, and transactions (date, amount, merchant, the description your
+      bank sends, and a category). Your bank login never reaches us: you sign in through Plaid,
+      and Tusky's servers keep only Plaid's access token, which the app itself never sees.</li>
+    <li><strong>What you add:</strong> categories, budgets, notes, merchant rules, who paid, splits,
+      and settle-up payments.</li>
+    <li><strong>Your plan:</strong> which plan you have, its status and expiry date. Payment details
+      stay with Google Play or the App Store; we never see your card.</li>
+  </ul>
+
+  <h2>Who sees it</h2>
+  <ul>
+    <li><strong>You.</strong></li>
+    <li><strong>Your herd.</strong> If you invite people into a shared herd, they see the herd's
+      accounts and transactions, except accounts you mark private.</li>
+    <li><strong>No one else</strong> at Tusky looks at your data, except to fix a problem you report
+      to us.</li>
+  </ul>
+
+  <h2>Services that process data for us</h2>
+  <ul>
+    <li><strong>Supabase:</strong> hosts our database and servers.</li>
+    <li><strong>Plaid:</strong> connects your bank and delivers your bank data
+      (<a href="https://plaid.com/legal/#end-user-privacy-policy">Plaid's privacy policy</a>).</li>
+    <li><strong>RevenueCat, Google Play and the App Store:</strong> handle subscriptions. RevenueCat
+      knows your Tusky user ID and what you bought, not your bank data.</li>
+    <li><strong>TypeSafe AI, only if you turn on "Let AI help sort and review":</strong> receives a
+      transaction's merchant, amount, bank description and category, to suggest a category or flag
+      it for review. It never receives your name, email, balances or account details. This is off
+      until you turn it on.</li>
+  </ul>
+
+  <h2>Shared category fixes (optional)</h2>
+  <p>If you turn on "Share my fixes, anonymously", the merchant, the category you chose, and a rough
+  amount range join a pool that helps every Tusky user. The pool holds no name, email, account or
+  exact amount; each contribution is keyed by a one-way code, so we can delete yours but not trace
+  it back to you. A category is served from the pool only when at least three people agree. Turning
+  the switch off deletes everything you shared.</p>
+
+  <h2>On your device</h2>
+  <p>Your sign-in is stored in your phone's secure keystore. Tusky uses no advertising or tracking
+  SDKs.</p>
+
+  <h2>How long we keep it</h2>
+  <p>We keep your data while you have an account. When you disconnect a bank, you choose whether to
+  keep its history or delete it. When you delete your account, everything is deleted.</p>
+
+  <h2>Deleting your account</h2>
+  <p>In the app: <strong>Settings → Delete account</strong>. This disconnects every bank at Plaid
+  and deletes your account and data. If you share a herd, the herd keeps what belongs to it
+  (such as budgets and categories), and your banks and transactions leave with you and are deleted.
+  More on the <a href="delete-account.html">account deletion page</a>.</p>
+  <p>Deleting your account does not cancel a subscription: cancel it in Google Play or the App Store.</p>
+
+  <h2>Children</h2>
+  <p>Tusky is not meant for anyone under 18.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, we update the date above. For a significant change, we tell you in
+  the app first.</p>
+
+  <h2>Contact</h2>
+  <p><a href="mailto:ouroboros2043@gmail.com">ouroboros2043@gmail.com</a></p>
+
+  <footer><a href="index.html">Tusky</a> · <a href="delete-account.html">Account deletion</a></footer>
+</main>
+</body>
+</html>
