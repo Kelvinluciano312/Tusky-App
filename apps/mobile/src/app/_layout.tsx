@@ -12,6 +12,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { RealDataBanner } from '@/components/real-data-banner';
 import { Palette } from '@/constants/theme';
+import { identifyPurchaser } from '@/lib/purchases';
 import { SessionProvider, useSession } from '@/lib/session';
 
 SplashScreen.preventAutoHideAsync();
@@ -83,6 +84,12 @@ export default function RootLayout() {
 function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { session, isLoading } = useSession();
   const ready = fontsLoaded && !isLoading;
+  const userId = session?.user.id ?? null;
+
+  // RevenueCat's user follows the Supabase user (Phase 14c).
+  useEffect(() => {
+    void identifyPurchaser(userId);
+  }, [userId]);
 
   useEffect(() => {
     if (ready) {
@@ -113,6 +120,8 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="herd" options={{ headerShown: true, title: 'Herd' }} />
         <Stack.Screen name="join-herd" options={{ headerShown: true, title: 'Join a herd' }} />
         <Stack.Screen name="join/[code]" options={{ headerShown: true, title: 'Invite' }} />
+        <Stack.Screen name="plan" options={{ headerShown: true, title: 'Plan' }} />
+        <Stack.Screen name="paywall" options={{ headerShown: true, title: 'Plans', presentation: 'modal' }} />
         {/* Pushed from Home's balance card and the herd screen (11b). */}
         <Stack.Screen name="settle" options={{ headerShown: true, title: 'Settle up' }} />
       </Stack.Protected>

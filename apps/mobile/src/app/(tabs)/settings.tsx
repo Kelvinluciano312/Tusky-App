@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { ChevronRight, Landmark, Sparkles, Store, Tags, UserRound, Users, UsersRound } from 'lucide-react-native';
+import { ChevronRight, CreditCard, Landmark, Sparkles, Store, Tags, UserRound, Users, UsersRound } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,12 +13,14 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { bankUsage, PLAN_NAMES } from '@/lib/paywall';
 import { useConnectBank } from '@/lib/plaid';
 import {
   type PlaidItem,
   useCrowdConsent,
   useHerd,
   usePlaidItems,
+  usePlan,
   useProfile,
   useSetAiCategorize,
   useSetCrowdConsent,
@@ -41,7 +43,8 @@ export default function SettingsScreen() {
   const setName = useSetDisplayName();
   const [naming, setNaming] = useState(false);
   const { data: items = [] } = usePlaidItems();
-  const { connectBank, isConnecting, error } = useConnectBank();
+  const { connectBank, isConnecting, error, planLimited } = useConnectBank();
+  const { data: plan } = usePlan(session?.user.id);
 
   const live = items.filter((item) => item.status !== 'archived');
   const archived = items.filter((item) => item.status === 'archived');
@@ -150,6 +153,24 @@ export default function SettingsScreen() {
           </View>
           <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
         </Pressable>
+        <Pressable
+          onPress={() => router.push('/plan')}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: Spacing.sm,
+            paddingVertical: Spacing.xs,
+            backgroundColor: pressed ? colors.elevated : 'transparent',
+          })}>
+          <CreditCard size={20} color={colors.brand} strokeWidth={1.75} />
+          <View style={{ flex: 1 }}>
+            <AppText variant="label">{plan ? PLAN_NAMES[plan.plan] : ' '}</AppText>
+            <AppText variant="caption" tone="dim">
+              {plan ? `Your plan · ${bankUsage(plan.banks_used, plan.max_banks)}` : ' '}
+            </AppText>
+          </View>
+          <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
+        </Pressable>
       </Card>
 
       <PlanBanner userId={session?.user.id} />
@@ -182,6 +203,7 @@ export default function SettingsScreen() {
             {error}
           </AppText>
         )}
+        {planLimited ? <Button title="See plans" onPress={() => router.push('/paywall')} /> : null}
 
         <Button
           title={live.length === 0 ? 'Connect a bank' : 'Connect another bank'}

@@ -26,9 +26,11 @@ export function useConnectBank() {
   const queryClient = useQueryClient();
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [planLimited, setPlanLimited] = useState(false);
 
   const connectBank = async (itemId?: string) => {
     setError(null);
+    setPlanLimited(false);
     setIsConnecting(true);
     try {
       const { data, error: fnError } = await supabase.functions.invoke('plaid-create-link-token', {
@@ -37,6 +39,7 @@ export function useConnectBank() {
       if (fnError) {
         const { status, message, body } = await readFunctionError(fnError);
         if (status === 402 && message === 'plan_limit') {
+          setPlanLimited(true);
           throw new Error(planLimitMessage(body?.plan, body?.max_banks));
         }
       }
@@ -68,6 +71,7 @@ export function useConnectBank() {
                   );
                 }
                 if (status === 402 && message === 'plan_limit') {
+                  setPlanLimited(true);
                   throw new Error(planLimitMessage(body?.plan, body?.max_banks));
                 }
                 throw new Error('The bank responded, but saving the connection failed.');
@@ -99,7 +103,7 @@ export function useConnectBank() {
     }
   };
 
-  return { connectBank, isConnecting, error };
+  return { connectBank, isConnecting, error, planLimited };
 }
 
 /**
