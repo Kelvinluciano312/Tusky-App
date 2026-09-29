@@ -44,6 +44,8 @@ S=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('he
 npx -y supabase@2.118.0 db query --linked --project-ref awiwcgrisyzimzxgddxu "select vault.create_secret('https://awiwcgrisyzimzxgddxu.supabase.co', 'project_url', 'This project''s URL, for cron jobs (Phase 14b)')"
 ```
 
+**RevenueCat (Phase 14c).** Production gets its own webhook in the same RevenueCat project, limited to the Play app, pointing at `https://awiwcgrisyzimzxgddxu.supabase.co/functions/v1/revenuecat-webhook` with its own Authorization value. Set `REVENUECAT_SECRET_KEY` (RevenueCat's v1 secret key) and `REVENUECAT_WEBHOOK_SECRET` (that Authorization value) with `secrets set --project-ref awiwcgrisyzimzxgddxu`, one at a time, never printed. Without the webhook secret every webhook is refused, which is the safe default. `EXPO_PUBLIC_PROD_REVENUECAT_KEY` stays empty in `apps/mobile/.env` until launch, so the production paywall says plans are coming soon. Production never accepts Test Store purchases: that needs `PLAID_ENV=sandbox`.
+
 ## Settings outside the repo
 
 - **Auth:** email confirmation is OFF while only Pedro and Kelvyn use it. Turn it ON before anyone else gets access.

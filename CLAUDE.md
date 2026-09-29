@@ -5,7 +5,8 @@ Approved plan/phases: see README Status. Phases 0–13 are merged, including Pha
 (12a–12d, `docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md`). Phase 9's
 Track P (production) is live and waits only on Plaid's production access for OAuth banks. Now:
 Phase 14, monetization (`docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md`),
-milestones 14a (plans and limits) → 14b (lifecycle, reconnect merge) → 14c (purchases).
+milestones 14a (plans and limits) → 14b (lifecycle, reconnect merge) → 14c (purchases). 14c
+(purchases) is on `pedro-14c`.
 
 **Plaid keys per project.** Dev stays on Sandbox, and all general testing happens there. Production
 keys live only in the production project's secrets. Phase 6's old "key switch" step is superseded by
@@ -291,8 +292,8 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   `docs/superpowers/specs/2026-09-26-phase-13-preset-budgets-design.md`.
 - **Plans** (Phase 14a).
   - `plans` holds the limits: banks, history days, AI, and self or herd scope.
-  - `subscriptions` has one row per user and is written only by the service role: today the signup
-    trigger's 30-day trial, later the store webhook and the daily job.
+  - `subscriptions` has one row per user and is written only by the service role: the signup
+    trigger's 30-day trial, the store webhook and plan-refresh (14c), and the daily job.
   - `private.effective_plan` picks the best of the user's own live row, a herd mate's live
     `tusk_herd`, and `free`. `plan_for(user)` (service role only) adds the limits and `banks_used`;
     `my_plan()` is the app's view of it.
@@ -314,6 +315,15 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     same connector, institution, name and mask on an archived Item pair with the new ones; in the
     overlap, edits move to the twin (date, amount, merchant_key) and the kept rows are deleted. It
     runs every sync because Plaid delivers history in stages, and it never overwrites a value.
+  - **Purchases (14c).** RevenueCat's app user id is the Supabase user id. Only the server grants a
+    plan: `revenuecat-webhook` (public; `Authorization` compared with `REVENUECAT_WEBHOOK_SECRET`) and
+    `plan-refresh` (the app, after a purchase or restore) both run `syncSubscriber` in
+    `_shared/revenuecat.ts`, which re-fetches the subscriber from RevenueCat and never reads the event
+    body beyond its ids. It never changes a `comp` row, changes a trial only for a live purchase, and
+    never writes `over_limit_since`. Dev buys through RevenueCat's Test Store (store `test`, accepted
+    only where `PLAID_ENV=sandbox`). `EXPO_PUBLIC_PROD_REVENUECAT_KEY` stays empty until launch, so
+    production's paywall says plans are coming soon. The paywall's prices come from the store and its
+    limits from `plans`; packages are `<plan>_monthly` / `<plan>_yearly` in the `default` offering.
 - **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op
   `setMounted(false)` on a closed sheet made React drop the render-phase `setMounted(true)` on the
   next open, and no Sheet-based picker ever appeared. Keep the `else if (mounted)`.
