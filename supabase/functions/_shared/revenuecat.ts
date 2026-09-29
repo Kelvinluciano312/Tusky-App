@@ -102,6 +102,16 @@ export function revenueCatClient(secretKey: string): RcClient {
   };
 }
 
+/** Delete the RevenueCat customer (privacy). It does not cancel a store subscription. */
+export async function forgetRevenueCatUser(secretKey: string, appUserId: string): Promise<void> {
+  if (!secretKey) return;
+  const res = await fetch(`https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${secretKey}` },
+  });
+  if (!res.ok && res.status !== 404) throw new Error(`RevenueCat ${res.status}`);
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
