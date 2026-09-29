@@ -22,9 +22,9 @@ and no secret ever does.
 ```sh
 cd apps/mobile
 # preview (playtest): the dev project and RevenueCat's Play key (goog_…)
-npx eas-cli env:create --environment preview --name EXPO_PUBLIC_SUPABASE_URL --value <dev url> --visibility plaintext
-npx eas-cli env:create --environment preview --name EXPO_PUBLIC_SUPABASE_ANON_KEY --value <dev publishable key> --visibility plaintext
-npx eas-cli env:create --environment preview --name EXPO_PUBLIC_REVENUECAT_KEY --value <goog_ key> --visibility plaintext
+npx eas-cli env:set --environment preview --name EXPO_PUBLIC_SUPABASE_URL --value <dev url> --visibility plaintext
+npx eas-cli env:set --environment preview --name EXPO_PUBLIC_SUPABASE_ANON_KEY --value <dev publishable key> --visibility plaintext
+npx eas-cli env:set --environment preview --name EXPO_PUBLIC_REVENUECAT_KEY --value <goog_ key> --visibility plaintext
 ```
 
 `production` gets:
