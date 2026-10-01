@@ -4,6 +4,7 @@ import type { PlaidApi } from 'npm:plaid@30';
 import { buildSnapshotRows, syncAccounts } from './accounts.ts';
 import {
   AI_MAX_PER_SYNC,
+  AI_UPDATE_CHUNK,
   type AiAnswer,
   type AiCategory,
   type AiLevel,
@@ -18,6 +19,7 @@ import {
 } from './ai.ts';
 import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from './categorize.ts';
 import { communityAnswers, communityCategory, crowdMerchants, type Tally } from './crowd.ts';
+import { applyCustom, askCustom, type CatRow, type CustomRow, type CustomVerdict, planCustom } from './custom-ai.ts';
 import { askJev, hasJevKey, JEV_CONCURRENCY, JEV_PASS_BUDGET_MS, type JevAsk, mapLimit } from './jev.ts';
 import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
 import { mergeReconnected } from './merge.ts';
@@ -350,6 +352,96 @@ export async function runAiPass(
     return updates.length;
   } catch (err) {
     console.warn(`ai pass skipped for item ${item.id}: ${describeError(err)}`);
+    return 0;
+  }
+}
+
+/**
+ * The herd's own categories (15h): after runAiPass, unreviewed rows sitting in
+ * a built-in group that the herd has custom children under get one more
+ * question, between those and keeping what they have. Cached per herd
+ * (ai_custom_cache), never globally. Never throws.
+ */
+export async function runCustomPass(
+  admin: SupabaseClient,
+  item: { id: string; herd_id: string },
+  ask: JevAsk = askJev,
+): Promise<number> {
+  try {
+    const { data: catData, error: catError } = await admin
+      .from('categories')
+      .select('id, name, parent_id, herd_id')
+      .or(`herd_id.is.null,herd_id.eq.${item.herd_id}`);
+    if (catError) throw catError;
+    const categories = (catData ?? []) as CatRow[];
+    if (!categories.some((c) => c.herd_id === item.herd_id && c.parent_id !== null)) return 0;
+
+    const { data: rowData, error: rowError } = await admin
+      .from('transactions')
+      .select('id, merchant_key, name, merchant_name, amount, pfc_primary, pfc_detailed, category_id, accounts!inner(is_private)')
+      .eq('item_id', item.id)
+      .eq('category_is_manual', false)
+      .in('category_source', ['ai', 'plaid', 'fallback'])
+      .is('reviewed_at', null)
+      .not('category_id', 'is', null);
+    if (rowError) throw rowError;
+    const rows: CustomRow[] = (rowData ?? []).map((r) => ({
+      id: r.id,
+      merchant_key: r.merchant_key ?? '',
+      name: r.name,
+      merchant_name: r.merchant_name,
+      amount: Number(r.amount),
+      pfc_primary: r.pfc_primary,
+      pfc_detailed: r.pfc_detailed,
+      is_private: (r.accounts as unknown as { is_private: boolean }).is_private,
+      category_id: r.category_id as string,
+    }));
+    const plans = planCustom(rows, categories, item.herd_id);
+    if (plans.length === 0) return 0;
+
+    const keys = [...new Set(plans.map((p) => p.key))];
+    const cached = new Map<string, CustomVerdict>();
+    for (let i = 0; i < keys.length; i += AI_UPDATE_CHUNK) {
+      const { data } = await admin
+        .from('ai_custom_cache')
+        .select('cache_key, category_id, confidence')
+        .eq('herd_id', item.herd_id)
+        .in('cache_key', keys.slice(i, i + AI_UPDATE_CHUNK));
+      for (const c of data ?? []) {
+        cached.set(c.cache_key as string, {
+          category_id: (c.category_id as string | null) ?? null,
+          confidence: c.confidence === null ? null : Number(c.confidence),
+        });
+      }
+    }
+
+    const fresh = await askCustom(plans.filter((p) => !cached.has(p.key)), ask);
+    const { updates, cacheable } = applyCustom(plans, cached, fresh);
+
+    for (const group of groupUpdates(updates.map((u) => ({ id: u.id, category_id: u.category_id, confidence: u.confidence, level: 'child' as const })))) {
+      const { error } = await admin
+        .from('transactions')
+        .update({
+          category_id: group.verdict.category_id,
+          category_source: 'ai',
+          ai_confidence: group.verdict.confidence,
+          ai_level: 'child',
+        })
+        .in('id', group.ids)
+        // Re-checked at write time: a row set by hand or reviewed meanwhile stays put.
+        .eq('category_is_manual', false)
+        .is('reviewed_at', null);
+      if (error) throw error;
+    }
+    if (cacheable.length > 0) {
+      await admin.from('ai_custom_cache').upsert(
+        cacheable.map((c) => ({ herd_id: item.herd_id, cache_key: c.key, category_id: c.category_id, confidence: c.confidence })),
+        { onConflict: 'herd_id,cache_key' },
+      );
+    }
+    return updates.length;
+  } catch (err) {
+    console.warn(`custom ai pass skipped for item ${item.id}: ${describeError(err)}`);
     return 0;
   }
 }
@@ -702,6 +794,9 @@ export async function syncItem(
     if (jevOn) {
       const aiSet = await runAiPass(admin, item);
       if (aiSet > 0) console.log(`item ${item.id}: AI categorized ${aiSet}`);
+      // Then the herd's own categories (15h), over what the global pass settled.
+      const customSet = await runCustomPass(admin, item);
+      if (customSet > 0) console.log(`item ${item.id}: AI placed ${customSet} in custom categories`);
       // After the categories settle, so triage judges the final ones.
       const triaged = await runTriagePass(admin, item);
       if (triaged > 0) console.log(`item ${item.id}: triaged ${triaged}`);

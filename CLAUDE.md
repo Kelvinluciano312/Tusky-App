@@ -206,7 +206,7 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   `duplicate`), by `isDuplicateLink`: same institution plus an account with the same name and mask on a
   live Item. Archived Items never block a relink.
 - **Categories are two levels** (Phase 7a). The 16 original rows are the groups (`parent_id` null) and
-  keep their ids; 61 children hang off them. `categories_enforce_tree` allows a parent only if it is a
+  keep their ids; 89 children hang off them (61 from 7a, 28 more in 15h). `categories_enforce_tree` allows a parent only if it is a
   built-in group, and copies the group's `kind` onto the child. Sync resolves **manual > rule (7c) > learned (12a) > community (12c) > ai (12b) >
   Plaid detailed (`plaid_detailed_map`) > Plaid primary (`plaid_category_map`, whose entries are
   groups) > uncategorized**: `resolveCategory` in `_shared/categorize.ts`, with `pickCategory` on
@@ -264,6 +264,12 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     declined. `uncategorized` is offered as "none fits", and choosing it is a decline.
     `ai_confidence`/`ai_level` on the row (and `confidence`/`level` in the cache) feed
     `cat-quality.mjs`'s calibration table.
+  - **Custom categories** (15h, `_shared/custom-ai.ts`, `runCustomPass` right after `runAiPass`).
+    Unreviewed, non-manual rows whose source is ai/plaid/fallback and whose built-in group has the
+    herd's own children get one Choice: those children (as `c0`, `c1`, … so no id reaches the model)
+    or `keep`. Written only above `JEV_CONFIDENCE`. Cached in `ai_custom_cache`, per herd, keyed by the
+    global key plus the group and the custom set offered (a new custom category asks again); private
+    rows are never cached. Learning (12a) already learns custom categories from fixes.
   - **Triage** (`_shared/triage.ts`, `runTriagePass`) is per row and never cached. `review_priority`
     (0 routine, 1 worth a glance, 2 likely needs a fix) orders the review deck (`orderQueue` in
     `lib/review.ts`). Null sorts as routine, so with Jev off the deck is unchanged. `split_suggested`
