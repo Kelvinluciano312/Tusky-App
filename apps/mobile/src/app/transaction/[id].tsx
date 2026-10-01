@@ -7,6 +7,7 @@ import { CategoryPicker } from '@/components/category-picker';
 import { CategorySheet, type SheetTarget } from '@/components/category-sheet';
 import { DetailLine as Line } from '@/components/detail-line';
 import { NoteSheet } from '@/components/note-sheet';
+import { AskButton, QuestionBanner } from '@/components/questions';
 import { RenameSheet } from '@/components/rename-sheet';
 import { WhoPaid } from '@/components/who-paid';
 import { Amount } from '@/components/ui/amount';
@@ -85,6 +86,7 @@ export default function TransactionScreen() {
       <Stack.Title>{name}</Stack.Title>
       <ScrollView
         contentContainerStyle={{ padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
+        <QuestionBanner transactionId={t.id} />
         <Card style={{ alignItems: 'center', gap: Spacing.xs }}>
           <Amount value={t.amount} size={32} signColor />
           <AppText tone="dim">
@@ -115,6 +117,7 @@ export default function TransactionScreen() {
           <Line label="Set by" value={setBy(t.category_source)} dim />
           <Line label="Memo" value={t.notes ?? 'Add a memo'} dim={!t.notes} onPress={() => setNoting(true)} />
           <WhoPaid transaction={t} />
+          <AskButton transactionId={t.id} />
           <Line
             label="Review"
             value={t.reviewed_at ? `Reviewed ${shortDate(t.reviewed_at)} · tap to undo` : 'Not reviewed · tap to mark reviewed'}

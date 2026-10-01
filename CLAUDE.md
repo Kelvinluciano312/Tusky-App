@@ -156,20 +156,26 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     posted (`carryForward`), except for a payer who has since left. Leaving hands the leaver's banks to
     them as owner and payer, and makes accounts they owned on others' banks Joint. The app shows who-paid
     UI only in herds of two or more.
-  - **Shared money (11).** Since Phase 11, `paid_by` means "whose expense", and the account's owner is who
-    paid. The app gates every shared feature on `isShared(herd)` (`lib/herd.ts`). `monthly_person_totals`
+  - **Shared money (11; 15d).** Since Phase 15d, `paid_by` means **"spent by"**: a tag that organizes a
+    joint account and never creates a debt by itself. The account's owner is who paid. The app gates every shared feature on `isShared(herd)` (`lib/herd.ts`). `monthly_person_totals`
     is `monthly_category_totals` split by `paid_by`. A payer or owner change must refresh `['transactions']`
     and `['reports']`, because the feed filters by payer and Reports totals by person.
   - **Splits and settle-up (11b).**
-    - A debt exists where "for" differs from who paid: `paid_by` or a `split` against the account's owner.
+    - **Only a `split` creates a debt** (15d): where the split differs from who paid (the account's owner;
+      Joint = everyone equally). An unsplit row is for whoever paid, so it squares itself.
     - `transactions.split` (`{ user_id: percent }`) is validated by `ac_transactions_split`: two or more
       members, totalling 100. Setting a split nulls `paid_by`; choosing a person clears the split.
     - `carryForward` moves a split from pending to posted, like a payer.
-    - `shared_lines` lists every row that can create a debt; private accounts are left out, so every member
-      sees the same balance. `settlements` holds recorded payments.
+    - `shared_lines` lists every row that can create a debt (split rows only); private accounts are left
+      out, so every member sees the same balance. `settlements` holds recorded payments.
     - The math is `lib/settle.ts`, kept in whole cents per purchase so the balance squares exactly.
     - Anything that can move a balance must invalidate `['settle']`: payer, split, owner, hidden, private,
       category.
+  - **Questions (15d).** `transaction_questions`: one member asks another what a row was. Asking requeues
+    the row (`reviewed_at` null), and `orderQueue` puts my open questions first, even outside the batch.
+    The database answers a question (`af_transactions_answer_questions`) when its addressee changes who
+    spent it, the split or the memo, or reviews the row. In-app only; push notifications come later.
+    Question queries live under `['transactions', 'questions']`.
   - **The app hides connector-only actions**: reconnect, disconnect, the Private switch and the sandbox
     tools show only when `item.user_id` is the signed-in user.
   - **`node scripts/rls-check.mjs`** proves every member sees exactly their herd minus others' private

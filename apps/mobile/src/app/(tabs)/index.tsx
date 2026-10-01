@@ -16,16 +16,20 @@ import { transferLabel, useSettleUp } from '@/hooks/use-settle-up';
 import { useTheme } from '@/hooks/use-theme';
 import { UpcomingCard } from '@/components/upcoming-card';
 import { GROUP_LABEL, groupAccounts, netWorth } from '@/lib/accounts';
+import { payerLabel } from '@/lib/herd';
 import { firstName } from '@/lib/profile';
 import {
   useAccounts,
   useCategories,
+  useHerd,
+  useMyQuestions,
   useNetWorthHistory,
   usePlan,
   useProfile,
   useRecurringStreams,
   useReviewCount,
 } from '@/lib/queries';
+import { askedLine } from '@/lib/review';
 import { todayLocal } from '@/lib/recurring';
 import { useSession } from '@/lib/session';
 
@@ -69,6 +73,9 @@ export default function HomeScreen() {
   const { data: history = [], refetch: refetchHistory } = useNetWorthHistory(from, to);
   const { data: streams = [], refetch: refetchStreams } = useRecurringStreams();
   const { data: toReview = 0, refetch: refetchReview } = useReviewCount();
+  const { data: asked = [] } = useMyQuestions(session?.user.id);
+  const { data: herd } = useHerd();
+  const herdName = (id: string) => (herd ? payerLabel(id, herd.members) : 'Someone');
   const { data: categories = [] } = useCategories();
   const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const today = todayLocal();
@@ -139,8 +146,8 @@ export default function HomeScreen() {
               <AppText variant="title">
                 {toReview} to review
               </AppText>
-              <AppText variant="caption" tone="dim">
-                New transactions since your last look
+              <AppText variant="caption" tone={asked.length > 0 ? 'brand' : 'dim'}>
+                {asked.length > 0 ? askedLine(asked, herdName) : 'New transactions since your last look'}
               </AppText>
             </View>
             <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />

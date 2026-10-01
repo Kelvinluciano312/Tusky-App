@@ -234,7 +234,7 @@ export type Transaction = {
   /** The user's memo (Phase 8); null when none. */
   notes: string | null;
   /**
-   * Whose expense it was (9d; since 11b the account's owner is who paid). Null =
+   * Who spent it (9d; since 15d a tag only, never a debt). Null =
    * Joint, shared equally. Follows the account's owner until set by hand.
    */
   paid_by: string | null;
@@ -811,8 +811,103 @@ export function useReviewQueue() {
         .order('id', { ascending: true })
         .limit(REVIEW_BATCH);
       if (error) throw error;
-      return orderQueue(data);
+      // Rows a herd mate asked me about come first (15d), even outside the batch.
+      const { data: auth } = await supabase.auth.getSession();
+      const me = auth.session?.user.id;
+      const asked = me
+        ? await supabase
+            .from('transaction_questions')
+            .select('transaction_id')
+            .eq('asked_to', me)
+            .is('resolved_at', null)
+            .order('created_at', { ascending: true })
+        : { data: [], error: null };
+      if (asked.error) throw asked.error;
+      return orderQueue(
+        data,
+        (asked.data ?? []).map((q) => q.transaction_id as string),
+      );
     },
+  });
+}
+
+// Questions (Phase 15d): one herd mate asks another what a transaction was.
+// Under ['transactions'], so every edit that might answer one refreshes them
+// (the database resolves a question when its addressee tags, splits, writes
+// the memo or reviews the row).
+
+export type Question = {
+  id: string;
+  transaction_id: string;
+  asked_by: string;
+  asked_to: string;
+  body: string | null;
+  created_at: string;
+};
+
+/** Open questions on one transaction. */
+export function useTransactionQuestions(transactionId: string | undefined) {
+  return useQuery({
+    queryKey: ['transactions', 'questions', 'on', transactionId],
+    enabled: !!transactionId,
+    queryFn: async (): Promise<Question[]> => {
+      const { data, error } = await supabase
+        .from('transaction_questions')
+        .select('id, transaction_id, asked_by, asked_to, body, created_at')
+        .eq('transaction_id', transactionId!)
+        .is('resolved_at', null)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data as Question[];
+    },
+  });
+}
+
+/** Open questions waiting on me, oldest first. */
+export function useMyQuestions(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['transactions', 'questions', 'mine', userId],
+    enabled: !!userId,
+    queryFn: async (): Promise<Question[]> => {
+      const { data, error } = await supabase
+        .from('transaction_questions')
+        .select('id, transaction_id, asked_by, asked_to, body, created_at')
+        .eq('asked_to', userId!)
+        .is('resolved_at', null)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data as Question[];
+    },
+  });
+}
+
+export function useAskQuestion() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ transactionId, askedTo, body }: { transactionId: string; askedTo: string; body: string | null }) => {
+      const { error } = await supabase
+        .from('transaction_questions')
+        .insert({ transaction_id: transactionId, asked_to: askedTo, body });
+      if (error) throw error;
+    },
+    // Asking requeues the row server-side, so the feed's check mark and the count move too.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+  });
+}
+
+/** Close a question without answering it, or take back one I asked. */
+export function useDismissQuestion() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, asker }: { id: string; asker: boolean }) => {
+      const { error } = asker
+        ? await supabase.from('transaction_questions').delete().eq('id', id)
+        : await supabase.from('transaction_questions').update({ resolved_at: new Date().toISOString() }).eq('id', id);
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['transactions', 'questions'] }),
   });
 }
 
@@ -827,8 +922,12 @@ export function useMarkReviewed() {
         .eq('id', transactionId);
       if (error) throw error;
     },
-    // Only the count shows review state; refetching the feed per swipe is waste.
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['transactions', 'review-count'] }),
+    // Only the count (and a question it may have answered, 15d) shows review
+    // state; refetching the feed per swipe is waste.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'review-count'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'questions'] });
+    },
   });
 }
 

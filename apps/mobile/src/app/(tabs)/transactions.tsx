@@ -167,7 +167,7 @@ export default function TransactionsScreen() {
 
       {shared ? (
         <View style={{ paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm }}>
-          <Chips options={payerOptions} selected={payer} onSelect={setPayer} accessibilityLabel="Whose expense" />
+          <Chips options={payerOptions} selected={payer} onSelect={setPayer} accessibilityLabel="Spent by" />
         </View>
       ) : null}
 
