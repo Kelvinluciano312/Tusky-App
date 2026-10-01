@@ -188,3 +188,17 @@ export function deleteWarning(p: PlanDetail, now: Date): string | null {
   if (!own || (p.store !== 'play' && p.store !== 'app_store')) return null;
   return `You pay for ${PLAN_NAMES[own]} through the ${storeName(p.store)}. Deleting your Tusky account does not cancel it: cancel it in the store first, or you keep being charged.`;
 }
+
+/**
+ * What the paywall shows when the store's offerings fail to load. RevenueCat's
+ * own message and code name the cause (Play credentials, a missing product,
+ * a non-tester account), which "check your connection" never did.
+ */
+export function offeringsErrorDetail(err: unknown): string {
+  const e = (err ?? {}) as { message?: unknown; underlyingErrorMessage?: unknown; readableErrorCode?: unknown; code?: unknown };
+  const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const parts = [text(e.message), text(e.underlyingErrorMessage)].filter(Boolean);
+  const message = [...new Set(parts)].join(' ') || 'Unknown error.';
+  const code = text(e.readableErrorCode) || (e.code != null && e.code !== '' ? String(e.code) : '');
+  return code ? `${message} (${code})` : message;
+}
