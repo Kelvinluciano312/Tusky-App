@@ -156,20 +156,26 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     posted (`carryForward`), except for a payer who has since left. Leaving hands the leaver's banks to
     them as owner and payer, and makes accounts they owned on others' banks Joint. The app shows who-paid
     UI only in herds of two or more.
-  - **Shared money (11).** Since Phase 11, `paid_by` means "whose expense", and the account's owner is who
-    paid. The app gates every shared feature on `isShared(herd)` (`lib/herd.ts`). `monthly_person_totals`
+  - **Shared money (11; 15d).** Since Phase 15d, `paid_by` means **"spent by"**: a tag that organizes a
+    joint account and never creates a debt by itself. The account's owner is who paid. The app gates every shared feature on `isShared(herd)` (`lib/herd.ts`). `monthly_person_totals`
     is `monthly_category_totals` split by `paid_by`. A payer or owner change must refresh `['transactions']`
     and `['reports']`, because the feed filters by payer and Reports totals by person.
   - **Splits and settle-up (11b).**
-    - A debt exists where "for" differs from who paid: `paid_by` or a `split` against the account's owner.
+    - **Only a `split` creates a debt** (15d): where the split differs from who paid (the account's owner;
+      Joint = everyone equally). An unsplit row is for whoever paid, so it squares itself.
     - `transactions.split` (`{ user_id: percent }`) is validated by `ac_transactions_split`: two or more
       members, totalling 100. Setting a split nulls `paid_by`; choosing a person clears the split.
     - `carryForward` moves a split from pending to posted, like a payer.
-    - `shared_lines` lists every row that can create a debt; private accounts are left out, so every member
-      sees the same balance. `settlements` holds recorded payments.
+    - `shared_lines` lists every row that can create a debt (split rows only); private accounts are left
+      out, so every member sees the same balance. `settlements` holds recorded payments.
     - The math is `lib/settle.ts`, kept in whole cents per purchase so the balance squares exactly.
     - Anything that can move a balance must invalidate `['settle']`: payer, split, owner, hidden, private,
       category.
+  - **Questions (15d).** `transaction_questions`: one member asks another what a row was. Asking requeues
+    the row (`reviewed_at` null), and `orderQueue` puts my open questions first, even outside the batch.
+    The database answers a question (`af_transactions_answer_questions`) when its addressee changes who
+    spent it, the split or the memo, or reviews the row. In-app only; push notifications come later.
+    Question queries live under `['transactions', 'questions']`.
   - **The app hides connector-only actions**: reconnect, disconnect, the Private switch and the sandbox
     tools show only when `item.user_id` is the signed-in user.
   - **`node scripts/rls-check.mjs`** proves every member sees exactly their herd minus others' private
@@ -200,7 +206,7 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   `duplicate`), by `isDuplicateLink`: same institution plus an account with the same name and mask on a
   live Item. Archived Items never block a relink.
 - **Categories are two levels** (Phase 7a). The 16 original rows are the groups (`parent_id` null) and
-  keep their ids; 61 children hang off them. `categories_enforce_tree` allows a parent only if it is a
+  keep their ids; 89 children hang off them (61 from 7a, 28 more in 15h). `categories_enforce_tree` allows a parent only if it is a
   built-in group, and copies the group's `kind` onto the child. Sync resolves **manual > rule (7c) > learned (12a) > community (12c) > ai (12b) >
   Plaid detailed (`plaid_detailed_map`) > Plaid primary (`plaid_category_map`, whose entries are
   groups) > uncategorized**: `resolveCategory` in `_shared/categorize.ts`, with `pickCategory` on
@@ -258,6 +264,12 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     declined. `uncategorized` is offered as "none fits", and choosing it is a decline.
     `ai_confidence`/`ai_level` on the row (and `confidence`/`level` in the cache) feed
     `cat-quality.mjs`'s calibration table.
+  - **Custom categories** (15h, `_shared/custom-ai.ts`, `runCustomPass` right after `runAiPass`).
+    Unreviewed, non-manual rows whose source is ai/plaid/fallback and whose built-in group has the
+    herd's own children get one Choice: those children (as `c0`, `c1`, … so no id reaches the model)
+    or `keep`. Written only above `JEV_CONFIDENCE`. Cached in `ai_custom_cache`, per herd, keyed by the
+    global key plus the group and the custom set offered (a new custom category asks again); private
+    rows are never cached. Learning (12a) already learns custom categories from fixes.
   - **Triage** (`_shared/triage.ts`, `runTriagePass`) is per row and never cached. `review_priority`
     (0 routine, 1 worth a glance, 2 likely needs a fix) orders the review deck (`orderQueue` in
     `lib/review.ts`). Null sorts as routine, so with Jev off the deck is unchanged. `split_suggested`
@@ -337,8 +349,28 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     the personal herd and the auth user (the cascade does the rest), then ask RevenueCat to forget the
     purchaser (errors only warned). It does not cancel a store subscription; the app warns first
     (`deleteWarning`). A deleted member's settlements go with them.
-  - **Release builds.** EAS profiles and the Play upload flow: `docs/ops/release.md`. `playtest` talks
-    to dev. Legal pages live on the studio site (Ouroboros-Inc repo, `public/tusky/`); `constants/legal.ts` holds the URLs.
+  - **Release builds.** EAS profiles and the Play upload flow: `docs/ops/release.md`. **Every store build
+    is production** (real banks), internal testing included; Sandbox is for dev builds only. Legal pages live on the studio site (Ouroboros-Inc repo, `public/tusky/`); `constants/legal.ts` holds the URLs.
+- **First run** (Phase 15c). The root layout gates a session with `gateFor` (`lib/first-run.ts`):
+  `accept-terms` until the active `terms` consent matches `TERMS_VERSION` (`constants/legal.ts`), then
+  `onboarding` until `profiles.onboarded_at` is set, then the app. A failed read opens the app.
+  - **Terms** are a `consents` row of kind `terms` with a `version`. Sign-up sends `terms_version` in
+    the user metadata and `handle_new_user` records it (with email confirmation there is no session
+    to call from); `accept_terms(p_version)` covers everyone else. Bumping `TERMS_VERSION` asks
+    everyone again; a newer acceptance closes the older row.
+  - **Crowd labels are on for new accounts**: `handle_new_user` inserts the consent. Onboarding and
+    Account & privacy both show the switch.
+  - **Password rules** (15b): 10+ characters, a letter, a digit, not the email's name
+    (`lib/password.ts`). The hosted projects enforce length and letters+digits in the Auth dashboard.
+- **Recurring → calendar** (15g). Tapping a recurring row offers "Add to calendar", which opens the
+  phone's own new-event screen through `createEventInCalendarAsync` from `expo-calendar/legacy`
+  (SDK 57 made the root export throw). It needs no calendar permission, so the config plugin is left
+  out of `app.json` on purpose: adding it would request READ/WRITE_CALENDAR and change the Play Data
+  safety answers. `lib/calendar.ts` (`eventFor`) builds the all-day repeating event.
+  expo-calendar is native: dev clients need a rebuild.
+- **Account & privacy** (`app/account.tsx`, 15f) holds sign-in, the AI and crowd switches
+  (`components/privacy-switches.tsx`), legal links, and a quiet "Delete my account" at the bottom.
+  Settings links to it in one row.
 - **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op
   `setMounted(false)` on a closed sheet made React drop the render-phase `setMounted(true)` on the
   next open, and no Sheet-based picker ever appeared. Keep the `else if (mounted)`.

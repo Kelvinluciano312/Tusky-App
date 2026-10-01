@@ -35,7 +35,7 @@ export type Tier<P extends PackageLike> = {
 
 const DAY = 86_400_000;
 
-function tierLines(l: PlanLimits): string[] {
+export function tierLines(l: PlanLimits): string[] {
   const banks = `Up to ${l.max_banks} ${l.max_banks === 1 ? 'bank' : 'banks'}${l.scope === 'herd' ? ', shared' : ''}`;
   const lines = [banks, `${Math.round(l.history_days / 30.4)} months of history`, 'Every feature'];
   return l.scope === 'herd' ? [...lines, 'Covers everyone in your herd'] : lines;

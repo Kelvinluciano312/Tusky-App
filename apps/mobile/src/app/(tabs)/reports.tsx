@@ -216,7 +216,7 @@ export default function ReportsScreen() {
                     By person
                   </AppText>
                   <AppText variant="caption" tone="dim">
-                    Whose expense it was, as set on each transaction.
+                    Who spent it, as tagged on each transaction. A split counts for each person in it.
                   </AppText>
                 </View>
                 {people.map((person) => (

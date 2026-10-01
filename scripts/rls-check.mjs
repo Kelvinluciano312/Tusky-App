@@ -126,8 +126,14 @@ const counts = [
   ['settlements', `select count(*) from public.settlements where herd_id = h`, `select count(*) from public.settlements`],
   [
     'shared_lines',
-    `select count(*) from public.transactions t join public.accounts a on a.id = t.account_id left join public.categories c on c.id = t.category_id where t.account_id = any (v) and not t.pending and not a.is_private and not a.hidden and coalesce(c.kind, 'expense') = 'expense' and (t.split is not null or a.owner_id is distinct from t.paid_by)`,
+    `select count(*) from public.transactions t join public.accounts a on a.id = t.account_id left join public.categories c on c.id = t.category_id where t.account_id = any (v) and not t.pending and not a.is_private and not a.hidden and coalesce(c.kind, 'expense') = 'expense' and t.split is not null`,
     `select count(*) from public.shared_lines`,
+  ],
+  [
+    'transaction_questions',
+    // The herd's questions, only where the transaction itself is visible (15d).
+    `select count(*) from public.transaction_questions q join public.transactions t on t.id = q.transaction_id where q.herd_id = h and t.account_id = any (v)`,
+    `select count(*) from public.transaction_questions`,
   ],
   [
     'daily_net_worth',
@@ -319,6 +325,42 @@ begin
     insert into public.settlements (from_user, to_user, amount) values (mate, u, 1);
     w := w || jsonb_build_object('settle_with_mate_visible', (select count(*) = 1 from public.settlements where from_user = mate and to_user = u and amount = 1));
   end if;
+  -- Questions (15d): ask a herd mate, never yourself or an outsider; asking requeues the row.
+  if own_tx is not null then
+    begin
+      insert into public.transaction_questions (transaction_id, asked_to) values (own_tx, u);
+      w := w || jsonb_build_object('ask_self', 'allowed');
+    exception when check_violation then
+      w := w || jsonb_build_object('ask_self', 'denied');
+    end;
+    if outsider is not null then
+      begin
+        insert into public.transaction_questions (transaction_id, asked_to) values (own_tx, outsider);
+        w := w || jsonb_build_object('ask_outsider', 'allowed');
+      exception when insufficient_privilege or check_violation then
+        w := w || jsonb_build_object('ask_outsider', 'denied');
+      end;
+    end if;
+    if mate is not null then
+      update public.transactions set reviewed_at = now() where id = own_tx and not pending;
+      insert into public.transaction_questions (transaction_id, asked_to, body) values (own_tx, mate, 'What was this?');
+      w := w || jsonb_build_object('ask_mate_requeues',
+        (select reviewed_at is null or pending from public.transactions where id = own_tx));
+      -- The mate asks me; my memo answers it. (Inserted as the admin: the mate is not the caller.)
+      reset role;
+      insert into public.transaction_questions (herd_id, transaction_id, asked_by, asked_to)
+        select herd_id, id, mate, u from public.transactions where id = own_tx;
+      perform set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated')::text, true);
+      execute 'set local role authenticated';
+      update public.transactions set notes = 'RLS answer' where id = own_tx;
+      w := w || jsonb_build_object('memo_answers_question',
+        not exists (select 1 from public.transaction_questions where transaction_id = own_tx and asked_to = u and resolved_at is null));
+    end if;
+  end if;
+  -- Terms (15c): accepting records one active row per user.
+  perform public.accept_terms('rls-check');
+  w := w || jsonb_build_object('terms_recorded',
+    (select count(*) = 1 from public.consents where user_id = u and kind = 'terms' and withdrawn_at is null and version = 'rls-check'));
   -- Phase 12a: only the trigger writes where a category came from.
   if own_tx is not null then
     begin
@@ -441,7 +483,7 @@ begin
   end if;
   perform public.set_consent('crowd_labels', true);
   w := w || jsonb_build_object('own_consent_granted',
-    (select count(*) = 1 from public.consents where user_id = u and withdrawn_at is null));
+    (select count(*) = 1 from public.consents where user_id = u and kind = 'crowd_labels' and withdrawn_at is null));
   if auto_tx is not null then
     select c.id into crowd_cat from public.categories c
       where c.herd_id is null and c.parent_id is null and c.slug is distinct from 'uncategorized'
@@ -472,7 +514,7 @@ begin
   perform public.set_consent('crowd_labels', false);
   perform public.set_consent('crowd_labels', true);
   w := w || jsonb_build_object('crowd_regrant',
-    (select count(*) = 2 from public.consents where user_id = u));
+    (select count(*) = 2 from public.consents where user_id = u and kind = 'crowd_labels'));
   perform public.set_consent('crowd_labels', false);
   reset role;
   w := w || jsonb_build_object('crowd_withdraw_forgets',
@@ -526,6 +568,11 @@ const WRITE_EXPECT = {
   settle_with_outsider: 'denied',
   settle_in_other_herd: 'denied',
   settle_with_mate_visible: true,
+  ask_self: 'denied',
+  ask_outsider: 'denied',
+  ask_mate_requeues: true,
+  memo_answers_question: true,
+  terms_recorded: true,
   update_category_source: 'denied',
   correction_recorded: true,
   replace_budgets_scoped: true,

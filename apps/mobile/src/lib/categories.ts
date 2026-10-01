@@ -118,7 +118,18 @@ export const SWATCHES = [
 
 /** Icon choices for a custom category; every name exists in the installed lucide-react-native. */
 export const CUSTOM_ICONS = [
-  'Tag', 'ShoppingBag', 'Coffee', 'Utensils', 'Car', 'House', 'Heart', 'Gift',
-  'Plane', 'Music', 'Book', 'Dumbbell', 'PawPrint', 'Baby', 'Briefcase', 'GraduationCap',
-  'Wrench', 'Smartphone', 'Shirt', 'Gamepad2', 'Camera', 'Leaf', 'Star', 'Wallet',
+  // Everyday
+  'Tag', 'ShoppingBag', 'ShoppingCart', 'Store', 'Coffee', 'Utensils', 'Pizza', 'Beer', 'Wine', 'Cake',
+  // Getting around
+  'Car', 'Bus', 'TrainFront', 'Bike', 'Fuel', 'Plane', 'Luggage', 'Map', 'Tent', 'Umbrella',
+  // Home
+  'House', 'Sofa', 'Lamp', 'Wrench', 'Hammer', 'Sprout', 'Leaf', 'Wifi', 'Zap', 'Droplets',
+  // Fun
+  'Music', 'Film', 'Tv', 'Gamepad2', 'Ticket', 'Palette', 'Camera', 'Book', 'Trophy', 'PartyPopper',
+  // People and pets
+  'Heart', 'Gift', 'Baby', 'ToyBrick', 'PawPrint', 'Dog', 'Cat', 'HeartHandshake', 'Church', 'Star',
+  // Body and work
+  'Dumbbell', 'Shirt', 'Gem', 'Scissors', 'Sparkles', 'Pill', 'Stethoscope', 'Brain', 'Briefcase', 'GraduationCap',
+  // Money and tech
+  'Laptop', 'Smartphone', 'Wallet', 'PiggyBank', 'Banknote', 'CreditCard', 'Receipt', 'Landmark', 'HandCoins', 'TrendingUp',
 ];

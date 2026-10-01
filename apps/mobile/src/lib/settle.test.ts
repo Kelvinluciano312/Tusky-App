@@ -8,6 +8,7 @@ import {
   benefitShares,
   cleanSplit,
   evenSplit,
+  fundingShares,
   lineTransfers,
   settleTransfers,
   type SettleMember,
@@ -19,11 +20,12 @@ const members: SettleMember[] = [
   { user_id: 'pedro', joined_at: '2026-01-01T00:00:00Z' },
   { user_id: 'kel', joined_at: '2026-01-01T00:00:00Z' },
 ];
+const half = { pedro: 50, kel: 50 };
 const line = (over: Partial<SharedLine>): SharedLine => ({
-  id: 'l', date: '2026-09-20', amount: -100, funded_by: 'pedro', paid_by: null, split: null, ...over,
+  id: 'l', date: '2026-09-20', amount: -100, funded_by: 'pedro', paid_by: null, split: half, ...over,
 });
 
-test('Joint dinner on Pedro\'s card: Kel owes Pedro half', () => {
+test("a dinner split evenly on Pedro's card: Kel owes Pedro half", () => {
   assert.deepEqual(lineTransfers(line({}), members), [{ from: 'kel', to: 'pedro', amount: 50 }]);
 });
 
@@ -32,19 +34,20 @@ test('an odd cent rounds the same way for both sides', () => {
   assert.deepEqual([...balances([line({ amount: -6.33 })], [], members)], [['pedro', 3.17], ['kel', -3.17]]);
 });
 
-test("Kel's purchase on Pedro's card: Kel owes all of it; on a Joint account, Kel owes the other half", () => {
-  assert.deepEqual(lineTransfers(line({ paid_by: 'kel' }), members), [{ from: 'kel', to: 'pedro', amount: 100 }]);
-  assert.deepEqual(lineTransfers(line({ funded_by: null, paid_by: 'kel' }), members), [
-    { from: 'kel', to: 'pedro', amount: 50 },
+test('who spent it never makes a debt on its own (Phase 15d)', () => {
+  // Kel spent it on Pedro's card, or on a Joint account: a tag, not a bill.
+  assert.deepEqual(lineTransfers(line({ split: null, paid_by: 'kel' }), members), []);
+  assert.deepEqual(lineTransfers(line({ split: null, funded_by: null, paid_by: 'kel' }), members), []);
+  assert.deepEqual(lineTransfers(line({ split: null, paid_by: null }), members), []);
+});
+
+test('a split on a Joint account: 25/75 against equal money means Kel owes Pedro 25%', () => {
+  assert.deepEqual(lineTransfers(line({ funded_by: null, split: { pedro: 25, kel: 75 } }), members), [
+    { from: 'kel', to: 'pedro', amount: 25 },
   ]);
 });
 
-test('a line that squares itself makes no transfer', () => {
-  assert.deepEqual(lineTransfers(line({ paid_by: 'pedro' }), members), []);
-  assert.deepEqual(lineTransfers(line({ funded_by: null, paid_by: null }), members), []);
-});
-
-test('a custom split: 70/30 on Pedro\'s card means Kel owes 30%', () => {
+test("a custom split: 70/30 on Pedro's card means Kel owes 30%", () => {
   assert.deepEqual(lineTransfers(line({ split: { pedro: 70, kel: 30 } }), members), [
     { from: 'kel', to: 'pedro', amount: 30 },
   ]);
@@ -69,17 +72,17 @@ test('settlements square the balance', () => {
   assert.deepEqual(settleTransfers(net), []);
 });
 
-test('Joint is shared only by members who had joined by that date', () => {
+test('a Joint account is funded only by members who had joined by that date', () => {
   const three = [...members, { user_id: 'ana', joined_at: '2026-09-25T10:00:00Z' }];
-  assert.deepEqual([...benefitShares(line({ date: '2026-09-20' }), three).keys()], ['pedro', 'kel']);
-  assert.equal(benefitShares(line({ date: '2026-09-26' }), three).size, 3);
+  assert.deepEqual([...fundingShares(line({ funded_by: null, date: '2026-09-20' }), three).keys()], ['pedro', 'kel']);
+  assert.equal(fundingShares(line({ funded_by: null, date: '2026-09-26' }), three).size, 3);
 });
 
-test('someone who left drops out: a split renormalizes, a line paid for them counts for nothing', () => {
+test('someone who left drops out: a split renormalizes, a split only for them counts for nothing', () => {
   assert.deepEqual([...benefitShares(line({ split: { pedro: 50, kel: 25, gone: 25 } }), members)], [
     ['pedro', 50 / 75], ['kel', 25 / 75],
   ]);
-  assert.deepEqual([...balances([line({ paid_by: 'gone' })], [], members)], [['pedro', 0], ['kel', 0]]);
+  assert.deepEqual([...balances([line({ split: { gone: 100 } })], [], members)], [['pedro', 0], ['kel', 0]]);
 });
 
 test('settleTransfers finds the fewest payments for three people', () => {
@@ -92,7 +95,12 @@ test('settleTransfers finds the fewest payments for three people', () => {
 
 test('balances always sum to zero, to the cent', () => {
   const three = [...members, { user_id: 'ana', joined_at: '2026-01-01T00:00:00Z' }];
-  const net = balances([line({ amount: -10 }), line({ id: 'x', amount: -33.33, funded_by: 'kel' })], [], three);
+  const thirds = evenSplit(['pedro', 'kel', 'ana']);
+  const net = balances(
+    [line({ amount: -10, split: thirds }), line({ id: 'x', amount: -33.33, funded_by: 'kel', split: thirds })],
+    [],
+    three,
+  );
   assert.equal(Math.round([...net.values()].reduce((s, v) => s + v, 0) * 100), 0);
 });
 

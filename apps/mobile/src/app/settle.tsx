@@ -73,7 +73,7 @@ export default function SettleScreen() {
             <AppText variant="caption" tone="dim" style={{ textAlign: 'center' }}>
               {s.lines.length > 0 || s.settlements.length > 0
                 ? 'Everything shared has been paid back.'
-                : 'Mark a purchase Joint or split it, and who owes whom shows up here.'}
+                : 'Split a purchase, and who owes whom shows up here. Tagging who spent something never makes a debt.'}
             </AppText>
           </>
         ) : (
