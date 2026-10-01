@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { type ReactNode, useState } from 'react';
-import { Alert, Linking, Platform, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
@@ -13,6 +13,7 @@ import { useTheme } from '@/hooks/use-theme';
 import {
   activePeriod,
   afterPurchase,
+  offeringsErrorDetail,
   ownPaidPlan,
   type Period,
   PLAN_NAMES,
@@ -52,12 +53,21 @@ export default function PaywallScreen() {
   if (!purchasesEnabled) return <Notice title="Plans are coming soon" body="Everything you have tracked stays here in the meantime." />;
   if (error) {
     return (
-      <Notice title="Couldn't load plans" body="Check your connection and try again.">
+      <Notice title="Couldn't load plans" body="The store didn't return the plans. Try again in a moment.">
+        <AppText variant="caption" tone="dim" selectable>
+          {offeringsErrorDetail(error)}
+        </AppText>
         <Button title="Try again" variant="secondary" onPress={() => void refetch()} />
       </Notice>
     );
   }
-  if (isLoading) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, padding: Spacing.xl, alignItems: 'center' }}>
+        <ActivityIndicator color={colors.textDim} />
+      </View>
+    );
+  }
   if (tiers.length === 0) return <Notice title="Plans are coming soon" body="Everything you have tracked stays here in the meantime." />;
 
   return (

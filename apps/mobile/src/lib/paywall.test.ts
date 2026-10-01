@@ -9,6 +9,7 @@ import {
   bankUsage,
   deleteWarning,
   herdPayer,
+  offeringsErrorDetail,
   ownPaidPlan,
   periodOf,
   type PlanDetail,
@@ -178,4 +179,19 @@ test('trial, comp, lapsed and expired rows are not a paid plan of my own', () =>
   assert.equal(ownPaidPlan(detail({ status: 'expired' }), NOW), null);
   assert.equal(ownPaidPlan(detail({ own_plan: 'tusk', own_expires_at: '2026-10-09T00:00:00Z' }), NOW), null);
   assert.equal(ownPaidPlan(detail({ status: 'grace', own_expires_at: '2026-10-12T00:00:00Z' }), NOW), 'tusk');
+});
+
+test("a failed offerings load names RevenueCat's message and code", () => {
+  assert.equal(
+    offeringsErrorDetail({
+      message: 'There is an issue with your configuration.',
+      underlyingErrorMessage: 'None of the products registered in the RevenueCat dashboard could be fetched.',
+      readableErrorCode: 'CONFIGURATION_ERROR',
+      code: '23',
+    }),
+    'There is an issue with your configuration. None of the products registered in the RevenueCat dashboard could be fetched. (CONFIGURATION_ERROR)',
+  );
+  assert.equal(offeringsErrorDetail({ message: 'Same', underlyingErrorMessage: 'Same', code: 10 }), 'Same (10)');
+  assert.equal(offeringsErrorDetail(new Error('Network down')), 'Network down');
+  assert.equal(offeringsErrorDetail(null), 'Unknown error.');
 });
