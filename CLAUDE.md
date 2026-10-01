@@ -337,8 +337,8 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     the personal herd and the auth user (the cascade does the rest), then ask RevenueCat to forget the
     purchaser (errors only warned). It does not cancel a store subscription; the app warns first
     (`deleteWarning`). A deleted member's settlements go with them.
-  - **Release builds.** EAS profiles and the Play upload flow: `docs/ops/release.md`. `playtest` talks
-    to dev. Legal pages live on the studio site (Ouroboros-Inc repo, `public/tusky/`); `constants/legal.ts` holds the URLs.
+  - **Release builds.** EAS profiles and the Play upload flow: `docs/ops/release.md`. **Every store build
+    is production** (real banks), internal testing included; Sandbox is for dev builds only. Legal pages live on the studio site (Ouroboros-Inc repo, `public/tusky/`); `constants/legal.ts` holds the URLs.
 - **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op
   `setMounted(false)` on a closed sheet made React drop the render-phase `setMounted(true)` on the
   next open, and no Sheet-based picker ever appeared. Keep the `else if (mounted)`.

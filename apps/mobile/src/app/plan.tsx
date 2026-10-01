@@ -19,11 +19,25 @@ export default function PlanScreen() {
   const insets = useSafeAreaInsets();
   const { session } = useSession();
   const userId = session?.user.id;
-  const { data: plan } = usePlan(userId);
+  const { data: plan, error, refetch, isRefetching } = usePlan(userId);
   const { data: herd } = useHerd();
   const { data: payerId = null } = useHerdPayer(userId, plan?.source === 'herd');
   const restore = useRestore();
 
+  if (error && !plan) {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: Spacing.md }}>
+        <Card style={{ gap: Spacing.sm }}>
+          <AppText variant="section">Couldn&apos;t load your plan</AppText>
+          <AppText tone="dim">Check your connection and try again.</AppText>
+          <AppText variant="caption" tone="dim" selectable>
+            {error.message}
+          </AppText>
+          <Button title="Try again" variant="secondary" loading={isRefetching} onPress={() => void refetch()} />
+        </Card>
+      </ScrollView>
+    );
+  }
   if (!plan) return <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} />;
 
   const payerName = herd?.members.find((m) => m.user_id === payerId)?.display_name ?? null;

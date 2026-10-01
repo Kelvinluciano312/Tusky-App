@@ -35,8 +35,8 @@ export default function PaywallScreen() {
   const insets = useSafeAreaInsets();
   const { session } = useSession();
   const userId = session?.user.id;
-  const { data: plan } = usePlan(userId);
-  const { data: limits = [] } = usePlanLimits();
+  const { data: plan, error: planError, refetch: refetchPlan } = usePlan(userId);
+  const { data: limits = [], error: limitsError, refetch: refetchLimits } = usePlanLimits();
   const { data: packages = [], isLoading, error, refetch } = useOfferings();
   const { data: active = [] } = useActiveProducts();
   const { data: herd } = useHerd();
@@ -51,6 +51,24 @@ export default function PaywallScreen() {
   const failed = (title: string) => (err: Error) => Alert.alert(title, err.message);
 
   if (!purchasesEnabled) return <Notice title="Plans are coming soon" body="Everything you have tracked stays here in the meantime." />;
+  const ownError = planError ?? limitsError;
+  if (ownError) {
+    return (
+      <Notice title="Couldn't load plans" body="Tusky couldn't reach its server. Try again in a moment.">
+        <AppText variant="caption" tone="dim" selectable>
+          {ownError.message}
+        </AppText>
+        <Button
+          title="Try again"
+          variant="secondary"
+          onPress={() => {
+            void refetchPlan();
+            void refetchLimits();
+          }}
+        />
+      </Notice>
+    );
+  }
   if (error) {
     return (
       <Notice title="Couldn't load plans" body="The store didn't return the plans. Try again in a moment.">
