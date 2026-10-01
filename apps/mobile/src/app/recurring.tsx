@@ -1,3 +1,4 @@
+import { createEventInCalendarAsync, Frequency } from 'expo-calendar/legacy';
 import { Repeat } from 'lucide-react-native';
 import { useMemo } from 'react';
 import { Alert, RefreshControl, ScrollView, View } from 'react-native';
@@ -9,7 +10,15 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { type RecurringStream, useCategories, useRecurringStreams, useSetStreamDismissed } from '@/lib/queries';
+import { eventFor } from '@/lib/calendar';
+import { streamName } from '@/lib/merchants';
+import {
+  type RecurringStream,
+  useCategories,
+  useMerchantRules,
+  useRecurringStreams,
+  useSetStreamDismissed,
+} from '@/lib/queries';
 import { isActive, monthlyEquivalent, todayLocal } from '@/lib/recurring';
 
 export default function RecurringScreen() {
@@ -17,6 +26,7 @@ export default function RecurringScreen() {
   const { data: streams = [], isLoading, isRefetching, refetch } = useRecurringStreams();
   const { data: categories = [] } = useCategories();
   const setDismissed = useSetStreamDismissed();
+  const { data: rules = new Map() } = useMerchantRules();
   const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
   // Per render, not memoized: a screen left open past midnight moves with the day.
@@ -27,15 +37,39 @@ export default function RecurringScreen() {
   const dismissed = streams.filter((s) => s.dismissed);
   const perMonth = bills.reduce((sum, s) => sum + monthlyEquivalent(s), 0);
 
+  // The phone's own "new event" screen (15g): no calendar permission, and the
+  // user picks the calendar (Google on Android, Apple's on iOS) and can edit it.
+  const addToCalendar = async (s: RecurringStream) => {
+    const name = streamName(s, rules);
+    const draft = eventFor(s, name);
+    try {
+      await createEventInCalendarAsync({
+        ...draft,
+        recurrenceRule: {
+          frequency: draft.recurrenceRule.frequency === 'monthly' ? Frequency.MONTHLY : Frequency.WEEKLY,
+          interval: draft.recurrenceRule.interval,
+        },
+      });
+    } catch (err) {
+      Alert.alert('Could not open your calendar', err instanceof Error ? err.message : 'Try again in a moment.');
+    }
+  };
+
   const confirm = (s: RecurringStream) =>
-    Alert.alert(s.name, s.dismissed ? 'Treat this as recurring again?' : 'Stop treating this as recurring?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: s.dismissed ? 'Restore' : 'Not recurring',
-        style: s.dismissed ? 'default' : 'destructive',
-        onPress: () => setDismissed.mutate({ id: s.id, dismissed: !s.dismissed }),
-      },
-    ]);
+    s.dismissed
+      ? Alert.alert(s.name, 'Treat this as recurring again?', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Restore', onPress: () => setDismissed.mutate({ id: s.id, dismissed: false }) },
+        ])
+      : Alert.alert(streamName(s, rules), undefined, [
+          { text: 'Add to calendar', onPress: () => void addToCalendar(s) },
+          {
+            text: 'Not recurring',
+            style: 'destructive',
+            onPress: () => setDismissed.mutate({ id: s.id, dismissed: true }),
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ]);
 
   const section = (title: string, list: RecurringStream[]) =>
     list.length === 0 ? null : (

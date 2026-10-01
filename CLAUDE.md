@@ -356,6 +356,12 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     Account & privacy both show the switch.
   - **Password rules** (15b): 10+ characters, a letter, a digit, not the email's name
     (`lib/password.ts`). The hosted projects enforce length and letters+digits in the Auth dashboard.
+- **Recurring → calendar** (15g). Tapping a recurring row offers "Add to calendar", which opens the
+  phone's own new-event screen through `createEventInCalendarAsync` from `expo-calendar/legacy`
+  (SDK 57 made the root export throw). It needs no calendar permission, so the config plugin is left
+  out of `app.json` on purpose: adding it would request READ/WRITE_CALENDAR and change the Play Data
+  safety answers. `lib/calendar.ts` (`eventFor`) builds the all-day repeating event.
+  expo-calendar is native: dev clients need a rebuild.
 - **Account & privacy** (`app/account.tsx`, 15f) holds sign-in, the AI and crowd switches
   (`components/privacy-switches.tsx`), legal links, and a quiet "Delete my account" at the bottom.
   Settings links to it in one row.
