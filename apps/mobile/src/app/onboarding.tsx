@@ -256,7 +256,7 @@ function PlansStep({ userId, onNext, finishing }: { userId: string | undefined; 
   return (
     <>
       <Heading
-        title="Your free trial"
+        title={trialEnds ? 'Your free trial' : 'Plans'}
         body={
           trialEnds
             ? `Everything is open until ${trialEnds.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}. Then pick a plan to keep your banks connected. Your history always stays.`
