@@ -1,15 +1,17 @@
 import { Link, router } from 'expo-router';
+import { Check, LockKeyhole } from 'lucide-react-native';
 import { useState } from 'react';
-import { Check, Circle, LockKeyhole } from 'lucide-react-native';
-import { KeyboardAvoidingView, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, Linking, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PasswordChecklist } from '@/components/password-checklist';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
-import { Spacing, Type } from '@/constants/theme';
+import { PRIVACY_URL, TERMS_URL, TERMS_VERSION } from '@/constants/legal';
+import { Radius, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { PASSWORD_MIN, passwordOk, passwordRules } from '@/lib/password';
+import { PASSWORD_MIN, passwordOk } from '@/lib/password';
 import { NAME_MAX, validatePersonName } from '@/lib/profile';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
@@ -19,21 +21,23 @@ export default function SignUpScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
 
   const validName = validatePersonName(name);
-  const rules = passwordRules(password, email);
 
   const signUp = async () => {
     setError(null);
     setSubmitting(true);
-    // The signup trigger turns display_name into the profile (profiles.display_name).
+    // The signup trigger turns display_name into the profile, and records the
+    // terms version as accepted (Phase 15c): with email confirmation there is
+    // no session yet to record it from here.
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: email.trim(),
       password,
-      options: { data: { display_name: validName } },
+      options: { data: { display_name: validName, terms_version: TERMS_VERSION } },
     });
     setSubmitting(false);
     if (signUpError) {
@@ -48,9 +52,7 @@ export default function SignUpScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.bg }}
-      behavior="padding">
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior="padding">
       <ScrollView
         contentContainerStyle={{
           flexGrow: 1,
@@ -61,9 +63,7 @@ export default function SignUpScreen() {
         }}
         keyboardShouldPersistTaps="handled">
         <View style={{ marginBottom: Spacing.xl }}>
-          <AppText style={{ fontFamily: Type.display, fontSize: 32, lineHeight: 40 }}>
-            Create your account
-          </AppText>
+          <AppText style={{ fontFamily: Type.display, fontSize: 32, lineHeight: 40 }}>Create your account</AppText>
           <AppText tone="dim" style={{ marginTop: Spacing.xs }}>
             Tusky keeps your accounts, spending, and budgets in one place.
           </AppText>
@@ -105,19 +105,39 @@ export default function SignUpScreen() {
               autoComplete="new-password"
               placeholder={`At least ${PASSWORD_MIN} characters`}
             />
-            <View style={{ gap: 2 }}>
-              {rules.map((rule) => (
-                <View key={rule.id} style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.xs }}>
-                  {rule.ok ? (
-                    <Check size={14} color={colors.positive} strokeWidth={2.25} />
-                  ) : (
-                    <Circle size={14} color={colors.textDim} strokeWidth={1.75} />
-                  )}
-                  <AppText variant="caption" tone={rule.ok ? 'positive' : 'dim'}>
-                    {rule.label}
-                  </AppText>
-                </View>
-              ))}
+            <PasswordChecklist password={password} email={email} />
+
+            <View style={{ flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-start' }}>
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: agreed }}
+                accessibilityLabel="I agree to the Terms of Service and Privacy Policy"
+                hitSlop={8}
+                onPress={() => setAgreed((a) => !a)}
+                style={{
+                  width: 22,
+                  height: 22,
+                  marginTop: 1,
+                  borderRadius: Radius.sm,
+                  borderWidth: 1.5,
+                  borderColor: agreed ? colors.brand : colors.border,
+                  backgroundColor: agreed ? colors.brand : 'transparent',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                {agreed ? <Check size={14} color={colors.onBrand} strokeWidth={3} /> : null}
+              </Pressable>
+              <AppText tone="dim" style={{ flex: 1 }}>
+                I agree to the{' '}
+                <AppText tone="brand" onPress={() => void Linking.openURL(TERMS_URL)}>
+                  Terms of Service
+                </AppText>{' '}
+                and the{' '}
+                <AppText tone="brand" onPress={() => void Linking.openURL(PRIVACY_URL)}>
+                  Privacy Policy
+                </AppText>
+                .
+              </AppText>
             </View>
 
             {error && (
@@ -136,7 +156,7 @@ export default function SignUpScreen() {
               title="Create account"
               onPress={signUp}
               loading={submitting}
-              disabled={!isSupabaseConfigured || !validName || !email || !passwordOk(password, email)}
+              disabled={!isSupabaseConfigured || !validName || !email || !passwordOk(password, email) || !agreed}
             />
 
             <View style={{ flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-start' }}>

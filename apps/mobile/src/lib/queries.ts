@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import type { FirstRunState } from '@/lib/first-run';
 import { readFunctionError } from '@/lib/functions';
 import type { MerchantRule, MerchantRules } from '@/lib/merchants';
 import { herdPayer, type PlanDetail, type PlanLimits } from '@/lib/paywall';
@@ -992,6 +993,59 @@ export function useCrowdConsent(userId: string | undefined) {
       if (error) throw error;
       return !!data;
     },
+  });
+}
+
+/**
+ * The first-run gate (Phase 15c): which terms version this user accepted, and
+ * whether they finished the first-run steps.
+ */
+export function useFirstRun(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['first-run', userId],
+    enabled: !!userId,
+    queryFn: async (): Promise<FirstRunState> => {
+      const [profile, terms] = await Promise.all([
+        supabase.from('profiles').select('onboarded_at').eq('user_id', userId!).single(),
+        supabase
+          .from('consents')
+          .select('version')
+          .eq('user_id', userId!)
+          .eq('kind', 'terms')
+          .is('withdrawn_at', null)
+          .maybeSingle(),
+      ]);
+      if (profile.error) throw profile.error;
+      if (terms.error) throw terms.error;
+      return { termsVersion: terms.data?.version ?? null, onboarded: profile.data.onboarded_at !== null };
+    },
+  });
+}
+
+export function useAcceptTerms() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (version: string) => {
+      const { error } = await supabase.rpc('accept_terms', { p_version: version });
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['first-run'] }),
+  });
+}
+
+export function useFinishOnboarding() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ onboarded_at: new Date().toISOString() })
+        .eq('user_id', userId);
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['first-run'] }),
   });
 }
 

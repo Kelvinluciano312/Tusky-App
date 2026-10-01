@@ -339,6 +339,20 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     (`deleteWarning`). A deleted member's settlements go with them.
   - **Release builds.** EAS profiles and the Play upload flow: `docs/ops/release.md`. **Every store build
     is production** (real banks), internal testing included; Sandbox is for dev builds only. Legal pages live on the studio site (Ouroboros-Inc repo, `public/tusky/`); `constants/legal.ts` holds the URLs.
+- **First run** (Phase 15c). The root layout gates a session with `gateFor` (`lib/first-run.ts`):
+  `accept-terms` until the active `terms` consent matches `TERMS_VERSION` (`constants/legal.ts`), then
+  `onboarding` until `profiles.onboarded_at` is set, then the app. A failed read opens the app.
+  - **Terms** are a `consents` row of kind `terms` with a `version`. Sign-up sends `terms_version` in
+    the user metadata and `handle_new_user` records it (with email confirmation there is no session
+    to call from); `accept_terms(p_version)` covers everyone else. Bumping `TERMS_VERSION` asks
+    everyone again; a newer acceptance closes the older row.
+  - **Crowd labels are on for new accounts**: `handle_new_user` inserts the consent. Onboarding and
+    Account & privacy both show the switch.
+  - **Password rules** (15b): 10+ characters, a letter, a digit, not the email's name
+    (`lib/password.ts`). The hosted projects enforce length and letters+digits in the Auth dashboard.
+- **Account & privacy** (`app/account.tsx`, 15f) holds sign-in, the AI and crowd switches
+  (`components/privacy-switches.tsx`), legal links, and a quiet "Delete my account" at the bottom.
+  Settings links to it in one row.
 - **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op
   `setMounted(false)` on a closed sheet made React drop the render-phase `setMounted(true)` on the
   next open, and no Sheet-based picker ever appeared. Keep the `else if (mounted)`.
