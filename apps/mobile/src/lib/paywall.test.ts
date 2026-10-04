@@ -3,7 +3,22 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { bankUsage, herdPayer, ownPaidPlan, type PlanDetail, planSummary, paywallTiers, productChange } from './paywall.ts';
+import {
+  activePeriod,
+  afterPurchase,
+  bankUsage,
+  deleteWarning,
+  herdPayer,
+  offeringsErrorDetail,
+  ownPaidPlan,
+  periodOf,
+  type PlanDetail,
+  planSummary,
+  paywallTiers,
+  productChange,
+  storeName,
+  tierAction,
+} from './paywall.ts';
 
 const NOW = new Date('2026-10-10T12:00:00Z');
 const detail = (over: Partial<PlanDetail>): PlanDetail => ({
@@ -86,12 +101,71 @@ test('the herd payer is a live Tusk Herd row that is not mine', () => {
   assert.equal(herdPayer(rows.slice(0, 3), 'me', NOW), null);
 });
 
-test('buying over an active Play plan changes the product; rank decides upgrade', () => {
-  assert.deepEqual(productChange(['tusklet:monthly'], 'tusk'), { oldProductIdentifier: 'tusklet', upgrade: true });
-  assert.deepEqual(productChange(['tusk_herd:yearly'], 'tusk'), { oldProductIdentifier: 'tusk_herd', upgrade: false });
-  assert.deepEqual(productChange(['tusk:monthly'], 'tusk'), { oldProductIdentifier: 'tusk', upgrade: false });
-  assert.equal(productChange([], 'tusk'), null);
-  assert.equal(productChange(['something_else'], 'tusk'), null);
+test('buying over an active Play plan: rank decides, and monthly to yearly is an upgrade', () => {
+  assert.deepEqual(productChange(['tusklet:monthly'], 'tusk', 'monthly'), { oldProductIdentifier: 'tusklet', upgrade: true });
+  assert.deepEqual(productChange(['tusk_herd:yearly'], 'tusk', 'yearly'), { oldProductIdentifier: 'tusk_herd', upgrade: false });
+  assert.deepEqual(productChange(['tusk:monthly'], 'tusk', 'yearly'), { oldProductIdentifier: 'tusk', upgrade: true });
+  assert.deepEqual(productChange(['tusk:yearly'], 'tusk', 'monthly'), { oldProductIdentifier: 'tusk', upgrade: false });
+  assert.equal(productChange(['tusk:monthly'], 'tusk', 'monthly'), null);
+  assert.equal(productChange([], 'tusk', 'monthly'), null);
+  assert.equal(productChange(['something_else'], 'tusk', 'monthly'), null);
+  // One Play subscription per plan and period (tusk_monthly:<base plan>).
+  assert.deepEqual(productChange(['tusk_monthly:p1m'], 'tusk', 'yearly'), { oldProductIdentifier: 'tusk_monthly', upgrade: true });
+  assert.deepEqual(productChange(['tusk_herd_yearly:yearly'], 'tusklet', 'yearly'), { oldProductIdentifier: 'tusk_herd_yearly', upgrade: false });
+});
+
+test('store names', () => {
+  assert.equal(storeName('app_store'), 'App Store');
+  assert.equal(storeName('play'), 'Play Store');
+  assert.equal(storeName(null), 'Play Store');
+  assert.equal(
+    planSummary(detail({ status: 'grace', store: 'app_store' }), NOW, null).detail,
+    "Your payment didn't go through. Update it in the App Store to keep your banks.",
+  );
+});
+
+test('the period of a product, from Play, App Store and Test Store ids', () => {
+  assert.equal(periodOf('tusk:yearly'), 'yearly');
+  assert.equal(periodOf('tusk_herd_monthly'), 'monthly');
+  assert.equal(periodOf('tusk'), null);
+  assert.equal(periodOf('tusk_monthly:monthly'), 'monthly');
+  assert.equal(periodOf('tusk_herd_yearly:base'), 'yearly');
+  assert.equal(activePeriod(['tusk_yearly:p1y'], 'tusk'), 'yearly');
+  assert.equal(periodOf('tusk_herd_yearly_v2'), 'yearly');
+  assert.equal(activePeriod(['tusk_monthly_v2'], 'tusk'), 'monthly');
+  assert.equal(activePeriod(['tusklet:monthly', 'tusk_herd_yearly'], 'tusk_herd'), 'yearly');
+  assert.equal(activePeriod(['tusklet:monthly'], 'tusk'), null);
+});
+
+test('tier buttons: current, switch period, choose, and wait for the plan', () => {
+  const base = { tier: 'tusk' as const, period: 'monthly' as const, own: 'tusk', ownPeriod: 'monthly' as const, planKnown: true, hasPackage: true };
+  assert.deepEqual(tierAction(base), { title: 'Your plan', disabled: true });
+  assert.deepEqual(tierAction({ ...base, period: 'yearly' }), { title: 'Switch to yearly', disabled: false });
+  assert.deepEqual(tierAction({ ...base, own: 'tusklet' }), { title: 'Choose Tusk', disabled: false });
+  assert.deepEqual(tierAction({ ...base, own: null, planKnown: false }), { title: 'Choose Tusk', disabled: true });
+  assert.deepEqual(tierAction({ ...base, own: null, hasPackage: false }), { title: 'Choose Tusk', disabled: true });
+});
+
+test('after a purchase: confirmed says nothing, unconfirmed and deferred explain', () => {
+  assert.equal(afterPurchase({ outcome: 'bought', confirmed: true, name: 'Tusk' }), null);
+  assert.deepEqual(afterPurchase({ outcome: 'bought', confirmed: false, name: 'Tusk' }), {
+    title: 'Purchase received',
+    body: 'Your plan updates within a minute. You can keep using Tusky meanwhile.',
+  });
+  assert.deepEqual(afterPurchase({ outcome: 'deferred', confirmed: true, name: 'Tusklet' }), {
+    title: 'Your plan changes at renewal',
+    body: 'You move to Tusklet when your current period ends. Until then, nothing changes.',
+  });
+});
+
+test('deleting an account warns a store subscriber, and nobody else', () => {
+  assert.equal(
+    deleteWarning(detail({ store: 'play', own_plan: 'tusk' }), NOW),
+    'You pay for Tusk through the Play Store. Deleting your Tusky account does not cancel it: cancel it in the store first, or you keep being charged.',
+  );
+  assert.equal(deleteWarning(detail({ store: 'comp' }), NOW), null);
+  assert.equal(deleteWarning(detail({ store: 'trial', own_plan: 'trial' }), NOW), null);
+  assert.equal(deleteWarning(detail({ store: 'test' }), NOW), null);
 });
 
 test('a plan I pay for myself shows even while a herd mate covers me', () => {
@@ -105,4 +179,19 @@ test('trial, comp, lapsed and expired rows are not a paid plan of my own', () =>
   assert.equal(ownPaidPlan(detail({ status: 'expired' }), NOW), null);
   assert.equal(ownPaidPlan(detail({ own_plan: 'tusk', own_expires_at: '2026-10-09T00:00:00Z' }), NOW), null);
   assert.equal(ownPaidPlan(detail({ status: 'grace', own_expires_at: '2026-10-12T00:00:00Z' }), NOW), 'tusk');
+});
+
+test("a failed offerings load names RevenueCat's message and code", () => {
+  assert.equal(
+    offeringsErrorDetail({
+      message: 'There is an issue with your configuration.',
+      underlyingErrorMessage: 'None of the products registered in the RevenueCat dashboard could be fetched.',
+      readableErrorCode: 'CONFIGURATION_ERROR',
+      code: '23',
+    }),
+    'There is an issue with your configuration. None of the products registered in the RevenueCat dashboard could be fetched. (CONFIGURATION_ERROR)',
+  );
+  assert.equal(offeringsErrorDetail({ message: 'Same', underlyingErrorMessage: 'Same', code: 10 }), 'Same (10)');
+  assert.equal(offeringsErrorDetail(new Error('Network down')), 'Network down');
+  assert.equal(offeringsErrorDetail(null), 'Unknown error.');
 });

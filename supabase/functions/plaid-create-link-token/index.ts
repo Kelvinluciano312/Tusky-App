@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
       webhook: getWebhookUrl(),
       // Required for the native Android Link SDK; must also be registered as an
       // Allowed Android package name in the Plaid dashboard (API settings).
-      android_package_name: 'com.tusky.app',
+      android_package_name: 'com.ouroborosstudios.tusky',
     });
 
     return jsonResponse({ link_token: data.link_token, expiration: data.expiration, update_mode: accessToken !== null });

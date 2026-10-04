@@ -1,8 +1,7 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { ChevronRight, CreditCard, Landmark, Sparkles, Store, Tags, UserRound, Users, UsersRound } from 'lucide-react-native';
+import { ChevronRight, CreditCard, Landmark, ShieldCheck, Store, Tags, UserRound, Users } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
+import { Alert, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NameSheet } from '@/components/name-sheet';
@@ -15,30 +14,16 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { bankUsage, PLAN_NAMES } from '@/lib/paywall';
 import { useConnectBank } from '@/lib/plaid';
-import {
-  type PlaidItem,
-  useCrowdConsent,
-  useHerd,
-  usePlaidItems,
-  usePlan,
-  useProfile,
-  useSetAiCategorize,
-  useSetCrowdConsent,
-  useSetDisplayName,
-} from '@/lib/queries';
+import { type PlaidItem, useHerd, usePlaidItems, usePlan, useProfile, useSetDisplayName } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { type Backend, backendLabel } from '@/lib/environment';
-import { backend, realConfigured, supabase, switchBackend } from '@/lib/supabase';
+import { backend, realConfigured, switchBackend } from '@/lib/supabase';
 
 export default function SettingsScreen() {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
   const { session } = useSession();
-  const queryClient = useQueryClient();
   const { data: profile } = useProfile(session?.user.id);
-  const setAiCategorize = useSetAiCategorize();
-  const { data: crowdOn } = useCrowdConsent(session?.user.id);
-  const setCrowd = useSetCrowdConsent();
   const { data: herd } = useHerd();
   const setName = useSetDisplayName();
   const [naming, setNaming] = useState(false);
@@ -247,86 +232,28 @@ export default function SettingsScreen() {
           </AppText>
           <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
         </Pressable>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: Spacing.sm,
-            paddingVertical: Spacing.xs,
-          }}>
-          <Sparkles size={20} color={colors.brand} strokeWidth={1.75} />
-          <View style={{ flex: 1 }}>
-            <AppText variant="label">Let AI help sort and review</AppText>
-            <AppText variant="caption" tone="dim">
-              Places transactions nothing else could, puts the ones worth a second look first in
-              Review, and spots costs you may want to split. It sees the merchant, the amount, the
-              description your bank sent and the category &mdash; never your balances, your accounts
-              or who you are.
-            </AppText>
-          </View>
-          <Switch
-            accessibilityLabel="Let AI help sort and review"
-            trackColor={{ false: colors.elevated, true: colors.brand }}
-            value={profile?.ai_categorize ?? false}
-            disabled={!session?.user.id || setAiCategorize.isPending}
-            onValueChange={(enabled) => {
-              if (session?.user.id) {
-                setAiCategorize.mutate(
-                  { userId: session.user.id, enabled },
-                  {
-                    onError: () =>
-                      Alert.alert('Could not change that', 'Check your connection and try again.'),
-                  },
-                );
-              }
-            }}
-          />
-        </View>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: Spacing.sm,
-            paddingVertical: Spacing.xs,
-          }}>
-          <UsersRound size={20} color={colors.brand} strokeWidth={1.75} />
-          <View style={{ flex: 1 }}>
-            <AppText variant="label">Share my fixes, anonymously</AppText>
-            <AppText variant="caption" tone="dim">
-              When you fix a category, the merchant and your choice join a pool that helps
-              every Tusky user. Never your name, your accounts or exact amounts. A category comes
-              from the pool only once three people agree. Turning this off deletes what you
-              shared.
-            </AppText>
-          </View>
-          <Switch
-            accessibilityLabel="Share my fixes, anonymously"
-            trackColor={{ false: colors.elevated, true: colors.brand }}
-            value={crowdOn ?? false}
-            disabled={!session?.user.id || setCrowd.isPending}
-            onValueChange={(granted) =>
-              setCrowd.mutate(granted, {
-                onError: () => Alert.alert('Could not change that', 'Check your connection and try again.'),
-              })
-            }
-          />
-        </View>
       </Card>
 
-      <Card style={{ gap: Spacing.sm }}>
-        <AppText variant="section" tone="dim">
-          Account
-        </AppText>
-        <AppText tone="dim">{session?.user.email}</AppText>
-        <Button
-          title="Sign out"
-          variant="secondary"
-          onPress={async () => {
-            await supabase.auth.signOut();
-            // The next person to sign in on this device must never see this one's cached data.
-            queryClient.clear();
-          }}
-        />
+      {/* Phase 15f: sign-in, privacy, legal and account deletion live one level down. */}
+      <Card>
+        <Pressable
+          onPress={() => router.push('/account')}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: Spacing.sm,
+            paddingVertical: Spacing.xs,
+            backgroundColor: pressed ? colors.elevated : 'transparent',
+          })}>
+          <ShieldCheck size={20} color={colors.brand} strokeWidth={1.75} />
+          <View style={{ flex: 1 }}>
+            <AppText variant="label">Account &amp; privacy</AppText>
+            <AppText variant="caption" tone="dim">
+              {session?.user.email}
+            </AppText>
+          </View>
+          <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
+        </Pressable>
       </Card>
 
       {__DEV__ && realConfigured ? (

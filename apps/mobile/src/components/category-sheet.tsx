@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, Pressable, View } from 'react-native';
+import { Alert, Pressable, ScrollView, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
@@ -145,6 +145,8 @@ export function CategorySheet({ target, onClose }: Props) {
           <AppText variant="label" tone="dim">
             Icon
           </AppText>
+          {/* 70 icons: a short scrolling grid, so the sheet's Save button stays in view. */}
+          <ScrollView style={{ maxHeight: 176 }} nestedScrollEnabled>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm }}>
             {CUSTOM_ICONS.map((iconName) => (
               <Pressable
@@ -165,6 +167,7 @@ export function CategorySheet({ target, onClose }: Props) {
               </Pressable>
             ))}
           </View>
+          </ScrollView>
         </View>
       ) : null}
 

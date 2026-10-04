@@ -4,6 +4,8 @@ import {
   eventUserIds,
   type RcClient,
   type RcSubscriber,
+  refreshCaller,
+  type RefreshStore,
   type SubRow,
   type SubStore,
   subscriptionFromRc,
@@ -189,4 +191,38 @@ Deno.test('syncSubscriber: after a restore elsewhere, the old account loses the 
   const db = memoryStore({ [U1]: { plan: 'tusk_herd', store: 'play', status: 'active', expires_at: FUTURE } });
   assertEquals(await syncSubscriber(db, rcWith(sub({})), U1, NOW, false), 'written');
   assertEquals(db.writes[0][1].status, 'expired');
+});
+
+function refreshStore(rows: Record<string, SubRow>, last: Record<string, number> = {}): RefreshStore & { writes: [string, SubRow][] } {
+  const base = memoryStore(rows);
+  return {
+    ...base,
+    claimRefresh: (id, now) => {
+      if (!rows[id] || (last[id] !== undefined && now.getTime() - last[id] < 10_000)) return Promise.resolve(false);
+      last[id] = now.getTime();
+      return Promise.resolve(true);
+    },
+  };
+}
+
+Deno.test('refreshCaller: the first call syncs', async () => {
+  const db = refreshStore({ [U1]: TRIAL });
+  assertEquals(await refreshCaller(db, rcWith(LIVE_TUSK), U1, NOW, false), 'written');
+});
+
+Deno.test('refreshCaller: a second call within the cooldown never reaches RevenueCat', async () => {
+  const db = refreshStore({ [U1]: TRIAL });
+  let calls = 0;
+  const counting: RcClient = { subscriber: () => (calls++, Promise.resolve(LIVE_TUSK)) };
+  await refreshCaller(db, counting, U1, NOW, false);
+  assertEquals(await refreshCaller(db, counting, U1, new Date(NOW.getTime() + 5_000), false), 'too_soon');
+  assertEquals(calls, 1);
+});
+
+Deno.test('refreshCaller: after the cooldown it syncs again', async () => {
+  const db = refreshStore({ [U1]: TRIAL });
+  await refreshCaller(db, rcWith(LIVE_TUSK), U1, NOW, false);
+  // memoryStore records writes without applying them, so the second sync writes again.
+  assertEquals(await refreshCaller(db, rcWith(LIVE_TUSK), U1, new Date(NOW.getTime() + 11_000), false), 'written');
+  assertEquals(db.writes.length, 2);
 });

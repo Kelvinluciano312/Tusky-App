@@ -1,11 +1,12 @@
 /**
- * Settle-up (Phase 11b). Pure, so `node --test` runs it.
+ * Settle-up (Phase 11b; split-only since 15d). Pure, so `node --test` runs it.
  *
  * Every shared line has two sides: who paid (the account's owner, `funded_by`;
- * a Joint account is everyone equally) and who it was for (`paid_by`, a
- * person or Joint = everyone equally, or a custom `split` in percents). Where
- * the two differ, someone owes someone. Settlements are the payments that
- * square it.
+ * a Joint account is everyone equally) and who it was for. Since Phase 15d,
+ * only a `split` (percents) says who it was for. `paid_by` means "who spent
+ * it", a tag for organizing, and never creates a debt by itself: an unsplit
+ * line is for whoever paid, so it squares itself. Where a split differs from
+ * who paid, someone owes someone. Settlements are the payments that square it.
  *
  * "Everyone" means the members who had joined by the line's date, so a new
  * member never inherits old Joint purchases. Anyone no longer in the herd is
@@ -43,7 +44,7 @@ function personShares(userId: string, members: SettleMember[]): Shares {
   return members.some((m) => m.user_id === userId) ? new Map([[userId, 1]]) : new Map();
 }
 
-/** Who a line was for, as fractions summing to 1 (or empty: nobody left). */
+/** Who a line was for, as fractions summing to 1 (or empty: nobody left). Unsplit: whoever paid. */
 export function benefitShares(line: SharedLine, members: SettleMember[]): Shares {
   if (line.split) {
     const present = Object.entries(line.split).filter(
@@ -52,7 +53,7 @@ export function benefitShares(line: SharedLine, members: SettleMember[]): Shares
     const total = present.reduce((sum, [, pct]) => sum + pct, 0);
     return total > 0 ? new Map(present.map(([id, pct]) => [id, pct / total])) : new Map();
   }
-  return line.paid_by === null ? equalShares(line.date, members) : personShares(line.paid_by, members);
+  return fundingShares(line, members);
 }
 
 /** Whose money paid for a line, as fractions summing to 1 (or empty). */

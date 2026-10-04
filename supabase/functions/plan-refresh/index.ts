@@ -1,5 +1,5 @@
 import { corsHeaders, getAdminClient, getAuthedUser, jsonResponse } from '../_shared/lib.ts';
-import { adminSubStore, revenueCatClient, syncSubscriber } from '../_shared/revenuecat.ts';
+import { adminSubStore, refreshCaller, revenueCatClient } from '../_shared/revenuecat.ts';
 
 /**
  * The app calls this right after a purchase or restore (Phase 14c), so the new
@@ -12,14 +12,14 @@ Deno.serve(async (req) => {
   const user = await getAuthedUser(req, admin);
   if (!user) return jsonResponse({ error: 'Unauthorized' }, 401);
   try {
-    const result = await syncSubscriber(
+    const result = await refreshCaller(
       adminSubStore(admin),
       revenueCatClient(Deno.env.get('REVENUECAT_SECRET_KEY') ?? ''),
       user.id,
       new Date(),
       Deno.env.get('PLAID_ENV') === 'sandbox',
     );
-    return jsonResponse({ result });
+    return jsonResponse({ result }, result === 'too_soon' ? 429 : 200);
   } catch (err) {
     console.error('plan-refresh failed', err);
     return jsonResponse({ error: 'refresh_failed' }, 502);

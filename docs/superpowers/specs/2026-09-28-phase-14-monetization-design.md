@@ -228,8 +228,18 @@ One plan, handoff and PR per milestone, as usual. Pedro merges.
   reconnect merge.
 - **14c: purchases.** RevenueCat, the Play products, `revenuecat-webhook`, the Plan screen, the
   paywall and the invite link.
-- **iOS** is its own later step: App Store Connect products under the same entitlements and the same
-  webhook. It needs an Apple developer account ($99/yr).
+- **14d: launch readiness, Android first, then iOS** (added 2026-09-29, after 14c's final review).
+  - **14d-1 (Android).**
+    - The purchase polish 14c's review deferred.
+    - In-app account deletion. Google Play and Apple both require it for apps with sign-up; it must remove
+      every bank at Plaid before anything is deleted, and warn a store subscriber to cancel first.
+    - Release builds through EAS.
+    - Play products, and a live Play Billing run on a build that talks to dev.
+  - **14d-2 (iOS).**
+    - App Store Connect products under the same entitlements and the same webhooks.
+    - RevenueCat keys per platform.
+    - An iOS build through EAS, and a live sandbox run.
+    - It needs an Apple developer account ($99/yr) and an iPhone to test on.
 
 ## Testing
 

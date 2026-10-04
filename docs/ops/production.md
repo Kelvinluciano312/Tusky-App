@@ -44,12 +44,12 @@ S=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('he
 npx -y supabase@2.118.0 db query --linked --project-ref awiwcgrisyzimzxgddxu "select vault.create_secret('https://awiwcgrisyzimzxgddxu.supabase.co', 'project_url', 'This project''s URL, for cron jobs (Phase 14b)')"
 ```
 
-**RevenueCat (Phase 14c).** Production gets its own webhook in the same RevenueCat project, limited to the Play app, pointing at `https://awiwcgrisyzimzxgddxu.supabase.co/functions/v1/revenuecat-webhook` with its own Authorization value. Set `REVENUECAT_SECRET_KEY` (RevenueCat's v1 secret key) and `REVENUECAT_WEBHOOK_SECRET` (that Authorization value) with `secrets set --project-ref awiwcgrisyzimzxgddxu`, one at a time, never printed. Without the webhook secret every webhook is refused, which is the safe default. `EXPO_PUBLIC_PROD_REVENUECAT_KEY` stays empty in `apps/mobile/.env` until launch, so the production paywall says plans are coming soon. Production never accepts Test Store purchases: that needs `PLAID_ENV=sandbox`.
+**RevenueCat (Phase 14c).** Production gets its own webhook in the same RevenueCat project, limited to the Play app, pointing at `https://awiwcgrisyzimzxgddxu.supabase.co/functions/v1/revenuecat-webhook` with its own Authorization value. Set `REVENUECAT_SECRET_KEY` (RevenueCat's v1 secret key) and `REVENUECAT_WEBHOOK_SECRET` (that Authorization value) with `secrets set --project-ref awiwcgrisyzimzxgddxu`, one at a time, never printed. Without the webhook secret every webhook is refused, which is the safe default. Store builds carry `EXPO_PUBLIC_PROD_REVENUECAT_KEY` (the `goog_` key) in the EAS `production` environment, so internal testers buy through Play's license testing (`docs/ops/release.md`). Production never accepts Test Store purchases: that needs `PLAID_ENV=sandbox`.
 
 ## Settings outside the repo
 
 - **Auth:** email confirmation is OFF while only Pedro and Kelvyn use it. Turn it ON before anyone else gets access.
-- **Plaid dashboard (Kelvyn):** `com.tusky.app` is under Developers → API → Allowed Android package names. Big OAuth banks wait on Plaid's production approval.
+- **Plaid dashboard (Kelvyn):** `com.ouroborosstudios.tusky` is under Developers → API → Allowed Android package names. `plaid-create-link-token` sends this package name for native Android Link. Big OAuth banks wait on Plaid's production approval.
 - **Backups:** the Free plan has none. Optional: a periodic `db dump` to a folder outside the repo.
 
 ## The app
@@ -61,12 +61,14 @@ npx -y supabase@2.118.0 db query --linked --project-ref awiwcgrisyzimzxgddxu "se
 
 Restart Metro after editing `.env`.
 
-## State (2026-09-28)
+## State (2026-10-01)
 
-- All 18 migrations (through 9d) are applied.
-- The three Plaid secrets are set.
-- 8 functions are deployed, all except `plaid-sandbox`.
-  - Checked without a session: `herd` and `plaid-create-link-token` answer 401, `plaid-webhook` refuses an unsigned call, and `plaid-sandbox` is 404.
+- All migrations through 14d are applied (12d–14d pushed 2026-10-01).
+- Secrets set: the three Plaid secrets and `JEV_API_KEY`. **Not yet set:** `CRON_SECRET` with the Vault
+  `cron_secret` and `project_url` (so the daily `plan-enforcer` run does nothing yet),
+  `REVENUECAT_SECRET_KEY` and `REVENUECAT_WEBHOOK_SECRET` (so purchases are not granted yet).
+- All 13 functions are deployed (2026-10-01), all except `plaid-sandbox`. `plaid-webhook`,
+  `plan-enforcer` and `revenuecat-webhook` run with `verify_jwt = false` and check their own secret.
   - Claude's auto mode blocks production deploys unless Pedro allows `npx -y supabase@2.118.0 functions deploy` in `/permissions`.
 - Pedro is signed up. His email was confirmed by SQL: the confirmation email arrived without a usable link.
 - First real bank: Bread Savings, active, synced.

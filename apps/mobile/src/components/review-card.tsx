@@ -11,6 +11,7 @@ import { RenameSheet } from '@/components/rename-sheet';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { CategoryIcon } from '@/components/ui/category-icon';
+import { QuestionBanner } from '@/components/questions';
 import { WhoPaid } from '@/components/who-paid';
 import { Radius, Spacing } from '@/constants/theme';
 import { useCategoryChoice } from '@/hooks/use-category-choice';
@@ -115,6 +116,7 @@ export function ReviewCard({ id }: { id: string }) {
       </View>
 
       <View style={{ padding: Spacing.md, gap: Spacing.xs }}>
+        <QuestionBanner transactionId={t.id} />
         {/* The fix a review needs most often, so it is the biggest control. */}
         <Pressable
           onPress={() => setPicking(true)}

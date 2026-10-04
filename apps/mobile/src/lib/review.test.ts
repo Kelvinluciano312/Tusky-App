@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { deckReducer, newDeck, NOTE_MAX, normalizeNote, orderQueue, topCard } from './review.ts';
+import { askedLine, deckReducer, newDeck, NOTE_MAX, normalizeNote, orderQueue, topCard } from './review.ts';
 
 test('normalizeNote trims, and blank means no memo', () => {
   assert.equal(normalizeNote('  Dinner with Ana \n'), 'Dinner with Ana');
@@ -61,6 +61,30 @@ test('accepting a card skipped earlier clears its skip; undo with no history doe
   assert.equal(d.accepted, 2);
   const empty = newDeck([]);
   assert.equal(deckReducer(empty, { type: 'undo' }), empty);
+});
+
+test('askedLine names who is waiting, once each', () => {
+  const name = (id: string) => ({ a: 'Annie', p: 'Pedro', k: 'Kel' })[id] ?? '?';
+  assert.equal(askedLine([{ asked_by: 'a' }], name), 'Annie asked about one of them');
+  assert.equal(askedLine([{ asked_by: 'a' }, { asked_by: 'a' }], name), 'Annie asked about 2 of them');
+  assert.equal(askedLine([{ asked_by: 'a' }, { asked_by: 'p' }], name), 'Annie and Pedro asked about 2 of them');
+  assert.equal(
+    askedLine([{ asked_by: 'a' }, { asked_by: 'p' }, { asked_by: 'k' }], name),
+    'Annie, Pedro and Kel asked about 3 of them',
+  );
+});
+
+test('orderQueue puts questions for me first, even ones outside the batch, once each', () => {
+  assert.deepEqual(
+    orderQueue(
+      [
+        { id: 'a', review_priority: 2 },
+        { id: 'b', review_priority: 0 },
+      ],
+      ['b', 'q', 'b'],
+    ),
+    ['b', 'q', 'a'],
+  );
 });
 
 test('orderQueue puts likely fixes first, then glances, oldest first within each', () => {
