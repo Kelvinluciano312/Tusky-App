@@ -49,7 +49,7 @@ npx -y supabase@2.118.0 db query --linked --project-ref awiwcgrisyzimzxgddxu "se
 ## Settings outside the repo
 
 - **Auth:** email confirmation is OFF while only Pedro and Kelvyn use it. Turn it ON before anyone else gets access.
-- **Plaid dashboard (Kelvyn):** `com.ouroborosstudios.tusky` (and the old `com.tusky.app`, used by dev clients built before Phase 14d) are under Developers → API → Allowed Android package names. Big OAuth banks wait on Plaid's production approval.
+- **Plaid dashboard (Kelvyn):** `com.ouroborosstudios.tusky` is under Developers → API → Allowed Android package names. `plaid-create-link-token` sends this package name for native Android Link. Big OAuth banks wait on Plaid's production approval.
 - **Backups:** the Free plan has none. Optional: a periodic `db dump` to a folder outside the repo.
 
 ## The app
