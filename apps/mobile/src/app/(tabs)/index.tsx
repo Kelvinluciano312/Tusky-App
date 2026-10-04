@@ -17,7 +17,6 @@ import { useTheme } from '@/hooks/use-theme';
 import { UpcomingCard } from '@/components/upcoming-card';
 import { GROUP_LABEL, groupAccounts, netWorth } from '@/lib/accounts';
 import { payerLabel } from '@/lib/herd';
-import { firstName } from '@/lib/profile';
 import {
   useAccounts,
   useCategories,
@@ -52,7 +51,8 @@ export default function HomeScreen() {
   const { data: profile } = useProfile(session?.user.id);
   // PlanBanner reads the same ['plan'] query; refetched here so a pull shows what the daily check did.
   const { refetch: refetchPlan } = usePlan(session?.user.id);
-  const greetName = profile ? firstName(profile.display_name) : '';
+  // The whole name as entered: "Pedro Henrique" greets as both words, not just the first.
+  const greetName = profile?.display_name.trim() ?? '';
 
   const visibleAccounts = accounts.filter((a) => !a.hidden);
   const counted = visibleAccounts.filter((a) => a.in_totals).length;
