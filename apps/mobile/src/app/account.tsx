@@ -1,18 +1,19 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, KeyRound, LogOut } from 'lucide-react-native';
 import { type ReactNode, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView } from 'react-native';
+import { Linking, Pressable, ScrollView } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { DeleteAccountSheet } from '@/components/delete-account-sheet';
 import { PasswordSheet } from '@/components/password-sheet';
-import { AiSwitch, CrowdSwitch } from '@/components/privacy-switches';
+import { AiSwitch, CrowdSwitch, TwoFactorSwitch } from '@/components/privacy-switches';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { DELETE_URL, PRIVACY_URL, TERMS_URL } from '@/constants/legal';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { deleteWarning } from '@/lib/paywall';
-import { manageSubscriptionsUrl } from '@/lib/purchases';
 import { useDeleteAccount, usePlan } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { supabase } from '@/lib/supabase';
@@ -33,6 +34,7 @@ export default function AccountScreen() {
   const [changing, setChanging] = useState(false);
   const [saving, setSaving] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -50,43 +52,25 @@ export default function AccountScreen() {
       return;
     }
     setChanging(false);
-    Alert.alert('Password changed', 'Use the new one next time you sign in.');
+    dialog.alert('Password changed', 'Use the new one next time you sign in.');
   };
 
-  const confirmDelete = () => {
-    const confirm = () =>
-      Alert.alert(
-        'Delete your account?',
-        'Tusky disconnects your banks and deletes everything you have tracked. If you share a herd, it keeps what belongs to the herd. This cannot be undone.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: () =>
-              deleteAccount.mutate(undefined, {
-                onSuccess: async () => {
-                  await supabase.auth.signOut();
-                  queryClient.clear();
-                },
-                onError: (err) => Alert.alert('Could not delete your account', err.message),
-              }),
-          },
-        ],
-      );
-    const warning = plan ? deleteWarning(plan, new Date()) : null;
-    if (!warning) return confirm();
-    Alert.alert('Cancel your subscription first', warning, [
-      { text: 'Not now', style: 'cancel' },
-      { text: 'Manage subscription', onPress: async () => Linking.openURL(await manageSubscriptionsUrl()) },
-      { text: 'Delete anyway', style: 'destructive', onPress: confirm },
-    ]);
-  };
+  const warning = plan ? deleteWarning(plan, new Date()) : null;
+
+  // The sheet shows the failure inline (a wrong password most often).
+  const doDelete = (password: string) =>
+    deleteAccount.mutate(password, {
+      onSuccess: async () => {
+        setDeleting(false);
+        await supabase.auth.signOut();
+        queryClient.clear();
+      },
+    });
 
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
       <Card style={{ gap: Spacing.sm }}>
         <AppText variant="section" tone="dim">
           Sign-in
@@ -96,6 +80,7 @@ export default function AccountScreen() {
           setPasswordError(null);
           setChanging(true);
         }} />
+        <TwoFactorSwitch />
         <Row icon={<LogOut size={20} color={colors.brand} strokeWidth={1.75} />} label="Sign out" onPress={() => void signOut()} />
       </Card>
 
@@ -124,13 +109,25 @@ export default function AccountScreen() {
 
       <Pressable
         accessibilityRole="button"
-        disabled={deleteAccount.isPending}
-        onPress={confirmDelete}
+        onPress={() => {
+          deleteAccount.reset();
+          setDeleting(true);
+        }}
         style={{ alignSelf: 'center', padding: Spacing.sm, marginTop: Spacing.lg }}>
         <AppText variant="caption" tone="dim" style={{ textDecorationLine: 'underline' }}>
-          {deleteAccount.isPending ? 'Deleting…' : 'Delete my account'}
+          Delete my account
         </AppText>
       </Pressable>
+
+      <DeleteAccountSheet
+        key={`delete-${deleting}`}
+        visible={deleting}
+        warning={warning}
+        isDeleting={deleteAccount.isPending}
+        error={deleteAccount.error?.message ?? null}
+        onDelete={doDelete}
+        onClose={() => setDeleting(false)}
+      />
 
       <PasswordSheet
         key={String(changing)}

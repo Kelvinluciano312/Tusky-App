@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
 import { ChevronRight, CreditCard, Landmark, ShieldCheck, Store, Tags, UserRound, Users } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NameSheet } from '@/components/name-sheet';
@@ -10,7 +11,7 @@ import { Chips } from '@/components/ui/chips';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { bankUsage, PLAN_NAMES } from '@/lib/paywall';
 import { useConnectBank } from '@/lib/plaid';
@@ -92,7 +93,7 @@ export default function SettingsScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}>
       <AppText variant="display">Settings</AppText>
 
       <Card style={{ gap: Spacing.sm }}>
@@ -271,7 +272,7 @@ export default function SettingsScreen() {
             ]}
             selected={backend}
             onSelect={(next) =>
-              Alert.alert(
+              dialog.alert(
                 next === 'real' ? 'Switch to real data?' : 'Switch to Sandbox?',
                 next === 'real'
                   ? 'Tusky restarts on the production project, where banks are real. You sign in there separately.'
@@ -301,7 +302,7 @@ export default function SettingsScreen() {
               { userId: profile.user_id, displayName },
               {
                 onSuccess: () => setNaming(false),
-                onError: (err) => Alert.alert('Could not save', err.message),
+                onError: (err) => dialog.alert('Could not save', err.message),
               },
             )
           }

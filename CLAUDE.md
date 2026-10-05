@@ -317,7 +317,7 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     at Plaid if a race tipped the plan over: only the bank past the limit in link order goes.
   - `scripts/plan-check.sql` proves the resolver on dev. Spec:
     `docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md`.
-  - **Lifecycle (14b).** `plan-enforcer` runs daily (pg_cron → pg_net, 09:00 UTC) and is public, so it
+  - **Lifecycle (14b).** `plan-enforcer` runs hourly since 16a (pg_cron → pg_net, minute 0) and is public, so it
     checks `x-cron-secret` against `CRON_SECRET` first. Vault holds `cron_secret` and `project_url`
     per project; without them the job does nothing. Free archives every bank at once; a smaller plan
     opens a 7-day window (`subscriptions.over_limit_since`), then archives the newest past the
@@ -343,7 +343,13 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     anything else waits for renewal. `plan-refresh` answers 429 `too_soon` within 10 s of the last
     refresh (`subscriptions.refreshed_at`, claimed in one conditional update); the app then refetches
     the plan at 15 s and 60 s.
-  - **Deleting an account (14d).** `delete-account` (logic in `_shared/account.ts`): leave the herd if
+  - **Deleting an account (14d, 16d).** `delete-account` (logic in `_shared/account.ts`) takes
+    `{ password }` and verifies it FIRST (`verifyPassword`: a throwaway anon client, `signInWithPassword`
+    as the caller's email, its session signed out `scope: 'local'`; verifying in the app would replace
+    the session). Missing or wrong answers 403 `wrong_password` and touches nothing; an Auth outage
+    throws (500), also before anything is touched. The app's `DeleteAccountSheet` asks for the word
+    `DELETE` (case-sensitive) and the password, and carries the subscription warning with a Manage
+    subscription link. Then: leave the herd if
     others remain, then `/item/remove` every live Item and stop on the first failure (502
     `plaid_failed`, nothing deleted: the token is the only way to stop Plaid's billing), then delete
     the personal herd and the auth user (the cascade does the rest), then ask RevenueCat to forget the
@@ -360,8 +366,11 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     everyone again; a newer acceptance closes the older row.
   - **Crowd labels are on for new accounts**: `handle_new_user` inserts the consent. Onboarding and
     Account & privacy both show the switch.
-  - **Password rules** (15b): 10+ characters, a letter, a digit, not the email's name
-    (`lib/password.ts`). The hosted projects enforce length and letters+digits in the Auth dashboard.
+  - **Password rules** (15b, 16c): 12+ characters, a lowercase letter, an uppercase letter, a digit, a
+    symbol, not the email's name (`lib/password.ts`). Sign-up and the password sheet ask twice
+    (`passwordsMatch`). The hosted projects enforce length and `lower_upper_letters_digits_symbols` in
+    the Auth dashboard (`config.toml` is only the local copy). Existing users keep signing in; the
+    rule applies on their next change.
 - **Recurring → calendar** (15g). Tapping a recurring row offers "Add to calendar", which opens the
   phone's own new-event screen through `createEventInCalendarAsync` from `expo-calendar/legacy`
   (SDK 57 made the root export throw). It needs no calendar permission, so the config plugin is left
@@ -371,6 +380,33 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
 - **Account & privacy** (`app/account.tsx`, 15f) holds sign-in, the AI and crowd switches
   (`components/privacy-switches.tsx`), legal links, and a quiet "Delete my account" at the bottom.
   Settings links to it in one row.
+- **Two-step sign-in (16e).** Opt-in (`profiles.two_factor`, default off), by emailed code, **bound to the session on the server**.
+  - **Why not `amr`.** `verifyOtp({ type: 'email' })` makes its OWN session with `amr` `[{method:'otp'}]` and no password anywhere, so a mailbox alone could mint a "verified" session and skip the password. The JWT's `amr` is therefore never the proof (the first 16e design was exactly that, and was wrong).
+  - **The rule.** A session is verified when `two_factor_sessions` has a row for its `session_id` (and the user's id). Only the `two-factor` Edge Function writes it: POST `{ code }` from a session whose `amr` has `password` (otherwise 403 `password_session_required`: an otp- or recovery-created session can never be marked), it checks the code on a throwaway anon client (`verifyOtp`, then revokes that probe session), and marks the CALLER'S session. Wrong code: 403 `wrong_code`. **Attempts are reserved atomically BEFORE the code is checked** (`take_two_factor_attempt`, service role only, one advisory lock per user): at most 5 per session AND 10 per user across all sessions in 15 minutes, else 429 `too_many_attempts` (`two_factor_failures`; a fresh sign-in is not a fresh budget, and parallel guesses cannot slip past a stale count). A wrong code keeps its attempt, success clears the user's, and a check that could not run (outage) refunds its attempt. The vendor's own limits sit underneath. The function must NOT call `requireSecondStep`. The session is not replaced, and a token refresh keeps its `session_id`, so it stays verified. Both tables are server-only (RLS on, no policies, no grants) and have FKs to `auth.sessions` with `on delete cascade`, so signing out clears them.
+  - **Enforcement.** `private.my_herd_id()` returns null when `two_factor` is on and `private.session_verified()` is false, so every herd policy (and `my_account_ids`) shows and accepts nothing to an unverified session. Own profile, subscription and consents stay reachable, so the gate can tell why. `public.my_second_step_done()` is the app's read of the same boolean. The client has no UPDATE on `two_factor`: only `set_two_factor(p_on)`, which itself needs a verified session (so a password alone cannot switch it off or on). Edge Functions run as the service role, so each user-facing one calls `requireSecondStep` (`_shared/lib.ts`, pure rule in `_shared/two-factor.ts`) right after `getAuthedUser`: 403 `two_factor_required`. Put it in any NEW user-facing function. `rls-check` has the `tf_*` cases (otp-only claims, another user's marked session, unmarked sessions).
+  - **Known limit.** Whoever controls the mailbox can reset the password and then pass the code too: email-code two-step protects a stolen password, not a stolen mailbox.
+  - **App.** `useFirstRun` also reads `profiles.two_factor` and, only when it is on, `my_second_step_done()`; `gateFor(state, TERMS_VERSION)` returns `verify` first when `state.secondStepDone` is not true (`lib/two-factor.ts`, `lib/first-run.ts`). Needs SMTP and a Magic Link template showing `{{ .Token }}` per project (Pedro, outside the repo: Auth -> SMTP, and Auth -> Email templates -> Magic Link).
+  - **Screens (16e app).** The root layout guards `app/verify.tsx` on `gate === 'verify'`. `verify` sends the code once (`sendLoginCode`, `lib/login-code.ts`; the last send per address is kept at module level so a remount never mails twice), takes it in `CodeEntry` (`components/code-entry.tsx`: digits only, auto-submits at `CODE_LENGTH`, Verify at 6+, Resend with a 60 s countdown), and `confirmLoginCode(code)` calls the `two-factor` function (errors through `readFunctionError`, worded by `codeFailureMessage`), then the whole query cache is invalidated so the gate re-evaluates. "Sign out" is the way back. **`CODE_LENGTH` (8) must equal Auth -> Email OTP Length**: the hosted dev project sends 8 digits though `config.toml` says 6. The Account & privacy switch (`TwoFactorSwitch`, `CodeSheet`) asks for a fresh code in both directions: `confirmLoginCode` marks the session, then `set_two_factor`. A function's 403 `two_factor_required` is caught in `readFunctionError`, which calls `notifyTwoFactorRequired`; the root layout invalidates `['first-run']` so the gate re-evaluates. Do not toggle a field's `editable` while submitting: it drops focus and the keyboard.
+- **Dialogs (16f).** Never use React Native's `Alert`: ESLint refuses the import. `dialog.alert(title, message?, buttons?, options?)` (`components/ui/dialog.tsx`) has the same signature and semantics, so it works from hooks and mutation callbacks outside React. `<DialogHost />` sits once in the root layout and is itself a `Modal`, so it shows above Sheets. Several calls queue; a button closes the dialog first, then runs its `onPress`. Scrim tap and the back button press the `cancel` button (or just dismiss, or do nothing with `cancelable: false`). The queue logic is pure (`lib/dialog-queue.ts`, tested). `Button` has a `destructive` variant.
+- **Screen sizes (16g).** Phones fill the width and stay portrait (`app.json` `orientation: portrait`).
+  Android 16 ignores that lock on windows 600dp and wider, so tablets rotate: every screen must work
+  in landscape. `constants/theme.ts` `Layout` holds the caps (`maxContent` 640, `maxWide` 1040,
+  `maxSheet` 560, `maxDialog` 420). Spread `Layout.column` into every ScrollView/list
+  `contentContainerStyle` (or wrap fixed content in `<Column>`, `components/ui/column.tsx`), and
+  `Layout.sheet` into a bottom sheet's panel. A one-off Modal sheet dims with a full-screen
+  `absoluteFill` backdrop on the `KeyboardAvoidingView`, never a `flex: 1` Pressable above the panel,
+  or the sides of a capped panel stay undimmed. Headers and the tab bar stay full width. Home goes
+  two columns from 900dp (`twoColumns`, `lib/layout.ts`). The review deck scrolls its card when a
+  landscape window is shorter than the card. A row's text beside an icon needs `flex: 1` (see
+  `password-checklist.tsx`), or Android measures it too narrow and clips or wraps it; labels beside
+  values use `minWidth`, not a fixed `width`. Check on AVDs `Small_Tablet` (960x600dp), `Pixel_Tablet`
+  (1280x800dp) and `Pixel_7`. The tablet AVDs are API 35, which still honours the portrait lock, so
+  for real tablet behaviour either set `android:screenOrientation="unspecified"` in the generated
+  `android/` manifest (gitignored, rebuild) or, on `Pixel_7` (API 37), run
+  `adb shell wm size 1600x2560; adb shell wm density 320`, and always `wm size reset; wm density reset`
+  after. Small phones: `wm size 720x1280`, `wm density 320`, `settings put system font_scale 1.3`
+  (reset to 1.0). Do not tap the dev "Switch to Real data" banner while signing in: it sits under the
+  password field on a small screen and sends the login to production.
 - **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op
   `setMounted(false)` on a closed sheet made React drop the render-phase `setMounted(true)` on the
   next open, and no Sheet-based picker ever appeared. Keep the `else if (mounted)`.
@@ -391,6 +427,15 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   - Swipe right to accept, left to skip to the back; Undo reverses the last move.
   - The deck logic is pure (`deckReducer`/`topCard` in `lib/review.ts`); the gestures use Reanimated 4 and Gesture Handler (`GestureHandlerRootView` wraps the root layout).
   - Write shared values with `.set()` and read them with `.get()`, never `.value`: the React Compiler lint rejects `.value` writes.
+- **Review window (16b).** Only the last two weeks go to review. A row sync inserts dated before its
+  Item's `created_at` minus `REVIEW_WINDOW_DAYS` (14) gets `reviewed_at = now(), auto_reviewed = true`
+  (`reviewCutoff`, `autoReviewIds` in `_shared/review.ts`; one chunked update right after the upsert,
+  never in its payload). Keyed on the date, not "first sync", because Plaid delivers history in stages;
+  only truly new posted rows (no row of their own, no pending predecessor) qualify. `auto_reviewed` is
+  server-only and keeps such rows out of `merchant_labels`' accepted guesses (a guess nobody looked at must
+  not teach), and `ag_transactions_clear_auto_reviewed` clears it when `reviewed_at` goes back to null (a
+  question requeue), so a later human review counts. Crowd contributions need `auth.uid()`, so a system
+  review never contributes.
 - Recurring streams are derived: detection (`_shared/recurring.ts`) runs at the end of every sync and
   owns every column except `dismissed`, which only the user writes. Never add `dismissed` to its
   upsert payload.

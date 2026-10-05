@@ -1,6 +1,7 @@
 import { ChartPie, Landmark, ListChecks, Users } from 'lucide-react-native';
 import { type ReactNode, useState } from 'react';
-import { Alert, KeyboardAvoidingView, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, ScrollView, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PresetSheet } from '@/components/preset-sheet';
@@ -9,7 +10,7 @@ import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { TextField } from '@/components/ui/text-field';
-import { Spacing, Type } from '@/constants/theme';
+import { Layout, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { nextStep, type OnboardingStep, previousStep, stepLabel } from '@/lib/first-run';
 import { PLAN_NAMES, tierLines } from '@/lib/paywall';
@@ -47,7 +48,7 @@ export default function OnboardingScreen() {
       return;
     }
     if (userId) {
-      finish.mutate(userId, { onError: (err) => Alert.alert('Could not finish', err.message) });
+      finish.mutate(userId, { onError: (err) => dialog.alert('Could not finish', err.message) });
     }
   };
   const back = previousStep(step);
@@ -57,6 +58,7 @@ export default function OnboardingScreen() {
       <ScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
+          ...Layout.column,
           flexGrow: 1,
           padding: Spacing.lg,
           paddingTop: insets.top + Spacing.xl,
@@ -145,7 +147,7 @@ function NameStep({ userId, onNext }: { userId: string | undefined; onNext: () =
           if (valid === profile?.display_name) return onNext();
           setName.mutate(
             { userId, displayName: valid },
-            { onSuccess: onNext, onError: (err) => Alert.alert('Could not save', err.message) },
+            { onSuccess: onNext, onError: (err) => dialog.alert('Could not save', err.message) },
           );
         }}
       />
@@ -204,7 +206,7 @@ function BudgetStep({ onNext }: { onNext: () => void }) {
         setOpen(false);
         setDone(true);
       },
-      onError: () => Alert.alert('Could not build the budget', 'Check your connection and try again.'),
+      onError: () => dialog.alert('Could not build the budget', 'Check your connection and try again.'),
     });
 
   return (

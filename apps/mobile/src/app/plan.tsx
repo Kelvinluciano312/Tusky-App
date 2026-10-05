@@ -1,12 +1,13 @@
 import { router } from 'expo-router';
-import { Alert, Linking, ScrollView } from 'react-native';
+import { Linking, ScrollView } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlanBanner } from '@/components/plan-banner';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { bankUsage, ownPaidPlan, PLAN_NAMES, planSummary } from '@/lib/paywall';
 import { manageSubscriptionsUrl, purchasesEnabled, useRestore } from '@/lib/purchases';
@@ -26,7 +27,7 @@ export default function PlanScreen() {
 
   if (error && !plan) {
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: Spacing.md }}>
+      <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ ...Layout.column, padding: Spacing.md }}>
         <Card style={{ gap: Spacing.sm }}>
           <AppText variant="section">Couldn&apos;t load your plan</AppText>
           <AppText tone="dim">Check your connection and try again.</AppText>
@@ -48,7 +49,7 @@ export default function PlanScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
       <PlanBanner userId={userId} />
       <Card style={{ gap: Spacing.xs }}>
         <AppText variant="display">{summary.title}</AppText>
@@ -80,7 +81,7 @@ export default function PlanScreen() {
           variant="secondary"
           loading={restore.isPending}
           onPress={() =>
-            restore.mutate(undefined, { onError: (err) => Alert.alert('Could not restore purchases', err.message) })
+            restore.mutate(undefined, { onError: (err) => dialog.alert('Could not restore purchases', err.message) })
           }
         />
       ) : null}

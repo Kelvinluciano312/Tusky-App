@@ -1,14 +1,15 @@
 import { createEventInCalendarAsync, Frequency } from 'expo-calendar/legacy';
 import { Repeat } from 'lucide-react-native';
 import { useMemo } from 'react';
-import { Alert, RefreshControl, ScrollView, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 
 import { RecurringRow } from '@/components/recurring-row';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { eventFor } from '@/lib/calendar';
 import { streamName } from '@/lib/merchants';
@@ -51,17 +52,17 @@ export default function RecurringScreen() {
         },
       });
     } catch (err) {
-      Alert.alert('Could not open your calendar', err instanceof Error ? err.message : 'Try again in a moment.');
+      dialog.alert('Could not open your calendar', err instanceof Error ? err.message : 'Try again in a moment.');
     }
   };
 
   const confirm = (s: RecurringStream) =>
     s.dismissed
-      ? Alert.alert(s.name, 'Treat this as recurring again?', [
+      ? dialog.alert(s.name, 'Treat this as recurring again?', [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Restore', onPress: () => setDismissed.mutate({ id: s.id, dismissed: false }) },
         ])
-      : Alert.alert(streamName(s, rules), undefined, [
+      : dialog.alert(streamName(s, rules), undefined, [
           { text: 'Add to calendar', onPress: () => void addToCalendar(s) },
           {
             text: 'Not recurring',
@@ -92,7 +93,7 @@ export default function RecurringScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, gap: Spacing.lg, flexGrow: 1 }}
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, gap: Spacing.lg, flexGrow: 1 }}
       refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.textDim} />}>
       {streams.length === 0 ? (
         isLoading ? null : (

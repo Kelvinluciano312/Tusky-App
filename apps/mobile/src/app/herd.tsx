@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
 import { ChevronRight, HandCoins, UserPlus } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, Share, View } from 'react-native';
+import { Pressable, ScrollView, Share, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NameSheet } from '@/components/name-sheet';
@@ -9,7 +10,7 @@ import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Radius, Spacing, Type } from '@/constants/theme';
+import { Layout, Radius, Spacing, Type } from '@/constants/theme';
 import { transferLabel, useSettleUp } from '@/hooks/use-settle-up';
 import { useTheme } from '@/hooks/use-theme';
 import { expiresIn, formatCode, initials, inviteMessage } from '@/lib/herd';
@@ -49,7 +50,7 @@ export default function HerdScreen() {
   const isOwner = herd.members.some((m) => m.user_id === me && m.role === 'owner');
   const owner = herd.members.find((m) => m.role === 'owner');
   const alone = herd.members.length === 1;
-  const failed = (title: string) => (err: Error) => Alert.alert(title, err.message);
+  const failed = (title: string) => (err: Error) => dialog.alert(title, err.message);
 
   const share = (code: string) => Share.share({ message: inviteMessage(herd.name, code) });
 
@@ -60,7 +61,7 @@ export default function HerdScreen() {
     });
 
   const openInvite = (code: string) =>
-    Alert.alert(formatCode(code), 'Anyone with this code can join your herd until it expires or is used.', [
+    dialog.alert(formatCode(code), 'Anyone with this code can join your herd until it expires or is used.', [
       { text: 'Close', style: 'cancel' },
       {
         text: 'Cancel invite',
@@ -71,7 +72,7 @@ export default function HerdScreen() {
     ]);
 
   const confirmRemove = (member: HerdMember) =>
-    Alert.alert(
+    dialog.alert(
       `Remove ${member.display_name}?`,
       'The banks they connected leave with them. Budgets, categories and rules stay with the herd.',
       [
@@ -89,7 +90,7 @@ export default function HerdScreen() {
     .map((t) => `${transferLabel(t, me ?? null, settle.name)} $${t.amount.toFixed(2)}.`)
     .join(' ');
   const confirmLeave = () =>
-    Alert.alert(
+    dialog.alert(
       `Leave ${herd.name}?`,
       "The banks you connected leave with you, into a new herd of your own. This herd keeps its budgets, categories and rules." +
         (balanceNote ? `\n\n${balanceNote} Settle up first: balances don't follow you out.` : ''),
@@ -152,7 +153,7 @@ export default function HerdScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
       <Pressable
         disabled={!isOwner}
         onPress={() => setNaming(true)}

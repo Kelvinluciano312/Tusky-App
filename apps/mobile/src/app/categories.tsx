@@ -1,13 +1,14 @@
 import { Plus } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
+import { Pressable, ScrollView, Switch, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CategorySheet, type SheetTarget } from '@/components/category-sheet';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { CategoryIcon } from '@/components/ui/category-icon';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { buildTree, sectionsByKind } from '@/lib/categories';
 import { type Category, useCategories, useCategoryOverride } from '@/lib/queries';
@@ -34,13 +35,13 @@ export default function CategoriesScreen() {
   const setHidden = (category: Category, hidden: boolean) =>
     setOverride.mutate(
       { categoryId: category.id, patch: { hidden } },
-      { onError: () => Alert.alert('Could not update the category', 'Check your connection and try again.') },
+      { onError: () => dialog.alert('Could not update the category', 'Check your connection and try again.') },
     );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView
-        contentContainerStyle={{ padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
+        contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
         <AppText variant="caption" tone="dim">
           Rename, recolour or hide the built-in categories, or add your own under any group. A hidden category
           leaves the picker and budget suggestions; its transactions and budget stay.

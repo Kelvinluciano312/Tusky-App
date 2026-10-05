@@ -16,6 +16,20 @@ test('a newer terms version asks again, even after onboarding', () => {
   assert.equal(gateFor({ termsVersion: '2026-09-01', onboarded: true }, V), 'terms');
 });
 
+test('two-step on and the session not verified asks for the code first', () => {
+  const fresh = { termsVersion: null, onboarded: false, twoFactor: true };
+  assert.equal(gateFor({ ...fresh, secondStepDone: false }, V), 'verify');
+  assert.equal(gateFor({ ...fresh, secondStepDone: null }, V), 'verify');
+  assert.equal(gateFor({ termsVersion: V, onboarded: true, twoFactor: true }, V), 'verify');
+  assert.equal(gateFor({ ...fresh, secondStepDone: true }, V), 'terms');
+  assert.equal(gateFor({ termsVersion: V, onboarded: true, twoFactor: true, secondStepDone: true }, V), 'app');
+});
+
+test('two-step off, or an older caller, never asks', () => {
+  assert.equal(gateFor({ termsVersion: V, onboarded: true, twoFactor: false, secondStepDone: false }, V), 'app');
+  assert.equal(gateFor({ termsVersion: V, onboarded: true }, V), 'app');
+});
+
 test('an unknown state opens the app', () => {
   assert.equal(gateFor(null, V), 'app');
 });

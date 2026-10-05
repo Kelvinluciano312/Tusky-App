@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 
 import { afterFix, parsePromptState } from '@/lib/crowd-prompt';
 import { useCrowdConsent, useSetCrowdConsent } from '@/lib/queries';
@@ -24,7 +24,7 @@ export function useCrowdPrompt() {
         const { state, ask } = afterFix(parsePromptState(await AsyncStorage.getItem(key)), consented ?? false);
         await AsyncStorage.setItem(key, JSON.stringify(state));
         if (!ask) return;
-        Alert.alert(
+        dialog.alert(
           'Help Tusky get smarter?',
           'Share your category fixes, with no name attached, so everyone’s transactions sort themselves. ' +
             'You can turn this off in Settings, which deletes what you shared.',
@@ -34,7 +34,7 @@ export function useCrowdPrompt() {
               text: 'Share',
               onPress: () =>
                 setConsent.mutate(true, {
-                  onError: () => Alert.alert('Could not change that', 'Check your connection and try again.'),
+                  onError: () => dialog.alert('Could not change that', 'Check your connection and try again.'),
                 }),
             },
           ],

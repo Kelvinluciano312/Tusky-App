@@ -1,10 +1,11 @@
-import { Alert, Linking, ScrollView, View } from 'react-native';
+import { Linking, ScrollView, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { PRIVACY_URL, TERMS_URL, TERMS_VERSION } from '@/constants/legal';
-import { Spacing, Type } from '@/constants/theme';
+import { Layout, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAcceptTerms } from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
@@ -23,6 +24,7 @@ export default function AcceptTermsScreen() {
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={{
+        ...Layout.column,
         flexGrow: 1,
         justifyContent: 'center',
         padding: Spacing.lg,
@@ -44,7 +46,7 @@ export default function AcceptTermsScreen() {
         loading={accept.isPending}
         onPress={() =>
           accept.mutate(TERMS_VERSION, {
-            onError: (err) => Alert.alert('Could not save that', err.message),
+            onError: (err) => dialog.alert('Could not save that', err.message),
           })
         }
       />

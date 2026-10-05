@@ -1,7 +1,7 @@
 import { router, Stack } from 'expo-router';
 import { Check, Clock3, PartyPopper, Undo2 } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Extrapolation,
@@ -17,7 +17,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { ReviewCard } from '@/components/review-card';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useReviewQueue, useSetReviewed } from '@/lib/queries';
 import { type Deck, deckReducer, type DeckMove, newDeck, topCard } from '@/lib/review';
@@ -73,48 +73,57 @@ export default function ReviewScreen() {
       ) : !top ? (
         <CaughtUp reviewed={deck.accepted} skipped={deck.skipped.length} canUndo={deck.history.length > 0} onUndo={() => apply({ type: 'undo' })} />
       ) : (
-        <View style={{ flex: 1, paddingHorizontal: Spacing.md, paddingBottom: insets.bottom + Spacing.md }}>
-          <Progress done={deck.accepted} total={total} />
+        <View style={{ flex: 1, paddingBottom: insets.bottom + Spacing.md }}>
+          {/* On a tablet the deck is a capped, centred column; the scroll view stays
+              full width so a thrown card leaves the screen, not the column. It scrolls
+              only when the card is taller than the window (landscape). */}
+          <View style={{ ...Layout.column, paddingHorizontal: Spacing.md }}>
+            <Progress done={deck.accepted} total={total} />
+          </View>
 
-          <View style={{ flex: 1, justifyContent: 'center' }}>
-            <View>
-            {/* Plain card edges peek out underneath, so the deck reads as a deck: one
-                edge when a single card follows, two when more do. */}
-            {remaining > 2 ? <DeckEdge inset={Spacing.lg} drop={20} /> : null}
-            {next ? <DeckEdge inset={Spacing.sm + 2} drop={10} /> : null}
-            <SwipeCard
-              key={top}
-              id={top}
-              fling={fling}
-              onAccept={() => apply({ type: 'accept' })}
-              onSkip={() => apply({ type: 'skip' })}
-            />
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: Spacing.lg }}>
+            <View style={{ ...Layout.column, paddingHorizontal: Spacing.md }}>
+              {/* Plain card edges peek out underneath, so the deck reads as a deck: one
+                  edge when a single card follows, two when more do. */}
+              {remaining > 2 ? <DeckEdge inset={Spacing.lg} drop={20} /> : null}
+              {next ? <DeckEdge inset={Spacing.sm + 2} drop={10} /> : null}
+              <SwipeCard
+                key={top}
+                id={top}
+                fling={fling}
+                onAccept={() => apply({ type: 'accept' })}
+                onSkip={() => apply({ type: 'skip' })}
+              />
             </View>
-          </View>
+          </ScrollView>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm }}>
-            <RoundButton label="Later" onPress={() => setFling({ dir: 'skip', nonce: Date.now() })}>
-              <Clock3 size={21} color={colors.text} strokeWidth={2} />
-            </RoundButton>
-            <Pressable
-              disabled={deck.history.length === 0}
-              onPress={() => apply({ type: 'undo' })}
-              accessibilityLabel="Undo"
-              style={({ pressed }) => ({ padding: Spacing.sm, opacity: deck.history.length === 0 ? 0.3 : pressed ? 0.6 : 1 })}>
-              <View style={{ alignItems: 'center', gap: 2 }}>
-                <Undo2 size={18} color={colors.textDim} strokeWidth={2} />
-                <AppText variant="caption" tone="dim">
-                  Undo
-                </AppText>
-              </View>
-            </Pressable>
-            <RoundButton label="Looks right" primary onPress={() => setFling({ dir: 'accept', nonce: Date.now() })}>
-              <Check size={22} color={colors.onBrand} strokeWidth={2.5} />
-            </RoundButton>
+          <View style={{ ...Layout.column, paddingHorizontal: Spacing.md }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm }}>
+              <RoundButton label="Later" onPress={() => setFling({ dir: 'skip', nonce: Date.now() })}>
+                <Clock3 size={21} color={colors.text} strokeWidth={2} />
+              </RoundButton>
+              <Pressable
+                disabled={deck.history.length === 0}
+                onPress={() => apply({ type: 'undo' })}
+                accessibilityLabel="Undo"
+                style={({ pressed }) => ({ padding: Spacing.sm, opacity: deck.history.length === 0 ? 0.3 : pressed ? 0.6 : 1 })}>
+                <View style={{ alignItems: 'center', gap: 2 }}>
+                  <Undo2 size={18} color={colors.textDim} strokeWidth={2} />
+                  <AppText variant="caption" tone="dim">
+                    Undo
+                  </AppText>
+                </View>
+              </Pressable>
+              <RoundButton label="Looks right" primary onPress={() => setFling({ dir: 'accept', nonce: Date.now() })}>
+                <Check size={22} color={colors.onBrand} strokeWidth={2.5} />
+              </RoundButton>
+            </View>
+            <AppText variant="caption" tone="dim" style={{ textAlign: 'center', marginTop: Spacing.sm }}>
+              Swipe right when it looks right · left for later
+            </AppText>
           </View>
-          <AppText variant="caption" tone="dim" style={{ textAlign: 'center', marginTop: Spacing.sm }}>
-            Swipe right when it looks right · left for later
-          </AppText>
         </View>
       )}
     </View>

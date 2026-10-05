@@ -1,13 +1,14 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Landmark } from 'lucide-react-native';
-import { Alert, ScrollView, Switch, View } from 'react-native';
+import { ScrollView, Switch, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 
 import { AccountRow } from '@/components/account-row';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useConnectBank, useDisconnectBank, useSandboxTools } from '@/lib/plaid';
 import { Chips } from '@/components/ui/chips';
@@ -78,14 +79,14 @@ export default function BankScreen() {
   };
 
   const confirmDisconnect = () =>
-    Alert.alert(`Disconnect ${name}?`, 'Tusky stops syncing it and removes the connection at Plaid.', [
+    dialog.alert(`Disconnect ${name}?`, 'Tusky stops syncing it and removes the connection at Plaid.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete everything',
         style: 'destructive',
         // Asked twice, and the second time names the loss.
         onPress: () =>
-          Alert.alert('Delete everything?', loss, [
+          dialog.alert('Delete everything?', loss, [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Delete everything', style: 'destructive', onPress: () => run('delete') },
           ]),
@@ -95,7 +96,7 @@ export default function BankScreen() {
     ]);
 
   const confirmDeleteHistory = () =>
-    Alert.alert(`Delete ${name}'s history?`, loss, [
+    dialog.alert(`Delete ${name}'s history?`, loss, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete history', style: 'destructive', onPress: () => run('delete') },
     ]);
@@ -103,7 +104,7 @@ export default function BankScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, gap: Spacing.lg }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, gap: Spacing.lg }}>
       <Stack.Title>{name}</Stack.Title>
 
       <Card style={{ gap: Spacing.sm }}>

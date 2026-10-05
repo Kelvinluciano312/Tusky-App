@@ -6,7 +6,7 @@ import { useTheme } from '@/hooks/use-theme';
 
 type ButtonProps = Omit<PressableProps, 'children'> & {
   title: string;
-  variant?: 'primary' | 'secondary' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'destructive';
   loading?: boolean;
 };
 
@@ -16,9 +16,10 @@ export function Button({ title, variant = 'primary', loading = false, disabled, 
 
   const background =
     variant === 'primary' ? colors.brand
+    : variant === 'destructive' ? colors.negative
     : variant === 'secondary' ? colors.elevated
     : 'transparent';
-  const textColor = variant === 'primary' ? colors.onBrand : colors.text;
+  const textColor = variant === 'primary' || variant === 'destructive' ? colors.onBrand : colors.text;
 
   return (
     <Pressable

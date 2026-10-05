@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Modal, Pressable, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PasswordChecklist } from '@/components/password-checklist';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { PASSWORD_MIN, passwordOk } from '@/lib/password';
+import { PASSWORD_MIN, passwordOk, passwordsMatch } from '@/lib/password';
 
 type Props = {
   visible: boolean;
@@ -25,14 +25,18 @@ export function PasswordSheet({ visible, email, isSaving, error, onSave, onClose
   const insets = useSafeAreaInsets();
   // Empty on each opening; the screen keys this sheet by visibility.
   const [value, setValue] = useState('');
+  const [confirm, setConfirm] = useState('');
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       {/* Padding on Android too: a Modal is its own window. */}
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={onClose} />
+      <KeyboardAvoidingView
+        style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}
+        behavior="padding">
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View
           style={{
+            ...Layout.sheet,
             backgroundColor: colors.surface,
             borderTopLeftRadius: Radius.xl,
             borderTopRightRadius: Radius.xl,
@@ -51,7 +55,15 @@ export function PasswordSheet({ visible, email, isSaving, error, onSave, onClose
             placeholder={`At least ${PASSWORD_MIN} characters`}
             autoFocus
           />
-          <PasswordChecklist password={value} email={email} />
+          <TextField
+            label="Confirm password"
+            value={confirm}
+            onChangeText={setConfirm}
+            password
+            autoComplete="new-password"
+            placeholder="Type it again"
+          />
+          <PasswordChecklist password={value} email={email} confirm={confirm} />
           {error ? (
             <AppText variant="caption" tone="negative">
               {error}
@@ -60,7 +72,7 @@ export function PasswordSheet({ visible, email, isSaving, error, onSave, onClose
           <Button
             title="Save password"
             loading={isSaving}
-            disabled={!passwordOk(value, email)}
+            disabled={!passwordOk(value, email) || !passwordsMatch(value, confirm)}
             onPress={() => onSave(value)}
           />
         </View>

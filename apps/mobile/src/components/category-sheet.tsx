@@ -1,6 +1,7 @@
 import { Check } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
@@ -56,7 +57,7 @@ export function CategorySheet({ target, onClose }: Props) {
   const custom = target?.mode === 'add' || editing?.is_custom === true;
   const busy =
     setOverride.isPending || createCategory.isPending || updateCategory.isPending || deleteCategory.isPending;
-  const failed = () => Alert.alert('Could not save the category', 'Check your connection and try again.');
+  const failed = () => dialog.alert('Could not save the category', 'Check your connection and try again.');
 
   const save = async () => {
     if (!target || !valid) return;
@@ -97,14 +98,14 @@ export function CategorySheet({ target, onClose }: Props) {
       return;
     }
     const hasBudget = budgets.some((b) => b.category_id === editing.id);
-    Alert.alert(`Delete ${editing.name}?`, deleteCategoryMessage(count, group?.name ?? 'its group', hasBudget), [
+    dialog.alert(`Delete ${editing.name}?`, deleteCategoryMessage(count, group?.name ?? 'its group', hasBudget), [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: () =>
           void deleteCategory.mutateAsync(editing.id).then(onClose, (err: Error) =>
-            Alert.alert('Could not delete the category', err.message),
+            dialog.alert('Could not delete the category', err.message),
           ),
       },
     ]);

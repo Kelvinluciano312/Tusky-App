@@ -37,7 +37,7 @@ npx -y supabase@2.118.0 secrets list --project-ref awiwcgrisyzimzxgddxu
 
 **`label_pepper` (Vault, Phase 12c).** The HMAC key for `community_labels.contributor`, created once per project by SQL, never in the repo or chat: `select vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'label_pepper', 'HMAC pepper for community_labels.contributor (Phase 12c)');`. Without it, contributions are silently skipped. Never rotate it: every contributor would split into two, and withdrawal could no longer find their old rows.
 
-**Cron (Vault + function secret, Phase 14b).** The daily `plan-enforcer` job reads two Vault secrets, `cron_secret` and `project_url`, and the function compares the header with its `CRON_SECRET`. Create both once per project, **before** the 14b migration is pushed; without them the cron call fails harmlessly and nothing is enforced. In Git Bash, so the value lives only in a shell variable and is never printed:
+**Cron (Vault + function secret, Phase 14b).** The hourly `plan-enforcer` job reads two Vault secrets, `cron_secret` and `project_url`, and the function compares the header with its `CRON_SECRET`. Create both once per project, **before** the 14b migration is pushed; without them the cron call fails harmlessly and nothing is enforced. In Git Bash, so the value lives only in a shell variable and is never printed:
 
 ```sh
 S=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))") && npx -y supabase@2.118.0 db query --linked --project-ref awiwcgrisyzimzxgddxu "select vault.create_secret('$S', 'cron_secret', 'plan-enforcer cron secret (Phase 14b)')" >/dev/null && npx -y supabase@2.118.0 secrets set --project-ref awiwcgrisyzimzxgddxu CRON_SECRET="$S" >/dev/null && echo set
@@ -65,7 +65,7 @@ Restart Metro after editing `.env`.
 
 - All migrations through 14d are applied (12d–14d pushed 2026-10-01).
 - Secrets set: the three Plaid secrets and `JEV_API_KEY`. **Not yet set:** `CRON_SECRET` with the Vault
-  `cron_secret` and `project_url` (so the daily `plan-enforcer` run does nothing yet),
+  `cron_secret` and `project_url` (so the hourly `plan-enforcer` run does nothing yet),
   `REVENUECAT_SECRET_KEY` and `REVENUECAT_WEBHOOK_SECRET` (so purchases are not granted yet).
 - All 13 functions are deployed (2026-10-01), all except `plaid-sandbox`. `plaid-webhook`,
   `plan-enforcer` and `revenuecat-webhook` run with `verify_jwt = false` and check their own secret.

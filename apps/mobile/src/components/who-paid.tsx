@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Alert, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 
 import { SplitSheet } from '@/components/split-sheet';
 import { Amount } from '@/components/ui/amount';
@@ -48,7 +49,7 @@ export function WhoPaid({
   const save = (paidBy: string | null, split: Record<string, number> | null = null) =>
     setPaidBy.mutate(
       { transactionId: t.id, paidBy, split },
-      { onError: (err) => Alert.alert('Could not save', err.message) },
+      { onError: (err) => dialog.alert('Could not save', err.message) },
     );
 
   const options: { value: Choice; label: string }[] = memberChips(herd);
