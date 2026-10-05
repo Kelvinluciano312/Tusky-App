@@ -30,6 +30,20 @@ Deno.test('decide: Free archives every bank at once', () => {
   );
 });
 
+Deno.test('decide: a trial that lapsed a minute ago is Free, and every bank goes at once, window or not', () => {
+  const lapsed = plan({
+    plan: 'free', source: 'free', expires_at: null, max_banks: 0, history_days: 0, ai: false, banks_used: 1,
+  });
+  assertEquals(decide({ plan: lapsed, items: FOUR.slice(0, 1), overLimitSince: null, now: NOW }), {
+    archive: ['a'],
+    overLimitSince: null,
+  });
+  assertEquals(
+    decide({ plan: lapsed, items: FOUR.slice(0, 2), overLimitSince: NOW.toISOString(), now: NOW }),
+    { archive: ['a', 'b'], overLimitSince: null },
+  );
+});
+
 Deno.test('decide: newly over a smaller plan opens the window and archives nothing', () => {
   assertEquals(
     decide({ plan: plan({ banks_used: 4 }), items: FOUR, overLimitSince: null, now: NOW }),

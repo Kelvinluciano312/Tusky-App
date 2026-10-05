@@ -28,7 +28,7 @@ begin
   -- 2. An active trial is the trial.
   update public.subscriptions set plan = 'trial', store = 'trial', expires_at = now() + interval '5 days' where user_id = me;
   select * into got from public.plan_for(me);
-  if got.plan = 'trial' and got.source = 'trial' and got.max_banks = 2 and got.history_days = 730
+  if got.plan = 'trial' and got.source = 'trial' and got.max_banks = 1 and got.history_days = 730
     then out := out || 'trial ok; '; else bad := bad + 1; out := out || format('trial BAD %s; ', row_to_json(got)); end if;
 
   -- 3. An expired trial is free.
@@ -43,7 +43,7 @@ begin
   if got.plan = 'free' then out := out || 'status expired ok; '; else bad := bad + 1; out := out || 'status expired BAD; '; end if;
   update public.subscriptions set status = 'grace' where user_id = me;
   select * into got from public.plan_for(me);
-  if got.plan = 'tusklet' and got.source = 'own' and got.history_days = 365
+  if got.plan = 'tusklet' and got.source = 'own' and got.max_banks = 2 and got.history_days = 365
     then out := out || 'grace ok; '; else bad := bad + 1; out := out || format('grace BAD %s; ', row_to_json(got)); end if;
 
   -- 5. A herd mate's Tusk Herd beats my Tusklet, and pools the herd's banks.
