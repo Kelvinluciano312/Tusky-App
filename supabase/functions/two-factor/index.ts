@@ -3,8 +3,10 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders, getAdminClient, getAuthedUser, jsonResponse } from '../_shared/lib.ts';
 import {
   claimsOfToken,
-  lockedOut,
   markableSession,
+  MAX_WRONG_CODES,
+  MAX_WRONG_CODES_PER_USER,
+  reservedAttempt,
   verifyFailure,
   WRONG_CODE_WINDOW_MINUTES,
 } from '../_shared/two-factor.ts';
@@ -41,17 +43,27 @@ Deno.serve(async (req) => {
   }
   if (!/^\d{6,10}$/.test(code)) return jsonResponse({ error: 'wrong_code' }, 403);
 
+  // An attempt is RESERVED before the code is checked (take_two_factor_attempt,
+  // atomic per user), so parallel guesses cannot all slip past a count taken
+  // earlier. The budget is per session AND per user, so signing in again is
+  // not a fresh one. A wrong code keeps its attempt; success clears the user's;
+  // a check that could not run (outage) refunds the one just taken.
+  let attemptId: number | null = null;
+  const refund = async () => {
+    if (attemptId !== null) await admin.from('two_factor_failures').delete().eq('id', attemptId);
+    attemptId = null;
+  };
   try {
-    // Too many wrong codes for this session lately? Rows of this session older
-    // than the window are dropped first, so the table stays tiny.
-    const since = new Date(Date.now() - WRONG_CODE_WINDOW_MINUTES * 60_000).toISOString();
-    await admin.from('two_factor_failures').delete().eq('session_id', mark.sessionId).lt('created_at', since);
-    const { count, error: countError } = await admin
-      .from('two_factor_failures')
-      .select('id', { count: 'exact', head: true })
-      .eq('session_id', mark.sessionId);
-    if (countError) throw countError;
-    if (lockedOut(count ?? 0)) return jsonResponse({ error: 'too_many_attempts' }, 429);
+    const { data: reserved, error: reserveError } = await admin.rpc('take_two_factor_attempt', {
+      p_session: mark.sessionId,
+      p_user: user.id,
+      p_max_session: MAX_WRONG_CODES,
+      p_max_user: MAX_WRONG_CODES_PER_USER,
+      p_window_minutes: WRONG_CODE_WINDOW_MINUTES,
+    });
+    if (reserveError) throw reserveError;
+    attemptId = reservedAttempt(reserved);
+    if (attemptId === null) return jsonResponse({ error: 'too_many_attempts' }, 429);
 
     // A throwaway anon client: its own session is revoked right after, so no
     // dangling session survives and the caller's sessions are untouched.
@@ -61,10 +73,9 @@ Deno.serve(async (req) => {
     const { data, error } = await probe.auth.verifyOtp({ email: user.email, token: code, type: 'email' });
     if (error || !data.session) {
       const failure = verifyFailure(error?.status);
-      if (failure === 'wrong_code') {
-        await admin.from('two_factor_failures').insert({ session_id: mark.sessionId });
-        return jsonResponse({ error: 'wrong_code' }, 403);
-      }
+      if (failure === 'wrong_code') return jsonResponse({ error: 'wrong_code' }, 403);
+      // The code was never judged: give the attempt back.
+      await refund();
       if (failure === 'too_many_attempts') return jsonResponse({ error: 'too_many_attempts' }, 429);
       console.error('two-factor: verifyOtp unavailable', error?.status, error?.message);
       return jsonResponse({ error: 'verify_unavailable' }, 502);
@@ -78,10 +89,11 @@ Deno.serve(async (req) => {
       .from('two_factor_sessions')
       .upsert({ session_id: mark.sessionId, user_id: user.id }, { onConflict: 'session_id' });
     if (markError) throw markError;
-    await admin.from('two_factor_failures').delete().eq('session_id', mark.sessionId);
+    await admin.from('two_factor_failures').delete().eq('user_id', user.id);
     return jsonResponse({ verified: true });
   } catch (err) {
     console.error('two-factor failed', err);
+    await refund().catch(() => {});
     return jsonResponse({ error: 'two_factor_failed' }, 500);
   }
 });

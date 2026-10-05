@@ -3,9 +3,10 @@ import { assertEquals } from 'jsr:@std/assert';
 import {
   claimsOfToken,
   hasPasswordMethod,
-  lockedOut,
   markableSession,
+  reservedAttempt,
   MAX_WRONG_CODES,
+  MAX_WRONG_CODES_PER_USER,
   secondStepRequired,
   sessionIdOfClaims,
   verifyFailure,
@@ -81,10 +82,15 @@ Deno.test('verifyFailure: wrong codes, vendor limits and outages are told apart'
   assertEquals(verifyFailure(undefined), 'unavailable');
 });
 
-Deno.test('lockedOut: at the limit, not before', () => {
-  assertEquals(lockedOut(MAX_WRONG_CODES - 1), false);
-  assertEquals(lockedOut(MAX_WRONG_CODES), true);
-  assertEquals(lockedOut(MAX_WRONG_CODES + 3), true);
+Deno.test('the per-user cap is wider than the per-session cap, and both are positive', () => {
+  assertEquals(MAX_WRONG_CODES > 0, true);
+  assertEquals(MAX_WRONG_CODES_PER_USER > MAX_WRONG_CODES, true);
+});
+
+Deno.test('reservedAttempt: a positive id (bigint may arrive as a string) is a reservation, anything else a refusal', () => {
+  assertEquals(reservedAttempt(7), 7);
+  assertEquals(reservedAttempt('12'), 12);
+  for (const no of [null, undefined, 0, -1, 1.5, 'x', '', {}, [], true]) assertEquals(reservedAttempt(no), null);
 });
 
 Deno.test('secondStepRequired: only when the flag is on and the session is not verified', () => {

@@ -626,6 +626,18 @@ begin
   exception when insufficient_privilege then
     w := w || jsonb_build_object('tf_self_mark', 'denied');
   end;
+  begin
+    perform count(*) from public.two_factor_failures;
+    w := w || jsonb_build_object('tf_attempts_table', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('tf_attempts_table', 'denied');
+  end;
+  begin
+    perform public.take_two_factor_attempt(tf_s1, u, 5, 10, 15);
+    w := w || jsonb_build_object('tf_take_attempt', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('tf_take_attempt', 'denied');
+  end;
   -- A session marked for ANOTHER user does not count, even carrying this user's sub.
   reset role;
   insert into public.two_factor_sessions (session_id, user_id) values (tf_s3, tf_other);
@@ -725,6 +737,8 @@ const WRITE_EXPECT = {
   tf_no_session_rows: 0,
   tf_sessions_table: 'denied',
   tf_self_mark: 'denied',
+  tf_attempts_table: 'denied',
+  tf_take_attempt: 'denied',
   tf_other_users_session_rows: 0,
   tf_marked_sees_herd: true,
   tf_gate_says_verified: true,

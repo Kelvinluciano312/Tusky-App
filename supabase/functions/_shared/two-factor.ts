@@ -5,8 +5,14 @@
 // makes its own session with amr [otp], which a mailbox alone can obtain.
 // Everything here is pure, so it is tested apart from Deno.serve.
 
-/** Wrong codes allowed per session within the window, then 429 `too_many_attempts`. */
+/**
+ * Code attempts allowed within the window, then 429 `too_many_attempts`: per
+ * session, and per user across all sessions (a fresh sign-in is not a fresh
+ * budget). Passed to `take_two_factor_attempt`, which reserves an attempt
+ * atomically before the code is checked.
+ */
 export const MAX_WRONG_CODES = 5;
+export const MAX_WRONG_CODES_PER_USER = 10;
 export const WRONG_CODE_WINDOW_MINUTES = 15;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -56,9 +62,10 @@ export function verifyFailure(status: number | undefined): 'wrong_code' | 'too_m
   return 'unavailable';
 }
 
-/** Has this session used up its wrong guesses? */
-export function lockedOut(recentFailures: number): boolean {
-  return recentFailures >= MAX_WRONG_CODES;
+/** The id `take_two_factor_attempt` returns for a reserved attempt; null (or anything unreadable) means refused. */
+export function reservedAttempt(rpcData: unknown): number | null {
+  const n = typeof rpcData === 'string' ? Number(rpcData) : rpcData;
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : null;
 }
 
 /** True when the user turned two-step on and this session has no verified row. */
