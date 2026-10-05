@@ -974,7 +974,7 @@ export function useSetTransactionNotes() {
 }
 
 
-export type Profile = { user_id: string; display_name: string; ai_categorize: boolean };
+export type Profile = { user_id: string; display_name: string; ai_categorize: boolean; two_factor: boolean };
 
 /** The signed-in user's profile (Phase 9a). Created at signup by a trigger, so it always exists. */
 export function useProfile(userId: string | undefined) {
@@ -984,7 +984,7 @@ export function useProfile(userId: string | undefined) {
     queryFn: async (): Promise<Profile> => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('user_id, display_name, ai_categorize')
+        .select('user_id, display_name, ai_categorize, two_factor')
         .eq('user_id', userId!)
         .single();
       if (error) throw error;
@@ -1073,6 +1073,26 @@ export function useSetAiCategorize() {
 }
 
 /**
+ * Two-step sign-in (16e): switch it on or off. `set_two_factor` refuses unless
+ * the session already proved a fresh emailed code, so the caller verifies the
+ * code first (`confirmLoginCode`). Both the profile and the gate read the flag.
+ */
+export function useSetTwoFactor() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (on: boolean) => {
+      const { error } = await supabase.rpc('set_two_factor', { p_on: on });
+      if (error) throw error;
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['profile'] });
+      void queryClient.invalidateQueries({ queryKey: ['first-run'] });
+    },
+  });
+}
+
+/**
  * Crowd labels (12c): whether this user shares their category choices, with
  * no name attached, to the pool every Tusky user benefits from. Written only
  * through `set_consent`, which deletes what they shared when they withdraw.
@@ -1105,7 +1125,7 @@ export function useFirstRun(userId: string | undefined) {
     enabled: !!userId,
     queryFn: async (): Promise<FirstRunState> => {
       const [profile, terms] = await Promise.all([
-        supabase.from('profiles').select('onboarded_at').eq('user_id', userId!).single(),
+        supabase.from('profiles').select('onboarded_at, two_factor').eq('user_id', userId!).single(),
         supabase
           .from('consents')
           .select('version')
@@ -1116,7 +1136,11 @@ export function useFirstRun(userId: string | undefined) {
       ]);
       if (profile.error) throw profile.error;
       if (terms.error) throw terms.error;
-      return { termsVersion: terms.data?.version ?? null, onboarded: profile.data.onboarded_at !== null };
+      return {
+        termsVersion: terms.data?.version ?? null,
+        onboarded: profile.data.onboarded_at !== null,
+        twoFactor: profile.data.two_factor === true,
+      };
     },
   });
 }

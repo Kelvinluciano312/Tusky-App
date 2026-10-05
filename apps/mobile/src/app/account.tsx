@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DeleteAccountSheet } from '@/components/delete-account-sheet';
 import { PasswordSheet } from '@/components/password-sheet';
-import { AiSwitch, CrowdSwitch } from '@/components/privacy-switches';
+import { AiSwitch, CrowdSwitch, TwoFactorSwitch } from '@/components/privacy-switches';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { DELETE_URL, PRIVACY_URL, TERMS_URL } from '@/constants/legal';
@@ -80,6 +80,7 @@ export default function AccountScreen() {
           setPasswordError(null);
           setChanging(true);
         }} />
+        <TwoFactorSwitch />
         <Row icon={<LogOut size={20} color={colors.brand} strokeWidth={1.75} />} label="Sign out" onPress={() => void signOut()} />
       </Card>
 
