@@ -57,7 +57,10 @@ From [Plaid's billing docs](https://plaid.com/docs/account/billing/): *"an Item 
 subscription fee as long as a valid `access_token` exists for the Item."* An "Item" is one bank login.
 
 - **Syncing is free.** `/transactions/sync` and webhooks cost nothing per call, so refreshing often
-  costs nothing. The one exception is `/transactions/refresh`, billed per request — we don't use it.
+  costs nothing. Our US Pay As You Go dashboard currently lists **Transactions at $0.30 per Item
+  per month** and **Transactions Refresh at $0.12 per successful call** (not used by Tusky). These
+  are the rates shown on 2026-10-02; confirm them in the Plaid dashboard before launch or if pricing
+  changes.
 - **Only `/item/remove` stops the meter.** A bank that is disconnected, broken, or ignored keeps
   billing us monthly until the Item is deleted at Plaid.
 - **Investments and Liabilities are per-Item monthly too**, so they pay for themselves only in a paid
