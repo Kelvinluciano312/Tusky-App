@@ -46,7 +46,7 @@ This replaces the build plan in `docs/superpowers/specs/2026-09-23-stripe-subscr
 
 | Item | Cost | Notes |
 | --- | --- | --- |
-| Plaid | **Unknown**, per bank per month | The only real variable cost. It is not public. Kelvyn's Plaid dashboard shows the production rate. Billed per calendar month, not prorated. |
+| Plaid | **$0.30 per Item/month** | US Pay As You Go Transactions rate shown in the Plaid dashboard on 2026-10-02; billed per calendar month, not prorated. Transactions Refresh is $0.12 per successful call and is not used. Confirm rates in the dashboard before launch or if pricing changes. |
 | Supabase Pro (production) | $25/mo fixed | About 8 Tusklet subscribers cover it. |
 | Jev | ~$0.05 per user per month | $0.042 per million input tokens, output free. |
 | Haiku | $0 | Unused until the assistant ships. |
@@ -62,16 +62,16 @@ after Jev:
 | $0.60 | 4 | 7 | 10 |
 | $1.00 | 2 | 4 | 6 |
 
-The prices hold. **The bank limits are what we tune** once we know Plaid's rate, and they live in a
+The prices hold. **The bank limits are what we tune** as Plaid's rate changes, and they live in a
 table, so tuning needs no app release. The starting limits below (3 / 10 / 15) are safe up to about
-**$0.45 per bank**.
+**$0.45 per bank**; the currently observed $0.30 rate is below that threshold.
 
 ### Why Free has no live bank
 
-A free user with a live bank costs the Plaid rate every month and pays nothing. At $0.60 a bank, one
-Tusklet subscriber covers about 3 such users, but freemium apps usually convert 2 to 5%. That means 20
-to 50 free users for each paying one. A trial that ends in read-only caps each non-paying user's cost:
-at most 2 banks for at most 2 calendar months, about $2.40 at $0.60 per bank.
+A free user with a live bank costs the Plaid rate every month and pays nothing. At the current $0.30
+rate, one Tusklet subscriber covers about 6 such users, but freemium apps usually convert 2 to 5%.
+That means 20 to 50 free users for each paying one. A trial that ends in read-only caps each
+non-paying user's cost: at most 2 banks for at most 2 calendar months, about $1.20 at $0.30 per bank.
 
 ## Plans and who gets what
 
