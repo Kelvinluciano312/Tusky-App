@@ -3,58 +3,34 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
-  amrOfAccessToken,
   codeComplete,
+  codeFailureMessage,
   codeFull,
-  hasOtpProof,
   needsSecondStep,
   notifyTwoFactorRequired,
   onTwoFactorRequired,
   resendLabel,
   resendSecondsLeft,
   sanitizeCode,
+  WRONG_CODE_MESSAGE,
 } from './two-factor.ts';
 
-const OTP = [{ method: 'otp', timestamp: 1 }];
-const PASSWORD = [{ method: 'password', timestamp: 1 }];
-
-function tokenWith(claims: unknown): string {
-  const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url');
-  return `${b64({ alg: 'HS256' })}.${b64(claims)}.sig`;
-}
-
-test('only an otp entry is proof of a code', () => {
-  assert.equal(hasOtpProof(OTP), true);
-  assert.equal(hasOtpProof([...PASSWORD, ...OTP]), true);
-  assert.equal(hasOtpProof(PASSWORD), false);
-  assert.equal(hasOtpProof([]), false);
-});
-
-test('anything unreadable is no proof', () => {
-  for (const junk of [null, undefined, 'otp', 7, {}, { method: 'otp' }, [null], ['otp'], [{ method: 5 }]]) {
-    assert.equal(hasOtpProof(junk), false);
-  }
-});
-
-test('the second step is for opted-in users on a password-only session', () => {
-  assert.equal(needsSecondStep({ two_factor: true }, PASSWORD), true);
+test('the second step is for opted-in users whose session the server has not verified', () => {
+  assert.equal(needsSecondStep({ two_factor: true }, false), true);
   assert.equal(needsSecondStep({ two_factor: true }, null), true);
-  assert.equal(needsSecondStep({ two_factor: true }, OTP), false);
-  assert.equal(needsSecondStep({ two_factor: false }, PASSWORD), false);
-  assert.equal(needsSecondStep({ two_factor: null }, PASSWORD), false);
-  assert.equal(needsSecondStep(null, PASSWORD), false);
+  assert.equal(needsSecondStep({ two_factor: true }, undefined), true);
+  assert.equal(needsSecondStep({ two_factor: true }, true), false);
+  assert.equal(needsSecondStep({ two_factor: false }, false), false);
+  assert.equal(needsSecondStep({ two_factor: null }, false), false);
+  assert.equal(needsSecondStep(null, false), false);
 });
 
-test('amrOfAccessToken reads the claim from a JWT', () => {
-  assert.deepEqual(amrOfAccessToken(tokenWith({ sub: 'u', amr: OTP })), OTP);
-  assert.deepEqual(amrOfAccessToken(tokenWith({ sub: 'u', amr: PASSWORD, note: '??>>' })), PASSWORD);
-  assert.equal(amrOfAccessToken(tokenWith({ sub: 'u' })), null);
-});
-
-test('amrOfAccessToken survives a malformed token', () => {
-  for (const bad of [null, undefined, '', 'abc', 'a.b.c', 'a..c', 'a.%%%.c']) {
-    assert.equal(amrOfAccessToken(bad), null);
-  }
+test('each refusal of the two-factor function has words a person can read', () => {
+  assert.equal(codeFailureMessage('wrong_code'), WRONG_CODE_MESSAGE);
+  assert.match(codeFailureMessage('too_many_attempts'), /Too many/);
+  assert.match(codeFailureMessage('password_session_required'), /password first/);
+  assert.match(codeFailureMessage(undefined), /could not check/);
+  assert.match(codeFailureMessage('verify_unavailable'), /could not check/);
 });
 
 test('a code is its digits, whatever was typed or pasted', () => {

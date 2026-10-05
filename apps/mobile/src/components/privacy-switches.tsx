@@ -89,8 +89,8 @@ export function CrowdSwitch() {
 /**
  * Two-step sign-in (16e). Both directions ask for a fresh emailed code first:
  * turning it on proves the mailbox can receive, and `set_two_factor` itself
- * refuses to turn it off without one. The code replaces the session, which is
- * expected: the new one carries the proof the database looks for.
+ * refuses to turn it off without a verified session. Confirming the code marks
+ * this session on the server (it is not replaced), then `set_two_factor` runs.
  */
 export function TwoFactorSwitch() {
   const colors = useTheme();
@@ -117,7 +117,7 @@ export function TwoFactorSwitch() {
   };
 
   const submit = async (code: string): Promise<string | null> => {
-    const failure = await confirmLoginCode(email, code);
+    const failure = await confirmLoginCode(code);
     if (failure) return failure;
     const next = target === true;
     try {

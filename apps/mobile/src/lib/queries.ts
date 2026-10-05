@@ -1136,10 +1136,19 @@ export function useFirstRun(userId: string | undefined) {
       ]);
       if (profile.error) throw profile.error;
       if (terms.error) throw terms.error;
+      const twoFactor = profile.data.two_factor === true;
+      // Has the server verified this session? Asked only when two-step is on.
+      let secondStepDone: boolean | null = null;
+      if (twoFactor) {
+        const { data, error } = await supabase.rpc('my_second_step_done');
+        if (error) throw error;
+        secondStepDone = data === true;
+      }
       return {
         termsVersion: terms.data?.version ?? null,
         onboarded: profile.data.onboarded_at !== null,
-        twoFactor: profile.data.two_factor === true,
+        twoFactor,
+        secondStepDone,
       };
     },
   });

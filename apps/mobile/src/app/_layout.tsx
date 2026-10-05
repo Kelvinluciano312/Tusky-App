@@ -18,7 +18,7 @@ import { gateFor } from '@/lib/first-run';
 import { identifyPurchaser } from '@/lib/purchases';
 import { useFirstRun } from '@/lib/queries';
 import { SessionProvider, useSession } from '@/lib/session';
-import { amrOfAccessToken, onTwoFactorRequired } from '@/lib/two-factor';
+import { onTwoFactorRequired } from '@/lib/two-factor';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -93,8 +93,8 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   // Phase 15c: terms, then the first-run steps, then the app. The splash waits
   // for the answer so the app never flashes before the terms screen.
   const firstRun = useFirstRun(userId ?? undefined);
-  // Since 16e the first gate is the emailed code, for users with two-step on whose session has not proved one.
-  const gate = session ? gateFor(firstRun.data ?? null, TERMS_VERSION, amrOfAccessToken(session.access_token)) : null;
+  // Since 16e the first gate is the emailed code, for users with two-step on whose session the server has not verified.
+  const gate = session ? gateFor(firstRun.data ?? null, TERMS_VERSION) : null;
   const ready = fontsLoaded && !isLoading && !(session && firstRun.isLoading);
 
   // A function answering 403 two_factor_required means the gate's answer is stale: ask again.

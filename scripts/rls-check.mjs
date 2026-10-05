@@ -149,6 +149,24 @@ const counts = [
   ],
 ];
 
+// SQL for a jwt claims value (Phase 16e): `sid` is a SQL uuid expression, `method` the amr entry.
+const claims = (sid, method) =>
+  `json_build_object('sub', u, 'role', 'authenticated', 'session_id', ${sid}, ` +
+  `'amr', json_build_array(json_build_object('method', '${method}', 'timestamp', 1)))::text`;
+
+// Everything a herd member could read; zero for a session the server has not verified.
+const TF_ROWS = `(
+    (select count(*) from public.herds) + (select count(*) from public.herd_members)
+    + (select count(*) from public.herd_invites)
+    + (select count(*) from public.plaid_items) + (select count(*) from public.accounts)
+    + (select count(*) from public.transactions) + (select count(*) from public.balance_snapshots)
+    + (select count(*) from public.recurring_streams) + (select count(*) from public.budgets)
+    + (select count(*) from public.category_overrides) + (select count(*) from public.merchant_rules)
+    + (select count(*) from public.settlements) + (select count(*) from public.transaction_questions)
+    + (select count(*) from public.monthly_category_totals) + (select count(*) from public.shared_lines)
+    + (select count(*) from public.daily_net_worth)
+    + (select count(*) from public.categories where herd_id is not null))`;
+
 function block(userId) {
   const expected = counts.map(([name, sql]) => `e := e || jsonb_build_object('${name}', (${sql}));`).join('\n');
   const actual = counts.map(([name, , sql]) => `a := a || jsonb_build_object('${name}', (${sql}));`).join('\n');
@@ -161,6 +179,10 @@ declare
   a jsonb := '{}';
   w jsonb := '{}';
   n int;
+  tf_s1 uuid := gen_random_uuid();
+  tf_s2 uuid := gen_random_uuid();
+  tf_s3 uuid := gen_random_uuid();
+  tf_other uuid;
   foreign_tx uuid;
   own_tx uuid;
   other_herd uuid;
@@ -539,23 +561,19 @@ begin
     end;
   end if;
 
-  -- Phase 16e: with two-step sign-in on, a password-only session has no herd.
+  -- Phase 16e: with two-step sign-in on, a session has no herd until the server
+  -- verified it (a two_factor_sessions row for ITS session_id). The jwt's amr is
+  -- never consulted: an otp-only session (a mailbox, no password) sees nothing.
+  -- Three real auth.sessions rows exist only inside this rolled-back block.
   reset role;
+  select user_id into tf_other from public.herd_members where user_id <> u limit 1;
+  if tf_other is null then select id into tf_other from auth.users where id <> u limit 1; end if;
+  insert into auth.sessions (id, user_id) values (tf_s1, u), (tf_s2, u);
+  insert into auth.sessions (id, user_id) values (tf_s3, tf_other);
   update public.profiles set two_factor = true where user_id = u;
-  perform set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated',
-    'amr', json_build_array(json_build_object('method', 'password', 'timestamp', 1)))::text, true);
+  perform set_config('request.jwt.claims', ${claims('tf_s1', 'password')}, true);
   execute 'set local role authenticated';
-  w := w || jsonb_build_object('tf_password_rows',
-    (select count(*) from public.herds) + (select count(*) from public.herd_members)
-    + (select count(*) from public.herd_invites)
-    + (select count(*) from public.plaid_items) + (select count(*) from public.accounts)
-    + (select count(*) from public.transactions) + (select count(*) from public.balance_snapshots)
-    + (select count(*) from public.recurring_streams) + (select count(*) from public.budgets)
-    + (select count(*) from public.category_overrides) + (select count(*) from public.merchant_rules)
-    + (select count(*) from public.settlements) + (select count(*) from public.transaction_questions)
-    + (select count(*) from public.monthly_category_totals) + (select count(*) from public.shared_lines)
-    + (select count(*) from public.daily_net_worth)
-    + (select count(*) from public.categories where herd_id is not null));
+  w := w || jsonb_build_object('tf_password_rows', ${TF_ROWS});
   update public.transactions set category_is_manual = category_is_manual;
   get diagnostics n = row_count;
   w := w || jsonb_build_object('tf_password_updates', n);
@@ -582,21 +600,55 @@ begin
   exception when insufficient_privilege then
     w := w || jsonb_build_object('tf_rpc_without_code', 'denied');
   end;
-  -- The same user with an otp claim sees exactly what they saw before.
-  perform set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated',
-    'amr', json_build_array(json_build_object('method', 'otp', 'timestamp', 1)))::text, true);
-  w := w || jsonb_build_object('tf_otp_sees_herd',
+  w := w || jsonb_build_object('tf_gate_says_unverified', not public.my_second_step_done());
+  -- An otp-only claim set (the mailbox-only sign-in) on an unmarked session: nothing.
+  perform set_config('request.jwt.claims', ${claims('tf_s2', 'otp')}, true);
+  w := w || jsonb_build_object('tf_otp_only_rows', ${TF_ROWS});
+  begin
+    perform public.set_two_factor(false);
+    w := w || jsonb_build_object('tf_otp_only_rpc', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('tf_otp_only_rpc', 'denied');
+  end;
+  -- No session_id at all: nothing.
+  perform set_config('request.jwt.claims', ${claims('null::uuid', 'password')}, true);
+  w := w || jsonb_build_object('tf_no_session_rows', ${TF_ROWS});
+  -- The two tables are server-only.
+  begin
+    perform count(*) from public.two_factor_sessions;
+    w := w || jsonb_build_object('tf_sessions_table', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('tf_sessions_table', 'denied');
+  end;
+  begin
+    insert into public.two_factor_sessions (session_id, user_id) values (tf_s1, u);
+    w := w || jsonb_build_object('tf_self_mark', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('tf_self_mark', 'denied');
+  end;
+  -- A session marked for ANOTHER user does not count, even carrying this user's sub.
+  reset role;
+  insert into public.two_factor_sessions (session_id, user_id) values (tf_s3, tf_other);
+  perform set_config('request.jwt.claims', ${claims('tf_s3', 'password')}, true);
+  execute 'set local role authenticated';
+  w := w || jsonb_build_object('tf_other_users_session_rows', ${TF_ROWS});
+  -- Marked for this user, the session sees exactly what it saw before, whatever its amr says.
+  reset role;
+  insert into public.two_factor_sessions (session_id, user_id) values (tf_s1, u);
+  perform set_config('request.jwt.claims', ${claims('tf_s1', 'password')}, true);
+  execute 'set local role authenticated';
+  w := w || jsonb_build_object('tf_marked_sees_herd',
     (select count(*) from public.transactions) = (a ->> 'transactions')::int
     and (select count(*) from public.accounts) = (a ->> 'accounts')::int
     and (select count(*) from public.herd_members) = (a ->> 'herd_members')::int
     and private.my_herd_id() is not distinct from h);
+  w := w || jsonb_build_object('tf_gate_says_verified', public.my_second_step_done());
   perform public.set_two_factor(true);
   w := w || jsonb_build_object('tf_rpc_with_code', (select two_factor from public.profiles where user_id = u));
   perform public.set_two_factor(false);
   w := w || jsonb_build_object('tf_rpc_turns_off', not (select two_factor from public.profiles where user_id = u));
-  -- Off again: a password-only session is whole once more.
-  perform set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated',
-    'amr', json_build_array(json_build_object('method', 'password', 'timestamp', 1)))::text, true);
+  -- Off again: any session is whole once more.
+  perform set_config('request.jwt.claims', ${claims('tf_s2', 'password')}, true);
   w := w || jsonb_build_object('tf_off_password_sees_herd',
     (select count(*) from public.transactions) = (a ->> 'transactions')::int);
   reset role;
@@ -667,7 +719,15 @@ const WRITE_EXPECT = {
   tf_own_profile_readable: true,
   tf_direct_update: 'denied',
   tf_rpc_without_code: 'denied',
-  tf_otp_sees_herd: true,
+  tf_gate_says_unverified: true,
+  tf_otp_only_rows: 0,
+  tf_otp_only_rpc: 'denied',
+  tf_no_session_rows: 0,
+  tf_sessions_table: 'denied',
+  tf_self_mark: 'denied',
+  tf_other_users_session_rows: 0,
+  tf_marked_sees_herd: true,
+  tf_gate_says_verified: true,
   tf_rpc_with_code: true,
   tf_rpc_turns_off: true,
   tf_off_password_sees_herd: true,

@@ -1,32 +1,19 @@
 // Two-step sign-in (Phase 16e), the app side. The database is what enforces it
-// (private.my_herd_id gives a password-only session no herd); this only decides
+// (private.my_herd_id gives an unverified session no herd); this only decides
 // when to show the code screen. Pure, so it is tested apart from the router.
 
-/** Did this session prove an emailed code? `amr` is the JWT claim: [{ method, timestamp }]. */
-export function hasOtpProof(amr: unknown): boolean {
-  return Array.isArray(amr) && amr.some((e) => typeof e === 'object' && e !== null && (e as { method?: unknown }).method === 'otp');
-}
-
 /**
- * The code screen is needed when the user turned two-step on and this session
- * has not proved a code. An unknown profile (still loading, or the read
- * failed) never asks: the database refuses a password-only session anyway.
+ * The code screen is needed when the user turned two-step on and the server has
+ * not verified this session. "Verified" is `my_second_step_done` (a row for the
+ * session in `two_factor_sessions`), never the JWT's `amr`, which a mailbox
+ * alone can obtain. An unknown profile (still loading, or the read failed)
+ * never asks: the database refuses an unverified session anyway.
  */
-export function needsSecondStep(profile: { two_factor: boolean | null } | null, amr: unknown): boolean {
-  return profile?.two_factor === true && !hasOtpProof(amr);
-}
-
-/** The `amr` claim of an access token; null when it cannot be read. */
-export function amrOfAccessToken(token: string | null | undefined): unknown {
-  try {
-    const payload = token?.split('.')[1];
-    if (!payload) return null;
-    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const claims = JSON.parse(atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, '='))) as { amr?: unknown } | null;
-    return claims?.amr ?? null;
-  } catch {
-    return null;
-  }
+export function needsSecondStep(
+  profile: { two_factor: boolean | null } | null,
+  secondStepDone: boolean | null | undefined,
+): boolean {
+  return profile?.two_factor === true && secondStepDone !== true;
 }
 
 /**
@@ -71,7 +58,21 @@ export function resendLabel(secondsLeft: number): string {
 /** What the server calls a code that is wrong, expired or already used; the screen words it once. */
 export const WRONG_CODE_MESSAGE = 'That code is not right or has expired.';
 
-/** An Edge Function's 403 for a password-only session on a two-step account (`requireSecondStep`). */
+/** What a person reads when the `two-factor` function refuses; `code` is its `error` field. */
+export function codeFailureMessage(code: string | undefined): string {
+  switch (code) {
+    case 'wrong_code':
+      return WRONG_CODE_MESSAGE;
+    case 'too_many_attempts':
+      return 'Too many wrong codes. Wait a few minutes, then ask for a new one.';
+    case 'password_session_required':
+      return 'Sign in with your password first, then enter the code. Tap Sign out and start again.';
+    default:
+      return 'We could not check the code. Check your connection and try again.';
+  }
+}
+
+/** An Edge Function's 403 for an unverified session on a two-step account (`requireSecondStep`). */
 export const TWO_FACTOR_REQUIRED = 'two_factor_required';
 
 type Listener = () => void;

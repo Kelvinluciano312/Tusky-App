@@ -20,9 +20,10 @@ const lastSent = new Map<string, number>();
 
 /**
  * The second step of sign-in (Phase 16e), shown by the root gate to a user who
- * turned on two-step sign-in and signed in with a password only. Verifying
- * replaces the session with one that proved the code; the session listener then
- * re-renders the gate and the app opens. "Sign out" is the way back.
+ * turned on two-step sign-in and whose session the server has not verified.
+ * Verifying marks this session on the server (it is not replaced); the
+ * first-run query is then fetched again, the gate re-renders and the app opens.
+ * "Sign out" is the way back.
  */
 export default function VerifyScreen() {
   const colors = useTheme();
@@ -57,10 +58,10 @@ export default function VerifyScreen() {
   };
 
   const submit = async (code: string) => {
-    const failure = await confirmLoginCode(email, code);
+    const failure = await confirmLoginCode(code);
     if (failure) return failure;
     lastSent.delete(email);
-    // The password-only session saw nothing; everything is fetched again under the new one.
+    // The unverified session saw nothing; everything is fetched again, the gate's own answer included.
     void queryClient.invalidateQueries();
     return null;
   };
