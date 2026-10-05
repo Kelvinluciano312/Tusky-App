@@ -539,6 +539,68 @@ begin
     end;
   end if;
 
+  -- Phase 16e: with two-step sign-in on, a password-only session has no herd.
+  reset role;
+  update public.profiles set two_factor = true where user_id = u;
+  perform set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated',
+    'amr', json_build_array(json_build_object('method', 'password', 'timestamp', 1)))::text, true);
+  execute 'set local role authenticated';
+  w := w || jsonb_build_object('tf_password_rows',
+    (select count(*) from public.herds) + (select count(*) from public.herd_members)
+    + (select count(*) from public.herd_invites)
+    + (select count(*) from public.plaid_items) + (select count(*) from public.accounts)
+    + (select count(*) from public.transactions) + (select count(*) from public.balance_snapshots)
+    + (select count(*) from public.recurring_streams) + (select count(*) from public.budgets)
+    + (select count(*) from public.category_overrides) + (select count(*) from public.merchant_rules)
+    + (select count(*) from public.settlements) + (select count(*) from public.transaction_questions)
+    + (select count(*) from public.monthly_category_totals) + (select count(*) from public.shared_lines)
+    + (select count(*) from public.daily_net_worth)
+    + (select count(*) from public.categories where herd_id is not null));
+  update public.transactions set category_is_manual = category_is_manual;
+  get diagnostics n = row_count;
+  w := w || jsonb_build_object('tf_password_updates', n);
+  if my_cat is not null then
+    begin
+      insert into public.budgets (herd_id, category_id, amount) values (h, my_cat, 5);
+      w := w || jsonb_build_object('tf_password_write', 'allowed');
+    exception when insufficient_privilege or check_violation or not_null_violation then
+      w := w || jsonb_build_object('tf_password_write', 'denied');
+    end;
+  end if;
+  -- The own row stays readable, so the gate can tell why; the flag itself is not writable.
+  w := w || jsonb_build_object('tf_own_profile_readable',
+    (select count(*) = 1 and bool_and(two_factor) from public.profiles where user_id = u));
+  begin
+    update public.profiles set two_factor = false where user_id = u;
+    w := w || jsonb_build_object('tf_direct_update', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('tf_direct_update', 'denied');
+  end;
+  begin
+    perform public.set_two_factor(false);
+    w := w || jsonb_build_object('tf_rpc_without_code', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('tf_rpc_without_code', 'denied');
+  end;
+  -- The same user with an otp claim sees exactly what they saw before.
+  perform set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated',
+    'amr', json_build_array(json_build_object('method', 'otp', 'timestamp', 1)))::text, true);
+  w := w || jsonb_build_object('tf_otp_sees_herd',
+    (select count(*) from public.transactions) = (a ->> 'transactions')::int
+    and (select count(*) from public.accounts) = (a ->> 'accounts')::int
+    and (select count(*) from public.herd_members) = (a ->> 'herd_members')::int
+    and private.my_herd_id() is not distinct from h);
+  perform public.set_two_factor(true);
+  w := w || jsonb_build_object('tf_rpc_with_code', (select two_factor from public.profiles where user_id = u));
+  perform public.set_two_factor(false);
+  w := w || jsonb_build_object('tf_rpc_turns_off', not (select two_factor from public.profiles where user_id = u));
+  -- Off again: a password-only session is whole once more.
+  perform set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated',
+    'amr', json_build_array(json_build_object('method', 'password', 'timestamp', 1)))::text, true);
+  w := w || jsonb_build_object('tf_off_password_sees_herd',
+    (select count(*) from public.transactions) = (a ->> 'transactions')::int);
+  reset role;
+
   -- Phase 13: as the admin again, prove the delete never reached another herd.
   -- Asked as the caller this would be vacuous: RLS hides those rows anyway.
   reset role;
@@ -599,6 +661,16 @@ const WRITE_EXPECT = {
   update_plans: 'denied',
   call_plan_for: 'denied',
   my_plan_rows: 1,
+  tf_password_rows: 0,
+  tf_password_updates: 0,
+  tf_password_write: 'denied',
+  tf_own_profile_readable: true,
+  tf_direct_update: 'denied',
+  tf_rpc_without_code: 'denied',
+  tf_otp_sees_herd: true,
+  tf_rpc_with_code: true,
+  tf_rpc_turns_off: true,
+  tf_off_password_sees_herd: true,
 };
 
 let failures = 0;

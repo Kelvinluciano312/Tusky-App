@@ -1,6 +1,6 @@
 import { syncAccounts } from '../_shared/accounts.ts';
 import { isDuplicateLink, type LinkedAccount } from '../_shared/connections.ts';
-import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, getPlaidClient, jsonResponse } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, getPlaidClient, jsonResponse, requireSecondStep } from '../_shared/lib.ts';
 import { canAddBank, loadPlan, overLimit, pastLimit, planLimitBody } from '../_shared/plans.ts';
 
 type ExchangeBody = {
@@ -21,6 +21,8 @@ Deno.serve(async (req) => {
   if (!user) {
     return jsonResponse({ error: 'Unauthorized' }, 401);
   }
+  const blocked = await requireSecondStep(admin, req, user.id);
+  if (blocked) return blocked;
 
   let body: ExchangeBody;
   try {

@@ -380,6 +380,18 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
 - **Account & privacy** (`app/account.tsx`, 15f) holds sign-in, the AI and crowd switches
   (`components/privacy-switches.tsx`), legal links, and a quiet "Delete my account" at the bottom.
   Settings links to it in one row.
+- **Two-step sign-in (16e).** Opt-in (`profiles.two_factor`, default off), by emailed code. Proof is the
+  session JWT's `amr` claim: `verifyOtp({ type: 'email' })` replaces the session with one whose `amr` is
+  `[{method:'otp'}]`, and a token refresh keeps it (proven on dev); a password sign-in has only `password`.
+  `private.my_herd_id()` returns null when `two_factor` is on and `private.session_has_otp()` is false, so
+  every herd policy (and `my_account_ids`) shows and accepts nothing to a password-only session. Own
+  profile, subscription and consents stay reachable, so the gate can tell why. The client has no UPDATE on
+  `two_factor`: only `set_two_factor(p_on)`, which itself needs an otp session (so a password cannot switch
+  it off). Edge Functions run as the service role, so each user-facing one calls `requireSecondStep`
+  (`_shared/lib.ts`, pure rule in `_shared/two-factor.ts`) right after `getAuthedUser`: 403
+  `two_factor_required`. Put it in any NEW user-facing function. App: `gateFor(state, TERMS_VERSION, amr)`
+  returns `verify` first (`lib/two-factor.ts`, `amrOfAccessToken`); `rls-check` has the `tf_*` cases.
+  Needs SMTP and a Magic Link template showing `{{ .Token }}` per project. The screens come later.
 - **Dialogs (16f).** Never use React Native's `Alert`: ESLint refuses the import. `dialog.alert(title, message?, buttons?, options?)` (`components/ui/dialog.tsx`) has the same signature and semantics, so it works from hooks and mutation callbacks outside React. `<DialogHost />` sits once in the root layout and is itself a `Modal`, so it shows above Sheets. Several calls queue; a button closes the dialog first, then runs its `onPress`. Scrim tap and the back button press the `cancel` button (or just dismiss, or do nothing with `cancelable: false`). The queue logic is pure (`lib/dialog-queue.ts`, tested). `Button` has a `destructive` variant.
 - **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op
   `setMounted(false)` on a closed sheet made React drop the render-phase `setMounted(true)` on the

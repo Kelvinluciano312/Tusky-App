@@ -1,6 +1,8 @@
 import { createClient, type SupabaseClient, type User } from 'npm:@supabase/supabase-js@2';
 import { Configuration, PlaidApi, PlaidEnvironments } from 'npm:plaid@30';
 
+import { amrOfToken, secondStepRequired } from './two-factor.ts';
+
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -45,6 +47,27 @@ export async function getAuthedUser(req: Request, admin: SupabaseClient): Promis
   const { data, error } = await admin.auth.getUser(authHeader.slice('Bearer '.length));
   if (error) return null;
   return data.user;
+}
+
+/**
+ * Two-step sign-in (16e). The database already gives a password-only session
+ * no herd (private.my_herd_id); functions run as the service role, so they ask
+ * the same question here. Call it right after getAuthedUser: it returns the
+ * response to send (403 two_factor_required) or null when the caller may go on.
+ * The token was validated by getAuthedUser, so its claims can be trusted.
+ */
+export async function requireSecondStep(
+  admin: SupabaseClient,
+  req: Request,
+  userId: string,
+): Promise<Response | null> {
+  const { data, error } = await admin.from('profiles').select('two_factor').eq('user_id', userId).maybeSingle();
+  if (error) return jsonResponse({ error: 'two_factor_check_failed' }, 500);
+  const token = (req.headers.get('Authorization') ?? '').slice('Bearer '.length);
+  if (secondStepRequired(data?.two_factor as boolean | null | undefined, amrOfToken(token))) {
+    return jsonResponse({ error: 'two_factor_required' }, 403);
+  }
+  return null;
 }
 
 /** Where Plaid delivers webhooks. Derived, so there is no secret to keep in sync. */

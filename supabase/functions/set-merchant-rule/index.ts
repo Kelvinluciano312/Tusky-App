@@ -4,7 +4,7 @@
 // re-resolved with the same resolver sync uses, learning included, so removing
 // a rule restores what the herd's fixes taught, or else Plaid's category. JWT-verified by default: no config.toml entry.
 
-import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, jsonResponse } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, jsonResponse, requireSecondStep } from '../_shared/lib.ts';
 import { mergeRule, planReresolve, validateRuleInput } from '../_shared/rules.ts';
 import { loadCategoryMaps, loadLabels } from '../_shared/sync.ts';
 
@@ -16,6 +16,8 @@ Deno.serve(async (req) => {
   const admin = getAdminClient();
   const user = await getAuthedUser(req, admin);
   if (!user) return jsonResponse({ error: 'Unauthorized' }, 401);
+  const blocked = await requireSecondStep(admin, req, user.id);
+  if (blocked) return blocked;
 
   let body: unknown = null;
   try {

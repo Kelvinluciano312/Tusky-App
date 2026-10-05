@@ -1,6 +1,6 @@
 import { CountryCode, Products } from 'npm:plaid@30';
 
-import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, getWebhookUrl, jsonResponse } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, getWebhookUrl, jsonResponse, requireSecondStep } from '../_shared/lib.ts';
 import { canAddBank, historyDays, loadPlan, planLimitBody, type PlanState } from '../_shared/plans.ts';
 
 /** Optional body. With item_id, Link opens in update mode to repair that Item. */
@@ -16,6 +16,8 @@ Deno.serve(async (req) => {
   if (!user) {
     return jsonResponse({ error: 'Unauthorized' }, 401);
   }
+  const blocked = await requireSecondStep(admin, req, user.id);
+  if (blocked) return blocked;
 
   let body: LinkTokenBody = {};
   try {
