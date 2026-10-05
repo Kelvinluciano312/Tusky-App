@@ -1,7 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, KeyRound, LogOut } from 'lucide-react-native';
 import { type ReactNode, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView } from 'react-native';
+import { Linking, Pressable, ScrollView } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DeleteAccountSheet } from '@/components/delete-account-sheet';
@@ -51,7 +52,7 @@ export default function AccountScreen() {
       return;
     }
     setChanging(false);
-    Alert.alert('Password changed', 'Use the new one next time you sign in.');
+    dialog.alert('Password changed', 'Use the new one next time you sign in.');
   };
 
   const warning = plan ? deleteWarning(plan, new Date()) : null;

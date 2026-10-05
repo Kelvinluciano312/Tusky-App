@@ -380,6 +380,7 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
 - **Account & privacy** (`app/account.tsx`, 15f) holds sign-in, the AI and crowd switches
   (`components/privacy-switches.tsx`), legal links, and a quiet "Delete my account" at the bottom.
   Settings links to it in one row.
+- **Dialogs (16f).** Never use React Native's `Alert`: ESLint refuses the import. `dialog.alert(title, message?, buttons?, options?)` (`components/ui/dialog.tsx`) has the same signature and semantics, so it works from hooks and mutation callbacks outside React. `<DialogHost />` sits once in the root layout and is itself a `Modal`, so it shows above Sheets. Several calls queue; a button closes the dialog first, then runs its `onPress`. Scrim tap and the back button press the `cancel` button (or just dismiss, or do nothing with `cancelable: false`). The queue logic is pure (`lib/dialog-queue.ts`, tested). `Button` has a `destructive` variant.
 - **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op
   `setMounted(false)` on a closed sheet made React drop the render-phase `setMounted(true)` on the
   next open, and no Sheet-based picker ever appeared. Keep the `else if (mounted)`.

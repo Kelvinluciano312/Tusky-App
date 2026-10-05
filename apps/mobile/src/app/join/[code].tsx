@@ -1,7 +1,8 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { Users } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, ScrollView, Switch, View } from 'react-native';
+import { ScrollView, Switch, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AccountRow } from '@/components/account-row';
@@ -60,13 +61,13 @@ export default function JoinInviteScreen() {
           router.replace('/herd');
           const n = hidden_account_ids.length;
           if (n > 0) {
-            Alert.alert(
+            dialog.alert(
               'Some accounts were already here',
               `${n} of your accounts ${n === 1 ? 'is' : 'are'} already in ${preview.herd_name} through someone else's connection, so yours ${n === 1 ? 'is' : 'are'} hidden to avoid counting ${n === 1 ? 'it' : 'them'} twice. You can disconnect your copy of that bank in Settings.`,
             );
           }
         },
-        onError: (err) => Alert.alert('Could not join', err.message),
+        onError: (err) => dialog.alert('Could not join', err.message),
       },
     );
 

@@ -1,6 +1,7 @@
 import { MessageCircleQuestion } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Pressable, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
@@ -165,7 +166,7 @@ function AskSheet({ transactionId, onClose }: { transactionId: string; onClose: 
               to &&
               ask.mutate(
                 { transactionId, askedTo: to, body: body.trim() || null },
-                { onSuccess: onClose, onError: (err) => Alert.alert('Could not ask', err.message) },
+                { onSuccess: onClose, onError: (err) => dialog.alert('Could not ask', err.message) },
               )
             }
           />

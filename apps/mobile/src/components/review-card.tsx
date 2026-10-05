@@ -1,7 +1,8 @@
 import { Image } from 'expo-image';
 import { ChevronDown, Pencil } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 
 import { CategoryPicker } from '@/components/category-picker';
 import { CategorySheet, type SheetTarget } from '@/components/category-sheet';
@@ -62,7 +63,7 @@ export function ReviewCard({ id }: { id: string }) {
   const merchantKey = t.merchant_key || null;
   const rule = merchantKey ? rules.get(merchantKey) : undefined;
   const accent = category?.color ?? colors.brand;
-  const failed = (err: Error) => Alert.alert('Could not save', err.message);
+  const failed = (err: Error) => dialog.alert('Could not save', err.message);
 
   return (
     <View

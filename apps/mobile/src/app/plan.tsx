@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
-import { Alert, Linking, ScrollView } from 'react-native';
+import { Linking, ScrollView } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlanBanner } from '@/components/plan-banner';
@@ -80,7 +81,7 @@ export default function PlanScreen() {
           variant="secondary"
           loading={restore.isPending}
           onPress={() =>
-            restore.mutate(undefined, { onError: (err) => Alert.alert('Could not restore purchases', err.message) })
+            restore.mutate(undefined, { onError: (err) => dialog.alert('Could not restore purchases', err.message) })
           }
         />
       ) : null}

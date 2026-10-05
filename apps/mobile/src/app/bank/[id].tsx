@@ -1,6 +1,7 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Landmark } from 'lucide-react-native';
-import { Alert, ScrollView, Switch, View } from 'react-native';
+import { ScrollView, Switch, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 
 import { AccountRow } from '@/components/account-row';
 import { AppText } from '@/components/ui/app-text';
@@ -78,14 +79,14 @@ export default function BankScreen() {
   };
 
   const confirmDisconnect = () =>
-    Alert.alert(`Disconnect ${name}?`, 'Tusky stops syncing it and removes the connection at Plaid.', [
+    dialog.alert(`Disconnect ${name}?`, 'Tusky stops syncing it and removes the connection at Plaid.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete everything',
         style: 'destructive',
         // Asked twice, and the second time names the loss.
         onPress: () =>
-          Alert.alert('Delete everything?', loss, [
+          dialog.alert('Delete everything?', loss, [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Delete everything', style: 'destructive', onPress: () => run('delete') },
           ]),
@@ -95,7 +96,7 @@ export default function BankScreen() {
     ]);
 
   const confirmDeleteHistory = () =>
-    Alert.alert(`Delete ${name}'s history?`, loss, [
+    dialog.alert(`Delete ${name}'s history?`, loss, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete history', style: 'destructive', onPress: () => run('delete') },
     ]);

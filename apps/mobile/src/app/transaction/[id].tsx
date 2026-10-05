@@ -1,6 +1,7 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CategoryPicker } from '@/components/category-picker';
@@ -74,7 +75,7 @@ export default function TransactionScreen() {
   const merchantKey = t.merchant_key || null;
   const rule = merchantKey ? rules.get(merchantKey) : undefined;
   const category = t.category_id ? byId.get(t.category_id) : undefined;
-  const failed = (err: Error) => Alert.alert('Could not save', err.message);
+  const failed = (err: Error) => dialog.alert('Could not save', err.message);
 
   const choose = (next: Category) => {
     setPicking(false);

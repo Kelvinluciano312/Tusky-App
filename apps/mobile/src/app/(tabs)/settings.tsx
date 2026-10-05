@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
 import { ChevronRight, CreditCard, Landmark, ShieldCheck, Store, Tags, UserRound, Users } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NameSheet } from '@/components/name-sheet';
@@ -271,7 +272,7 @@ export default function SettingsScreen() {
             ]}
             selected={backend}
             onSelect={(next) =>
-              Alert.alert(
+              dialog.alert(
                 next === 'real' ? 'Switch to real data?' : 'Switch to Sandbox?',
                 next === 'real'
                   ? 'Tusky restarts on the production project, where banks are real. You sign in there separately.'
@@ -301,7 +302,7 @@ export default function SettingsScreen() {
               { userId: profile.user_id, displayName },
               {
                 onSuccess: () => setNaming(false),
-                onError: (err) => Alert.alert('Could not save', err.message),
+                onError: (err) => dialog.alert('Could not save', err.message),
               },
             )
           }

@@ -1,4 +1,5 @@
-import { Alert, Linking, ScrollView, View } from 'react-native';
+import { Linking, ScrollView, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
@@ -44,7 +45,7 @@ export default function AcceptTermsScreen() {
         loading={accept.isPending}
         onPress={() =>
           accept.mutate(TERMS_VERSION, {
-            onError: (err) => Alert.alert('Could not save that', err.message),
+            onError: (err) => dialog.alert('Could not save that', err.message),
           })
         }
       />

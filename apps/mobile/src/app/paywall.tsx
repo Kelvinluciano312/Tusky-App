@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { type ReactNode, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
@@ -48,7 +49,7 @@ export default function PaywallScreen() {
   const tiers = paywallTiers(packages, limits);
   const own = plan ? ownPaidPlan(plan, new Date()) : null;
   const payerName = herd?.members.find((m) => m.user_id === payerId)?.display_name ?? null;
-  const failed = (title: string) => (err: Error) => Alert.alert(title, err.message);
+  const failed = (title: string) => (err: Error) => dialog.alert(title, err.message);
 
   if (!purchasesEnabled) return <Notice title="Plans are coming soon" body="Everything you have tracked stays here in the meantime." />;
   const ownError = planError ?? limitsError;
@@ -158,7 +159,7 @@ export default function PaywallScreen() {
                     onSuccess: ({ outcome, confirmed }) => {
                       if (outcome === 'cancelled') return;
                       const msg = afterPurchase({ outcome, confirmed, name: PLAN_NAMES[tier.plan] });
-                      if (msg) Alert.alert(msg.title, msg.body);
+                      if (msg) dialog.alert(msg.title, msg.body);
                       router.back();
                     },
                     onError: failed('Could not complete the purchase'),

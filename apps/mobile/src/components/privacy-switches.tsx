@@ -1,6 +1,7 @@
 import { Sparkles, UsersRound } from 'lucide-react-native';
 import type { ReactNode } from 'react';
-import { Alert, Switch, View } from 'react-native';
+import { Switch, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 
 import { AppText } from '@/components/ui/app-text';
 import { Spacing } from '@/constants/theme';
@@ -8,7 +9,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useCrowdConsent, useProfile, useSetAiCategorize, useSetCrowdConsent } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 
-const failed = () => Alert.alert('Could not change that', 'Check your connection and try again.');
+const failed = () => dialog.alert('Could not change that', 'Check your connection and try again.');
 
 function SwitchRow({
   icon,

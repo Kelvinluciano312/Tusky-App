@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BudgetRow } from '@/components/budget-row';
@@ -94,7 +95,7 @@ export default function BudgetsScreen() {
         for (const b of replaced) await deleteBudget.mutateAsync(b.id);
         setBudget.mutate({ categoryId: category.id, amount });
       } catch {
-        Alert.alert('Could not save the budget', 'Check your connection and try again.');
+        dialog.alert('Could not save the budget', 'Check your connection and try again.');
       }
     };
     if (replaced.length === 0) {
@@ -102,7 +103,7 @@ export default function BudgetsScreen() {
       return;
     }
     const group = category.parent_id === null ? category : byId.get(category.parent_id);
-    Alert.alert(
+    dialog.alert(
       category.parent_id === null
         ? `Replace ${replaced.length} category budget${replaced.length === 1 ? '' : 's'} with one for ${category.name}?`
         : `Replace ${group?.name ?? 'the group'}'s budget with one for ${category.name}?`,
@@ -122,14 +123,14 @@ export default function BudgetsScreen() {
     const write = () => {
       replaceBudgets.mutate(lines, {
         onSuccess: () => setPresetOpen(false),
-        onError: () => Alert.alert('Could not build the budget', 'Check your connection and try again.'),
+        onError: () => dialog.alert('Could not build the budget', 'Check your connection and try again.'),
       });
     };
     if (budgets.length === 0) {
       write();
       return;
     }
-    Alert.alert(
+    dialog.alert(
       `Replace your ${budgets.length} budget${budgets.length === 1 ? '' : 's'}?`,
       'The preset writes a fresh set. You can edit any of them afterwards.',
       [

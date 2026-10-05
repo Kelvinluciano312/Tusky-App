@@ -1,6 +1,7 @@
 import { ChevronRight } from 'lucide-react-native';
 import { useMemo } from 'react';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
@@ -23,7 +24,7 @@ export default function RulesScreen() {
     (a.display_name ?? a.merchant_key).localeCompare(b.display_name ?? b.merchant_key),
   );
 
-  const failed = (err: Error) => Alert.alert('Could not change the rule', err.message);
+  const failed = (err: Error) => dialog.alert('Could not change the rule', err.message);
   const change = (rule: MerchantRule, patch: { categoryId?: null; displayName?: null }) =>
     setRule.mutate({ merchantKey: rule.merchant_key, ...patch }, { onError: failed });
 
@@ -41,7 +42,7 @@ export default function RulesScreen() {
             { text: 'Cancel', style: 'cancel' as const },
             { text: 'Delete rule', style: 'destructive' as const, onPress: () => change(rule, { categoryId: null, displayName: null }) },
           ];
-    Alert.alert(
+    dialog.alert(
       title,
       rule.category_id
         ? "Removing the category rule puts Plaid's category back on the transactions you haven't set by hand."

@@ -1,6 +1,7 @@
 import { Plus } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
+import { Pressable, ScrollView, Switch, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CategorySheet, type SheetTarget } from '@/components/category-sheet';
@@ -34,7 +35,7 @@ export default function CategoriesScreen() {
   const setHidden = (category: Category, hidden: boolean) =>
     setOverride.mutate(
       { categoryId: category.id, patch: { hidden } },
-      { onError: () => Alert.alert('Could not update the category', 'Check your connection and try again.') },
+      { onError: () => dialog.alert('Could not update the category', 'Check your connection and try again.') },
     );
 
   return (

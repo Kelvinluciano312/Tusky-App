@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
 import { HandCoins } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Amount } from '@/components/ui/amount';
@@ -49,12 +50,12 @@ export default function SettleScreen() {
   }
 
   const confirmUndo = (id: string, label: string) =>
-    Alert.alert('Undo this payment?', `${label}. The balance goes back to what it was before it.`, [
+    dialog.alert('Undo this payment?', `${label}. The balance goes back to what it was before it.`, [
       { text: 'Keep', style: 'cancel' },
       {
         text: 'Undo',
         style: 'destructive',
-        onPress: () => undo.mutate(id, { onError: (err) => Alert.alert('Could not undo', err.message) }),
+        onPress: () => undo.mutate(id, { onError: (err) => dialog.alert('Could not undo', err.message) }),
       },
     ]);
 
@@ -200,7 +201,7 @@ export default function SettleScreen() {
               { from_user: paying.from, to_user: paying.to, amount, note },
               {
                 onSuccess: () => setPaying(null),
-                onError: (err) => Alert.alert('Could not record it', err.message),
+                onError: (err) => dialog.alert('Could not record it', err.message),
               },
             )
           }

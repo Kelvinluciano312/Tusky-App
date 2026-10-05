@@ -11,6 +11,7 @@ import { AppState, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { RealDataBanner } from '@/components/real-data-banner';
+import { DialogHost } from '@/components/ui/dialog';
 import { Palette } from '@/constants/theme';
 import { TERMS_VERSION } from '@/constants/legal';
 import { gateFor } from '@/lib/first-run';
@@ -77,6 +78,7 @@ export default function RootLayout() {
           <StatusBar style={scheme === 'light' ? 'dark' : 'light'} />
           <RootNavigator fontsLoaded={fontsLoaded} />
           <RealDataBanner />
+          <DialogHost />
         </ThemeProvider>
       </SessionProvider>
     </QueryClientProvider>
