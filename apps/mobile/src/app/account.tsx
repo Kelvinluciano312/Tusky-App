@@ -11,7 +11,7 @@ import { AiSwitch, CrowdSwitch } from '@/components/privacy-switches';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { DELETE_URL, PRIVACY_URL, TERMS_URL } from '@/constants/legal';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { deleteWarning } from '@/lib/paywall';
 import { useDeleteAccount, usePlan } from '@/lib/queries';
@@ -70,7 +70,7 @@ export default function AccountScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
       <Card style={{ gap: Spacing.sm }}>
         <AppText variant="section" tone="dim">
           Sign-in

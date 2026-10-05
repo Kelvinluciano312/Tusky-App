@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Modal, Pressable, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PasswordChecklist } from '@/components/password-checklist';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { PASSWORD_MIN, passwordOk, passwordsMatch } from '@/lib/password';
 
@@ -30,10 +30,13 @@ export function PasswordSheet({ visible, email, isSaving, error, onSave, onClose
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       {/* Padding on Android too: a Modal is its own window. */}
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={onClose} />
+      <KeyboardAvoidingView
+        style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}
+        behavior="padding">
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View
           style={{
+            ...Layout.sheet,
             backgroundColor: colors.surface,
             borderTopLeftRadius: Radius.xl,
             borderTopRightRadius: Radius.xl,

@@ -10,7 +10,7 @@ import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Radius, Spacing, Type } from '@/constants/theme';
+import { Layout, Radius, Spacing, Type } from '@/constants/theme';
 import { transferLabel, useSettleUp } from '@/hooks/use-settle-up';
 import { useTheme } from '@/hooks/use-theme';
 import { expiresIn, formatCode, initials, inviteMessage } from '@/lib/herd';
@@ -153,7 +153,7 @@ export default function HerdScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
       <Pressable
         disabled={!isOwner}
         onPress={() => setNaming(true)}

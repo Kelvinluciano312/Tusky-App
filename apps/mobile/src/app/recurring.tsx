@@ -9,7 +9,7 @@ import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { eventFor } from '@/lib/calendar';
 import { streamName } from '@/lib/merchants';
@@ -93,7 +93,7 @@ export default function RecurringScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, gap: Spacing.lg, flexGrow: 1 }}
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, gap: Spacing.lg, flexGrow: 1 }}
       refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.textDim} />}>
       {streams.length === 0 ? (
         isLoading ? null : (

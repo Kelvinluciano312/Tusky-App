@@ -3,7 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
   cancelButton,
@@ -25,7 +25,6 @@ import {
  * queue once, at the root. Never import `Alert` from react-native (ESLint says so).
  */
 
-const CARD_MAX_WIDTH = 420;
 const MESSAGE_MAX_HEIGHT = 280;
 
 let queue: DialogRequest[] = [];
@@ -98,7 +97,7 @@ function DialogCard({ request }: { request: DialogRequest }) {
           accessibilityLabel={title}
           style={{
             width: '100%',
-            maxWidth: CARD_MAX_WIDTH,
+            maxWidth: Layout.maxDialog,
             backgroundColor: colors.surface,
             borderRadius: Radius.xl,
             borderWidth: 1,

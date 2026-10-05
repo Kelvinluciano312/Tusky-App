@@ -8,7 +8,7 @@ import { CategorySheet, type SheetTarget } from '@/components/category-sheet';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { CategoryIcon } from '@/components/ui/category-icon';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { buildTree, sectionsByKind } from '@/lib/categories';
 import { type Category, useCategories, useCategoryOverride } from '@/lib/queries';
@@ -41,7 +41,7 @@ export default function CategoriesScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView
-        contentContainerStyle={{ padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
+        contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
         <AppText variant="caption" tone="dim">
           Rename, recolour or hide the built-in categories, or add your own under any group. A hidden category
           leaves the picker and budget suggestions; its transactions and budget stay.

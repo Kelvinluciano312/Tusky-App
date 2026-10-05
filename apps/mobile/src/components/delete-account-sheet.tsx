@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Linking, Modal, Pressable, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, Linking, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { manageSubscriptionsUrl } from '@/lib/purchases';
 
@@ -41,10 +41,13 @@ export function DeleteAccountSheet({ visible, warning, isDeleting, error, onDele
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
       {/* Padding on Android too: a Modal is its own window. */}
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={close} />
+      <KeyboardAvoidingView
+        style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}
+        behavior="padding">
+        <Pressable style={StyleSheet.absoluteFill} onPress={close} />
         <View
           style={{
+            ...Layout.sheet,
             backgroundColor: colors.surface,
             borderTopLeftRadius: Radius.xl,
             borderTopRightRadius: Radius.xl,

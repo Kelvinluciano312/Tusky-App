@@ -11,7 +11,7 @@ import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { buildTree, budgetsReplacedBy, rollupByGroup, withoutHidden } from '@/lib/categories';
 import { currentMonthStart } from '@/lib/month';
@@ -142,7 +142,7 @@ export default function BudgetsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
-      <ScrollView contentContainerStyle={{ padding: Spacing.md, gap: Spacing.lg }}>
+      <ScrollView contentContainerStyle={{ ...Layout.column, padding: Spacing.md, gap: Spacing.lg }}>
         <AppText variant="display">Budgets</AppText>
 
         <MonthStepper month={month} onChange={setMonth} max={currentMonthStart()} />
@@ -165,7 +165,7 @@ export default function BudgetsScreen() {
 
         {hasAnything ? (
           <>
-            <Card style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Card style={{ flexDirection: 'row', justifyContent: 'space-between', gap: Spacing.sm }}>
               <View style={{ gap: Spacing.xs }}>
                 <AppText variant="caption" tone="dim" style={sectionLabel}>
                   Budgeted

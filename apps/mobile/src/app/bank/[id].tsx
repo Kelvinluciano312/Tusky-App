@@ -8,7 +8,7 @@ import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useConnectBank, useDisconnectBank, useSandboxTools } from '@/lib/plaid';
 import { Chips } from '@/components/ui/chips';
@@ -104,7 +104,7 @@ export default function BankScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, gap: Spacing.lg }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, gap: Spacing.lg }}>
       <Stack.Title>{name}</Stack.Title>
 
       <Card style={{ gap: Spacing.sm }}>

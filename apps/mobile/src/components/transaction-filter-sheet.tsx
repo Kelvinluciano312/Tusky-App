@@ -202,7 +202,7 @@ function PickRow({
         paddingVertical: Spacing.sm,
         backgroundColor: pressed ? colors.elevated : 'transparent',
       })}>
-      <AppText variant="label" tone="dim" style={{ width: 80 }}>
+      <AppText variant="label" tone="dim" style={{ minWidth: 80, flexShrink: 0 }}>
         {label}
       </AppText>
       <AppText variant="label" tone={value ? 'default' : 'dim'} style={{ flex: 1 }} numberOfLines={1}>

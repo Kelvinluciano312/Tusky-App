@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Chips } from '@/components/ui/chips';
 import { PRIVACY_URL, TERMS_URL } from '@/constants/legal';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
   activePeriod,
@@ -92,7 +92,7 @@ export default function PaywallScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
       <AppText variant="display">Keep your banks connected</AppText>
       <AppText tone="dim">Every plan opens every feature. They differ in how many banks stay connected.</AppText>
 

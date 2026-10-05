@@ -12,7 +12,7 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Sheet } from '@/components/ui/sheet';
 import { TextField } from '@/components/ui/text-field';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { transferLabel, useSettleUp } from '@/hooks/use-settle-up';
 import { useTheme } from '@/hooks/use-theme';
 import { useDeleteSettlement, useRecordSettlement } from '@/lib/queries';
@@ -64,7 +64,7 @@ export default function SettleScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
       <Card style={{ alignItems: 'center', gap: Spacing.xs, paddingVertical: Spacing.lg }}>
         {!s.ready ? (
           <ActivityIndicator color={colors.textDim} />

@@ -77,3 +77,32 @@ export const Radius = {
   xl: 24,
   full: 999,
 } as const;
+
+const MAX_CONTENT = 640;
+const MAX_SHEET = 560;
+const MAX_WIDE = 1040;
+
+
+/**
+ * Screen sizes (Phase 16g). Phones fill the width; on a tablet the content is a
+ * centred column no wider than `maxContent` and sheets are capped at `maxSheet`,
+ * so a row never stretches across a 10-inch landscape screen. Spread `column`
+ * into a ScrollView's `contentContainerStyle` (or use `<Column>`); spread
+ * `sheet` into a bottom sheet's panel. Headers and the tab bar stay full width.
+ */
+export const Layout = {
+  /** Widest a screen's content gets, in dp. */
+  maxContent: MAX_CONTENT,
+  /** Widest a two-column screen gets, in dp. */
+  maxWide: MAX_WIDE,
+  /** Widest a bottom sheet gets, in dp. */
+  maxSheet: MAX_SHEET,
+  /** Widest a dialog card gets, in dp. */
+  maxDialog: 420,
+  /** Centre-and-cap style for a screen's content. */
+  column: { width: '100%', maxWidth: MAX_CONTENT, alignSelf: 'center' },
+  /** Centre-and-cap style for a screen shown in two columns. */
+  wide: { width: '100%', maxWidth: MAX_WIDE, alignSelf: 'center' },
+  /** Centre-and-cap style for a bottom sheet's panel. */
+  sheet: { width: '100%', maxWidth: MAX_SHEET, alignSelf: 'center' },
+} as const;

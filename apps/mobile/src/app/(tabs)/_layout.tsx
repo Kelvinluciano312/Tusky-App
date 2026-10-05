@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { useWindowDimensions } from 'react-native';
 import { ArrowLeftRight, ChartPie, House, Settings, Target } from 'lucide-react-native';
 
 import { Type } from '@/constants/theme';
@@ -6,6 +7,8 @@ import { useTheme } from '@/hooks/use-theme';
 
 export default function TabsLayout() {
   const colors = useTheme();
+  // 360dp is five tabs of 72dp: "Transactions" at 11 fits only just, so a hair smaller there.
+  const { width } = useWindowDimensions();
 
   return (
     <Tabs
@@ -17,9 +20,12 @@ export default function TabsLayout() {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
         },
+        // Labels keep their size under a large system font: "Transactions" no longer fits five
+        // tabs on a 360dp phone at 130%, and an ellipsis ("Transac...") reads worse than a steady size.
+        tabBarAllowFontScaling: false,
         tabBarLabelStyle: {
           fontFamily: Type.bodyMedium,
-          fontSize: 11,
+          fontSize: width < 380 ? 10 : 11,
         },
       }}>
       <Tabs.Screen

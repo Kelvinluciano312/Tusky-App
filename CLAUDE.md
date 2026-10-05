@@ -393,6 +393,25 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   returns `verify` first (`lib/two-factor.ts`, `amrOfAccessToken`); `rls-check` has the `tf_*` cases.
   Needs SMTP and a Magic Link template showing `{{ .Token }}` per project. The screens come later.
 - **Dialogs (16f).** Never use React Native's `Alert`: ESLint refuses the import. `dialog.alert(title, message?, buttons?, options?)` (`components/ui/dialog.tsx`) has the same signature and semantics, so it works from hooks and mutation callbacks outside React. `<DialogHost />` sits once in the root layout and is itself a `Modal`, so it shows above Sheets. Several calls queue; a button closes the dialog first, then runs its `onPress`. Scrim tap and the back button press the `cancel` button (or just dismiss, or do nothing with `cancelable: false`). The queue logic is pure (`lib/dialog-queue.ts`, tested). `Button` has a `destructive` variant.
+- **Screen sizes (16g).** Phones fill the width and stay portrait (`app.json` `orientation: portrait`).
+  Android 16 ignores that lock on windows 600dp and wider, so tablets rotate: every screen must work
+  in landscape. `constants/theme.ts` `Layout` holds the caps (`maxContent` 640, `maxWide` 1040,
+  `maxSheet` 560, `maxDialog` 420). Spread `Layout.column` into every ScrollView/list
+  `contentContainerStyle` (or wrap fixed content in `<Column>`, `components/ui/column.tsx`), and
+  `Layout.sheet` into a bottom sheet's panel. A one-off Modal sheet dims with a full-screen
+  `absoluteFill` backdrop on the `KeyboardAvoidingView`, never a `flex: 1` Pressable above the panel,
+  or the sides of a capped panel stay undimmed. Headers and the tab bar stay full width. Home goes
+  two columns from 900dp (`twoColumns`, `lib/layout.ts`). The review deck scrolls its card when a
+  landscape window is shorter than the card. A row's text beside an icon needs `flex: 1` (see
+  `password-checklist.tsx`), or Android measures it too narrow and clips or wraps it; labels beside
+  values use `minWidth`, not a fixed `width`. Check on AVDs `Small_Tablet` (960x600dp), `Pixel_Tablet`
+  (1280x800dp) and `Pixel_7`. The tablet AVDs are API 35, which still honours the portrait lock, so
+  for real tablet behaviour either set `android:screenOrientation="unspecified"` in the generated
+  `android/` manifest (gitignored, rebuild) or, on `Pixel_7` (API 37), run
+  `adb shell wm size 1600x2560; adb shell wm density 320`, and always `wm size reset; wm density reset`
+  after. Small phones: `wm size 720x1280`, `wm density 320`, `settings put system font_scale 1.3`
+  (reset to 1.0). Do not tap the dev "Switch to Real data" banner while signing in: it sits under the
+  password field on a small screen and sends the login to production.
 - **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op
   `setMounted(false)` on a closed sheet made React drop the render-phase `setMounted(true)` on the
   next open, and no Sheet-based picker ever appeared. Keep the `else if (mounted)`.

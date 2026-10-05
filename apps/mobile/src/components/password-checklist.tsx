@@ -33,7 +33,7 @@ export function PasswordChecklist({
           ) : (
             <Circle size={14} color={colors.textDim} strokeWidth={1.75} />
           )}
-          <AppText variant="caption" tone={rule.ok ? 'positive' : 'dim'}>
+          <AppText variant="caption" tone={rule.ok ? 'positive' : 'dim'} style={{ flex: 1 }}>
             {rule.label}
           </AppText>
         </View>

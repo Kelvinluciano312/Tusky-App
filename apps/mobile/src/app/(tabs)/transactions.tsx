@@ -10,8 +10,9 @@ import { TransactionFilterSheet, type TransactionSort } from '@/components/trans
 import { TransactionRow } from '@/components/transaction-row';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
+import { Column } from '@/components/ui/column';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Radius, Spacing, Type } from '@/constants/theme';
+import { Layout, Radius, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { groupIdOf } from '@/lib/categories';
 import { isShared, payerLabel } from '@/lib/herd';
@@ -158,6 +159,8 @@ export default function TransactionsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
+      {/* Title, search and filters share the feed's centred column on a tablet. */}
+      <Column>
       <AppText variant="display" style={{ paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm }}>
         Transactions
       </AppText>
@@ -220,13 +223,15 @@ export default function TransactionsScreen() {
         </AppText>
       ) : null}
 
+      </Column>
+
       <SectionList
         sections={sections}
         keyExtractor={(item) => item.id}
         stickySectionHeadersEnabled={false}
         // flexGrow so the empty state centres; the list must always render so
         // RefreshControl exists — otherwise there is no way to run a first sync.
-        contentContainerStyle={sorted.length === 0 ? { flexGrow: 1 } : undefined}
+        contentContainerStyle={sorted.length === 0 ? { ...Layout.column, flexGrow: 1 } : Layout.column}
         ListEmptyComponent={
           isLoading || isLoadingAll ? null : allLoaded.length === 0 ? (
             <View style={{ flex: 1 }}>

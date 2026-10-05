@@ -10,7 +10,7 @@ import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { normalizeCode } from '@/lib/herd';
 import { useAccounts, useInvitePreview, useJoinHerd } from '@/lib/queries';
@@ -74,7 +74,7 @@ export default function JoinInviteScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
       <View style={{ gap: Spacing.xs }}>
         <AppText variant="display">{preview.herd_name}</AppText>
         <AppText tone="dim">

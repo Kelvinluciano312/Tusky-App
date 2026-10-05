@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { normalizeCode } from '@/lib/herd';
 
@@ -21,7 +21,7 @@ export default function JoinScreen() {
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
       keyboardShouldPersistTaps="handled"
-      contentContainerStyle={{ padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
       <AppText tone="dim">Enter the code from your invite. It looks like ABCD-1234.</AppText>
       <TextField
         label="Invite code"

@@ -11,7 +11,7 @@ import { Chips } from '@/components/ui/chips';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { bankUsage, PLAN_NAMES } from '@/lib/paywall';
 import { useConnectBank } from '@/lib/plaid';
@@ -93,7 +93,7 @@ export default function SettingsScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}>
       <AppText variant="display">Settings</AppText>
 
       <Card style={{ gap: Spacing.sm }}>

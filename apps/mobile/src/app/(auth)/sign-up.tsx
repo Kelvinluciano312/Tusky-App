@@ -9,7 +9,7 @@ import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { PRIVACY_URL, TERMS_URL, TERMS_VERSION } from '@/constants/legal';
-import { Radius, Spacing, Type } from '@/constants/theme';
+import { Layout, Radius, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { PASSWORD_MIN, passwordOk, passwordsMatch } from '@/lib/password';
 import { NAME_MAX, validatePersonName } from '@/lib/profile';
@@ -56,6 +56,7 @@ export default function SignUpScreen() {
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior="padding">
       <ScrollView
         contentContainerStyle={{
+          ...Layout.column,
           flexGrow: 1,
           justifyContent: 'center',
           padding: Spacing.lg,

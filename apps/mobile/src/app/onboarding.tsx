@@ -10,7 +10,7 @@ import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { TextField } from '@/components/ui/text-field';
-import { Spacing, Type } from '@/constants/theme';
+import { Layout, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { nextStep, type OnboardingStep, previousStep, stepLabel } from '@/lib/first-run';
 import { PLAN_NAMES, tierLines } from '@/lib/paywall';
@@ -58,6 +58,7 @@ export default function OnboardingScreen() {
       <ScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
+          ...Layout.column,
           flexGrow: 1,
           padding: Spacing.lg,
           paddingTop: insets.top + Spacing.xl,
