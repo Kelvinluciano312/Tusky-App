@@ -9,9 +9,9 @@ import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { PRIVACY_URL, TERMS_URL, TERMS_VERSION } from '@/constants/legal';
-import { Radius, Spacing, Type } from '@/constants/theme';
+import { Layout, Radius, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { PASSWORD_MIN, passwordOk } from '@/lib/password';
+import { PASSWORD_MIN, passwordOk, passwordsMatch } from '@/lib/password';
 import { NAME_MAX, validatePersonName } from '@/lib/profile';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
@@ -21,6 +21,7 @@ export default function SignUpScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -55,6 +56,7 @@ export default function SignUpScreen() {
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior="padding">
       <ScrollView
         contentContainerStyle={{
+          ...Layout.column,
           flexGrow: 1,
           justifyContent: 'center',
           padding: Spacing.lg,
@@ -105,7 +107,15 @@ export default function SignUpScreen() {
               autoComplete="new-password"
               placeholder={`At least ${PASSWORD_MIN} characters`}
             />
-            <PasswordChecklist password={password} email={email} />
+            <TextField
+              label="Confirm password"
+              value={confirm}
+              onChangeText={setConfirm}
+              password
+              autoComplete="new-password"
+              placeholder="Type it again"
+            />
+            <PasswordChecklist password={password} email={email} confirm={confirm} />
 
             <View style={{ flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-start' }}>
               <Pressable
@@ -156,7 +166,7 @@ export default function SignUpScreen() {
               title="Create account"
               onPress={signUp}
               loading={submitting}
-              disabled={!isSupabaseConfigured || !validName || !email || !passwordOk(password, email) || !agreed}
+              disabled={!isSupabaseConfigured || !validName || !email || !passwordOk(password, email) || !passwordsMatch(password, confirm) || !agreed}
             />
 
             <View style={{ flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-start' }}>

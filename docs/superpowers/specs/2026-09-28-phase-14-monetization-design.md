@@ -16,7 +16,7 @@ This replaces the build plan in `docs/superpowers/specs/2026-09-23-stripe-subscr
 - **Prices stay as set:** Tusklet $3.99/mo or $45/yr, Tusk $6.99/mo or $75/yr, and Tusk Herd $9.99/mo
   or $99/yr (the yearly price is new).
 - **Free is a 30-day Tusk trial, then read-only.** The trial starts automatically at signup, with no
-  card. It allows **2 banks**.
+  card. It allows **1 bank** (2 until Phase 16a).
 - **Billing goes through the stores**, Google Play Billing now and the App Store later, with
   **RevenueCat** over both. Stripe is not used.
 - **Tusklet keeps 12 months of history**; Tusk and Tusk Herd keep 24.
@@ -63,7 +63,7 @@ after Jev:
 | $1.00 | 2 | 4 | 6 |
 
 The prices hold. **The bank limits are what we tune** as Plaid's rate changes, and they live in a
-table, so tuning needs no app release. The starting limits below (3 / 10 / 15) are safe up to about
+table, so tuning needs no app release. The limits below (Tusklet 2 since Phase 16a, 3 before; Tusk 10; Tusk Herd 15) are safe up to about
 **$0.45 per bank**; the currently observed $0.30 rate is below that threshold.
 
 ### Why Free has no live bank
@@ -71,7 +71,7 @@ table, so tuning needs no app release. The starting limits below (3 / 10 / 15) a
 A free user with a live bank costs the Plaid rate every month and pays nothing. At the current $0.30
 rate, one Tusklet subscriber covers about 6 such users, but freemium apps usually convert 2 to 5%.
 That means 20 to 50 free users for each paying one. A trial that ends in read-only caps each
-non-paying user's cost: at most 2 banks for at most 2 calendar months, about $1.20 at $0.30 per bank.
+non-paying user's cost: at most 1 bank for at most 2 calendar months, about $0.60 at $0.30 per bank.
 
 ## Plans and who gets what
 
@@ -83,8 +83,8 @@ writable by no client.
 | plan | max_banks | history_days | ai | scope |
 | --- | --- | --- | --- | --- |
 | `free` | 0 | 0 | no | self |
-| `trial` | 2 | 730 | yes | self |
-| `tusklet` | 3 | 365 | yes | self |
+| `trial` | 1 | 730 | yes | self |
+| `tusklet` | 2 | 365 | yes | self |
 | `tusk` | 10 | 730 | yes | self |
 | `tusk_herd` | 15 | 730 | yes | herd |
 
@@ -141,7 +141,7 @@ Every check runs on the server. The app only shows what the server decided.
 ## When a plan ends or shrinks
 
 A trial ends, a subscription lapses after the store's grace period, or a Tusk Herd payer cancels or
-leaves the herd. A **daily job** (pg_cron calling a new `plan-enforcer` function) compares each user's
+leaves the herd. An **hourly job** (daily until Phase 16a; pg_cron calling a new `plan-enforcer` function) compares each user's
 live banks with their effective plan:
 
 - **Dropping to Free:** every bank the user connected is removed that day through Phase 6's
@@ -205,7 +205,7 @@ Public (`verify_jwt = false`), like `plaid-webhook`, so it needs equivalent veri
 ### The app
 
 - **A Plan screen** (Settings) shows the plan, where it comes from ("Your trial: 12 days left", or
-  "Covered by Kel's Tusk Herd"), bank usage ("2 of 3 banks"), **Restore purchases** (required by
+  "Covered by Kel's Tusk Herd"), bank usage ("1 of 2 banks"), **Restore purchases** (required by
   Apple), and **Manage subscription**, which deep-links to the store. Cancelling happens in the store.
 - **A paywall** built with our own theme components, not RevenueCat's prebuilt paywall. It opens from
   the Plan screen, from `plan_limit`, and from the warning banners.

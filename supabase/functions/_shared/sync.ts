@@ -31,7 +31,7 @@ import {
   type RecurringDecide,
   refreshRecurring,
 } from './recurring.ts';
-import { type CarriedPayer, carryForward, type ExistingRow } from './review.ts';
+import { autoReviewIds, type CarriedPayer, carryForward, type ExistingRow, reviewCutoff } from './review.ts';
 import { groupTriage, readTriage, TRIAGE_PER_SYNC, triageQuestions, type TriageRow, triageState } from './triage.ts';
 
 const PAGE_SIZE = 500;
@@ -104,6 +104,9 @@ export async function loadCategoryMaps(
   }
   return { categoryMap, detailedMap, fallbackId: fallback.id };
 }
+
+/** Ids per auto-review update (16b): the ids ride in the request URL. */
+const AUTO_REVIEW_CHUNK = 100;
 
 /** Merchant keys per labels query: keeps the PostgREST URL short. */
 /**
@@ -209,7 +212,7 @@ export async function loadSyncContext(admin: SupabaseClient, plaid: PlaidApi): P
 export async function claimItem(
   admin: SupabaseClient,
   itemId: string,
-): Promise<{ id: string; sync_cursor: string | null } | null> {
+): Promise<{ id: string; sync_cursor: string | null; created_at: string } | null> {
   const staleBefore = new Date(Date.now() - STALE_CLAIM_MS).toISOString();
   const { data } = await admin
     .from('plaid_items')
@@ -217,7 +220,7 @@ export async function claimItem(
     .eq('id', itemId)
     .in('status', ['active', 'login_required'])
     .or(`sync_locked_at.is.null,sync_locked_at.lt.${staleBefore}`)
-    .select('id, sync_cursor')
+    .select('id, sync_cursor, created_at')
     .maybeSingle();
   return data;
 }
@@ -724,6 +727,21 @@ export async function syncItem(
       if (rows.length > 0) {
         const { error } = await admin
           .from('transactions').upsert(rows, { onConflict: 'plaid_transaction_id' });
+        if (error) throw error;
+      }
+      // Only the last two weeks go to review (16b): rows this sync inserted that
+      // are older than the Item's link date minus 14 days count as reviewed. A
+      // separate update, never in the upsert payload above (union of keys), and
+      // only for rows nobody has touched: no row of their own, no pending
+      // predecessor. Dated, not "first sync": Plaid delivers history in stages.
+      const cutoff = reviewCutoff(claimed.created_at);
+      const autoIds = autoReviewIds(rows, existingFor, cutoff);
+      for (let i = 0; i < autoIds.length; i += AUTO_REVIEW_CHUNK) {
+        const { error } = await admin
+          .from('transactions')
+          .update({ reviewed_at: new Date().toISOString(), auto_reviewed: true })
+          .in('plaid_transaction_id', autoIds.slice(i, i + AUTO_REVIEW_CHUNK))
+          .is('reviewed_at', null);
         if (error) throw error;
       }
       // One small update per carried memo, and never over a memo already there.

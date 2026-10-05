@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { ChevronRight, HandCoins, Landmark, ListChecks } from 'lucide-react-native';
 import { useMemo } from 'react';
-import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AccountRow } from '@/components/account-row';
@@ -11,12 +11,13 @@ import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { transferLabel, useSettleUp } from '@/hooks/use-settle-up';
 import { useTheme } from '@/hooks/use-theme';
 import { UpcomingCard } from '@/components/upcoming-card';
 import { GROUP_LABEL, groupAccounts, netWorth } from '@/lib/accounts';
 import { payerLabel } from '@/lib/herd';
+import { twoColumns } from '@/lib/layout';
 import {
   useAccounts,
   useCategories,
@@ -82,23 +83,12 @@ export default function HomeScreen() {
   const trend = history.map((point) => point.net_worth);
   const change = trend.length >= 2 ? trend[trend.length - 1] - trend[0] : 0;
 
-  return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefetching}
-          onRefresh={() => {
-            refetch();
-            refetchHistory();
-            refetchStreams();
-            refetchReview();
-            refetchPlan();
-          }}
-          tintColor={colors.textDim}
-        />
-      }>
+  const { width } = useWindowDimensions();
+  const wide = twoColumns(width);
+
+  // Phase 16g: on a wide window the money you track sits beside the account list.
+  const summary = (
+    <>
       <View>
         <AppText tone="dim" variant="caption">
           {greeting()},
@@ -176,7 +166,10 @@ export default function HomeScreen() {
       ) : null}
 
       <UpcomingCard streams={streams} categoriesById={categoriesById} today={today} />
-
+    </>
+  );
+  const accountsCard = (
+    <>
       {hasAccounts ? (
         /* By kind of money (Phase 10): each group with its subtotal, which, like
            the headline, leaves out accounts not counted in totals. */
@@ -213,6 +206,37 @@ export default function HomeScreen() {
             style={{ alignSelf: 'stretch', marginTop: Spacing.sm }}
           />
         </Card>
+      )}
+    </>
+  );
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      contentContainerStyle={{ ...(wide ? Layout.wide : Layout.column), padding: Spacing.md, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}
+      refreshControl={
+        <RefreshControl
+          refreshing={isRefetching}
+          onRefresh={() => {
+            refetch();
+            refetchHistory();
+            refetchStreams();
+            refetchReview();
+            refetchPlan();
+          }}
+          tintColor={colors.textDim}
+        />
+      }>
+      {wide ? (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.lg }}>
+          <View style={{ flex: 1, gap: Spacing.lg }}>{summary}</View>
+          <View style={{ flex: 1, gap: Spacing.lg }}>{accountsCard}</View>
+        </View>
+      ) : (
+        <>
+          {summary}
+          {accountsCard}
+        </>
       )}
     </ScrollView>
   );

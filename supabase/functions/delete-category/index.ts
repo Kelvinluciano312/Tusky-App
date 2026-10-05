@@ -4,7 +4,7 @@
 // JWT-verified by default: no config.toml entry.
 
 import { planCategoryDelete, readCategoryId } from '../_shared/categories.ts';
-import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, jsonResponse } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, jsonResponse, requireSecondStep } from '../_shared/lib.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -12,6 +12,8 @@ Deno.serve(async (req) => {
   const admin = getAdminClient();
   const user = await getAuthedUser(req, admin);
   if (!user) return jsonResponse({ error: 'Unauthorized' }, 401);
+  const blocked = await requireSecondStep(admin, req, user.id);
+  if (blocked) return blocked;
 
   let body: unknown = null;
   try {

@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
-import { Spacing, Type } from '@/constants/theme';
+import { Layout, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { backendLabel } from '@/lib/environment';
 import { backend, isSupabaseConfigured, realConfigured, supabase, switchBackend } from '@/lib/supabase';
@@ -36,6 +36,7 @@ export default function SignInScreen() {
       behavior="padding">
       <ScrollView
         contentContainerStyle={{
+          ...Layout.column,
           flexGrow: 1,
           justifyContent: 'center',
           padding: Spacing.lg,

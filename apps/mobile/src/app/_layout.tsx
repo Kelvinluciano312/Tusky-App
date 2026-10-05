@@ -1,7 +1,7 @@
 import { Figtree_400Regular, Figtree_500Medium, Figtree_600SemiBold, Figtree_700Bold } from '@expo-google-fonts/figtree';
 import { Fraunces_500Medium, Fraunces_600SemiBold } from '@expo-google-fonts/fraunces';
 import { IBMPlexMono_500Medium, IBMPlexMono_600SemiBold } from '@expo-google-fonts/ibm-plex-mono';
-import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { focusManager, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -11,12 +11,14 @@ import { AppState, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { RealDataBanner } from '@/components/real-data-banner';
+import { DialogHost } from '@/components/ui/dialog';
 import { Palette } from '@/constants/theme';
 import { TERMS_VERSION } from '@/constants/legal';
 import { gateFor } from '@/lib/first-run';
 import { identifyPurchaser } from '@/lib/purchases';
 import { useFirstRun } from '@/lib/queries';
 import { SessionProvider, useSession } from '@/lib/session';
+import { onTwoFactorRequired } from '@/lib/two-factor';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -77,6 +79,7 @@ export default function RootLayout() {
           <StatusBar style={scheme === 'light' ? 'dark' : 'light'} />
           <RootNavigator fontsLoaded={fontsLoaded} />
           <RealDataBanner />
+          <DialogHost />
         </ThemeProvider>
       </SessionProvider>
     </QueryClientProvider>
@@ -90,8 +93,13 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   // Phase 15c: terms, then the first-run steps, then the app. The splash waits
   // for the answer so the app never flashes before the terms screen.
   const firstRun = useFirstRun(userId ?? undefined);
+  // Since 16e the first gate is the emailed code, for users with two-step on whose session the server has not verified.
   const gate = session ? gateFor(firstRun.data ?? null, TERMS_VERSION) : null;
   const ready = fontsLoaded && !isLoading && !(session && firstRun.isLoading);
+
+  // A function answering 403 two_factor_required means the gate's answer is stale: ask again.
+  const queryClient = useQueryClient();
+  useEffect(() => onTwoFactorRequired(() => void queryClient.invalidateQueries({ queryKey: ['first-run'] })), [queryClient]);
 
   // RevenueCat's user follows the Supabase user (Phase 14c).
   useEffect(() => {
@@ -110,6 +118,9 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Protected guard={gate === 'verify'}>
+        <Stack.Screen name="verify" />
+      </Stack.Protected>
       <Stack.Protected guard={gate === 'terms'}>
         <Stack.Screen name="accept-terms" />
       </Stack.Protected>

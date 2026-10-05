@@ -8,6 +8,8 @@ import type { DisconnectResult } from './connections.ts';
  * wires the database, Plaid and RevenueCat in.
  */
 export type AccountOps = {
+  /** True when `password` is the user's current one. Throws when Auth cannot say. */
+  verifyPassword(userId: string, password: string): Promise<boolean>;
   herdSize(userId: string): Promise<number>;
   leaveHerd(userId: string): Promise<void>;
   liveItems(userId: string): Promise<{ id: string; status: string }[]>;
@@ -18,7 +20,16 @@ export type AccountOps = {
   forgetPurchaser(userId: string): Promise<void>;
 };
 
-export async function deleteAccount(ops: AccountOps, userId: string): Promise<'deleted' | 'plaid_failed' | 'busy'> {
+export type DeleteResult = 'deleted' | 'plaid_failed' | 'busy' | 'wrong_password';
+
+/**
+ * Phase 16d: the caller types their password, and it is checked BEFORE
+ * anything is touched (a signed-in phone left on a table must not be enough).
+ * A missing or non-string password is refused without asking Auth.
+ */
+export async function deleteAccount(ops: AccountOps, userId: string, password: unknown): Promise<DeleteResult> {
+  if (typeof password !== 'string' || password === '') return 'wrong_password';
+  if (!(await ops.verifyPassword(userId, password))) return 'wrong_password';
   // A shared herd keeps its config; leaving takes the user's banks and rows with them.
   if ((await ops.herdSize(userId)) > 1) await ops.leaveHerd(userId);
   for (const item of await ops.liveItems(userId)) {

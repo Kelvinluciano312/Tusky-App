@@ -9,7 +9,7 @@
 
 import { SandboxItemFireWebhookRequestWebhookCodeEnum } from 'npm:plaid@30';
 
-import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, getWebhookUrl, jsonResponse } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, getWebhookUrl, jsonResponse, requireSecondStep } from '../_shared/lib.ts';
 
 type Body = { item_id?: string; action?: 'reset_login' | 'fire_webhook' };
 
@@ -25,6 +25,8 @@ Deno.serve(async (req) => {
   const admin = getAdminClient();
   const user = await getAuthedUser(req, admin);
   if (!user) return jsonResponse({ error: 'Unauthorized' }, 401);
+  const blocked = await requireSecondStep(admin, req, user.id);
+  if (blocked) return blocked;
 
   let body: Body = {};
   try {
