@@ -343,7 +343,13 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     anything else waits for renewal. `plan-refresh` answers 429 `too_soon` within 10 s of the last
     refresh (`subscriptions.refreshed_at`, claimed in one conditional update); the app then refetches
     the plan at 15 s and 60 s.
-  - **Deleting an account (14d).** `delete-account` (logic in `_shared/account.ts`): leave the herd if
+  - **Deleting an account (14d, 16d).** `delete-account` (logic in `_shared/account.ts`) takes
+    `{ password }` and verifies it FIRST (`verifyPassword`: a throwaway anon client, `signInWithPassword`
+    as the caller's email, its session signed out `scope: 'local'`; verifying in the app would replace
+    the session). Missing or wrong answers 403 `wrong_password` and touches nothing; an Auth outage
+    throws (500), also before anything is touched. The app's `DeleteAccountSheet` asks for the word
+    `DELETE` (case-sensitive) and the password, and carries the subscription warning with a Manage
+    subscription link. Then: leave the herd if
     others remain, then `/item/remove` every live Item and stop on the first failure (502
     `plaid_failed`, nothing deleted: the token is the only way to stop Plaid's billing), then delete
     the personal herd and the auth user (the cascade does the rest), then ask RevenueCat to forget the

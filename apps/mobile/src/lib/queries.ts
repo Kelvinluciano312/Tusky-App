@@ -1509,10 +1509,12 @@ export function useSetAccountPrivate() {
  */
 export function useDeleteAccount() {
   return useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.functions.invoke('delete-account');
+    // The server checks the password before it touches anything (Phase 16d).
+    mutationFn: async (password: string) => {
+      const { error } = await supabase.functions.invoke('delete-account', { body: { password } });
       if (!error) return;
       const { message } = await readFunctionError(error);
+      if (message === 'wrong_password') throw new Error('That password is not right. Nothing was deleted.');
       if (message === 'plaid_failed') {
         throw new Error('A bank could not be disconnected at Plaid, so nothing was deleted. Try again in a few minutes.');
       }
