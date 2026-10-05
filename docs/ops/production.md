@@ -61,15 +61,18 @@ npx -y supabase@2.118.0 db query --linked --project-ref awiwcgrisyzimzxgddxu "se
 
 Restart Metro after editing `.env`.
 
-## State (2026-10-01)
+## State (2026-10-05)
 
-- All migrations through 14d are applied (12d–14d pushed 2026-10-01).
-- Secrets set: the three Plaid secrets and `JEV_API_KEY`. **Not yet set:** `CRON_SECRET` with the Vault
-  `cron_secret` and `project_url` (so the hourly `plan-enforcer` run does nothing yet),
-  `REVENUECAT_SECRET_KEY` and `REVENUECAT_WEBHOOK_SECRET` (so purchases are not granted yet).
-- All 13 functions are deployed (2026-10-01), all except `plaid-sandbox`. `plaid-webhook`,
-  `plan-enforcer` and `revenuecat-webhook` run with `verify_jwt = false` and check their own secret.
-  - Claude's auto mode blocks production deploys unless Pedro allows `npx -y supabase@2.118.0 functions deploy` in `/permissions`.
+- All migrations through Phase 16e are applied (the five Phase 16 migrations pushed 2026-10-05, after #37–#39 merged).
+- Secrets set: the three Plaid secrets, `JEV_API_KEY`, and (2026-10-05) `CRON_SECRET` with the Vault
+  `cron_secret` and `project_url`. The hourly `plan-enforcer` run is live. Its first dry run judged 2
+  users and would archive nothing. RevenueCat secrets (`REVENUECAT_SECRET_KEY`, `REVENUECAT_WEBHOOK_SECRET`):
+  not verified from the repo; check `secrets list`.
+- All 14 functions are deployed (2026-10-05), everything except `plaid-sandbox`, including the new
+  `two-factor` (v1). `plaid-webhook`, `plan-enforcer` and `revenuecat-webhook` run with `verify_jwt = false`
+  and check their own secret.
+  - Claude's auto mode blocks production deploys, pushes and queries unless Pedro allows them in `/permissions`; otherwise Pedro runs the command and Claude verifies with `db push --dry-run` and `functions list`.
+- **Still outside the repo, per project (dev and production):** Auth password policy (12+, lower, upper, digits, symbols), Email OTP Length 8 (`CODE_LENGTH`), the Magic Link template showing `{{ .Token }}`, and SMTP (Phase 16e).
 - Pedro is signed up. His email was confirmed by SQL: the confirmation email arrived without a usable link.
 - First real bank: Bread Savings, active, synced.
 
