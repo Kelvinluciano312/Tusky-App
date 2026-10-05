@@ -317,7 +317,7 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     at Plaid if a race tipped the plan over: only the bank past the limit in link order goes.
   - `scripts/plan-check.sql` proves the resolver on dev. Spec:
     `docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md`.
-  - **Lifecycle (14b).** `plan-enforcer` runs daily (pg_cron → pg_net, 09:00 UTC) and is public, so it
+  - **Lifecycle (14b).** `plan-enforcer` runs hourly since 16a (pg_cron → pg_net, minute 0) and is public, so it
     checks `x-cron-secret` against `CRON_SECRET` first. Vault holds `cron_secret` and `project_url`
     per project; without them the job does nothing. Free archives every bank at once; a smaller plan
     opens a 7-day window (`subscriptions.over_limit_since`), then archives the newest past the
@@ -360,8 +360,11 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     everyone again; a newer acceptance closes the older row.
   - **Crowd labels are on for new accounts**: `handle_new_user` inserts the consent. Onboarding and
     Account & privacy both show the switch.
-  - **Password rules** (15b): 10+ characters, a letter, a digit, not the email's name
-    (`lib/password.ts`). The hosted projects enforce length and letters+digits in the Auth dashboard.
+  - **Password rules** (15b, 16c): 12+ characters, a lowercase letter, an uppercase letter, a digit, a
+    symbol, not the email's name (`lib/password.ts`). Sign-up and the password sheet ask twice
+    (`passwordsMatch`). The hosted projects enforce length and `lower_upper_letters_digits_symbols` in
+    the Auth dashboard (`config.toml` is only the local copy). Existing users keep signing in; the
+    rule applies on their next change.
 - **Recurring → calendar** (15g). Tapping a recurring row offers "Add to calendar", which opens the
   phone's own new-event screen through `createEventInCalendarAsync` from `expo-calendar/legacy`
   (SDK 57 made the root export throw). It needs no calendar permission, so the config plugin is left

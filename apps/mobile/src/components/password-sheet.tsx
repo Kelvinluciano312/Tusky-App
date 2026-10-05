@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { PASSWORD_MIN, passwordOk } from '@/lib/password';
+import { PASSWORD_MIN, passwordOk, passwordsMatch } from '@/lib/password';
 
 type Props = {
   visible: boolean;
@@ -25,6 +25,7 @@ export function PasswordSheet({ visible, email, isSaving, error, onSave, onClose
   const insets = useSafeAreaInsets();
   // Empty on each opening; the screen keys this sheet by visibility.
   const [value, setValue] = useState('');
+  const [confirm, setConfirm] = useState('');
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -51,7 +52,15 @@ export function PasswordSheet({ visible, email, isSaving, error, onSave, onClose
             placeholder={`At least ${PASSWORD_MIN} characters`}
             autoFocus
           />
-          <PasswordChecklist password={value} email={email} />
+          <TextField
+            label="Confirm password"
+            value={confirm}
+            onChangeText={setConfirm}
+            password
+            autoComplete="new-password"
+            placeholder="Type it again"
+          />
+          <PasswordChecklist password={value} email={email} confirm={confirm} />
           {error ? (
             <AppText variant="caption" tone="negative">
               {error}
@@ -60,7 +69,7 @@ export function PasswordSheet({ visible, email, isSaving, error, onSave, onClose
           <Button
             title="Save password"
             loading={isSaving}
-            disabled={!passwordOk(value, email)}
+            disabled={!passwordOk(value, email) || !passwordsMatch(value, confirm)}
             onPress={() => onSave(value)}
           />
         </View>
