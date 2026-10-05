@@ -394,6 +394,15 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   - Swipe right to accept, left to skip to the back; Undo reverses the last move.
   - The deck logic is pure (`deckReducer`/`topCard` in `lib/review.ts`); the gestures use Reanimated 4 and Gesture Handler (`GestureHandlerRootView` wraps the root layout).
   - Write shared values with `.set()` and read them with `.get()`, never `.value`: the React Compiler lint rejects `.value` writes.
+- **Review window (16b).** Only the last two weeks go to review. A row sync inserts dated before its
+  Item's `created_at` minus `REVIEW_WINDOW_DAYS` (14) gets `reviewed_at = now(), auto_reviewed = true`
+  (`reviewCutoff`, `autoReviewIds` in `_shared/review.ts`; one chunked update right after the upsert,
+  never in its payload). Keyed on the date, not "first sync", because Plaid delivers history in stages;
+  only truly new posted rows (no row of their own, no pending predecessor) qualify. `auto_reviewed` is
+  server-only and keeps such rows out of `merchant_labels`' accepted guesses (a guess nobody looked at must
+  not teach), and `ag_transactions_clear_auto_reviewed` clears it when `reviewed_at` goes back to null (a
+  question requeue), so a later human review counts. Crowd contributions need `auth.uid()`, so a system
+  review never contributes.
 - Recurring streams are derived: detection (`_shared/recurring.ts`) runs at the end of every sync and
   owns every column except `dismissed`, which only the user writes. Never add `dismissed` to its
   upsert payload.
