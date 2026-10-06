@@ -22,6 +22,7 @@ import { communityAnswers, communityCategory, crowdMerchants, type Tally } from 
 import { applyCustom, askCustom, type CatRow, type CustomRow, type CustomVerdict, planCustom } from './custom-ai.ts';
 import { askJev, hasJevKey, JEV_CONCURRENCY, JEV_PASS_BUDGET_MS, type JevAsk, mapLimit } from './jev.ts';
 import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
+import { loggable } from './lib.ts';
 import { mergeReconnected } from './merge.ts';
 import { aiAllowed, loadPlan } from './plans.ts';
 import {
@@ -886,7 +887,7 @@ export async function syncItem(
   } catch (err) {
     if ((err as Error).message !== HANDLED) {
       const message = describeError(err);
-      console.error(`sync failed for item ${item.id}: ${message}`, err);
+      console.error(`sync failed for item ${item.id}: ${message}`, loggable(err));
       result = { ...base, status: 'error', message };
     }
   } finally {

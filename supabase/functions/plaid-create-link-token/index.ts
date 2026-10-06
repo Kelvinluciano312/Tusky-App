@@ -1,6 +1,6 @@
 import { CountryCode, Products } from 'npm:plaid@30';
 
-import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, getWebhookUrl, jsonResponse, requireSecondStep } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, getWebhookUrl, jsonResponse, loggable, requireSecondStep } from '../_shared/lib.ts';
 import { canAddBank, historyDays, loadPlan, planLimitBody, type PlanState } from '../_shared/plans.ts';
 
 /** Optional body. With item_id, Link opens in update mode to repair that Item. */
@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
 
     return jsonResponse({ link_token: data.link_token, expiration: data.expiration, update_mode: accessToken !== null });
   } catch (err) {
-    console.error('linkTokenCreate failed', err);
+    console.error('linkTokenCreate failed', loggable(err));
     return jsonResponse({ error: 'Failed to create link token' }, 500);
   }
 });

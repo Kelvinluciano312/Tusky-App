@@ -2,7 +2,7 @@
 // config.toml, because Plaid holds no Supabase JWT. verifyPlaidWebhook is its
 // authentication — nothing below it runs for a request that fails it.
 
-import { getAdminClient, getPlaidClient, jsonResponse } from '../_shared/lib.ts';
+import { getAdminClient, getPlaidClient, jsonResponse, loggable } from '../_shared/lib.ts';
 import { loadSyncContext, syncItem } from '../_shared/sync.ts';
 import { classifyWebhook, type PlaidJwk, type PlaidWebhookBody, verifyPlaidWebhook } from '../_shared/webhook.ts';
 
@@ -40,7 +40,7 @@ async function getKey(kid: string): Promise<PlaidJwk | null> {
     return key;
   } catch (err) {
     missCache.set(kid, Date.now());
-    console.error(`webhook key ${kid} could not be fetched`, err);
+    console.error(`webhook key ${kid} could not be fetched`, loggable(err));
     return null;
   }
 }
@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
     (async () => {
       const result = await syncItem(await loadSyncContext(admin, plaid), item);
       console.log(`${tag}: item ${item.id} → ${JSON.stringify(result)}`);
-    })().catch((err) => console.error(`${tag}: background sync failed`, err)),
+    })().catch((err) => console.error(`${tag}: background sync failed`, loggable(err))),
   );
   return ok();
 });

@@ -3,7 +3,7 @@
 // everything. JWT-verified by default; the caller must own the Item.
 
 import { type DisconnectMode, disconnectItem } from '../_shared/connections.ts';
-import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, jsonResponse, requireSecondStep } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, jsonResponse, loggable, requireSecondStep } from '../_shared/lib.ts';
 
 type Body = { item_id?: unknown; mode?: unknown };
 
@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
     }
     return jsonResponse({ ok: true });
   } catch (err) {
-    console.error(`disconnect ${mode} failed for item ${itemId}`, err);
+    console.error(`disconnect ${mode} failed for item ${itemId}`, loggable(err));
     return jsonResponse({ error: 'Could not disconnect the bank' }, 500);
   }
 });

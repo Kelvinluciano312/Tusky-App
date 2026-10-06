@@ -1,6 +1,6 @@
 import { syncAccounts } from '../_shared/accounts.ts';
 import { isDuplicateLink, type LinkedAccount } from '../_shared/connections.ts';
-import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, getPlaidClient, jsonResponse, requireSecondStep } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, getPlaidClient, jsonResponse, loggable, requireSecondStep } from '../_shared/lib.ts';
 import { canAddBank, loadPlan, overLimit, pastLimit, planLimitBody } from '../_shared/plans.ts';
 
 type ExchangeBody = {
@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
 
     return jsonResponse({ item_id: item.id });
   } catch (err) {
-    console.error('exchange-token failed', err);
+    console.error('exchange-token failed', loggable(err));
     return jsonResponse({ error: 'Failed to connect bank' }, 500);
   }
 });

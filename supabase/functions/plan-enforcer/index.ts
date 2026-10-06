@@ -1,5 +1,5 @@
 import { runEnforcer, sameSecret } from '../_shared/enforce.ts';
-import { getAdminClient, getPlaidClient, jsonResponse } from '../_shared/lib.ts';
+import { getAdminClient, getPlaidClient, jsonResponse, loggable } from '../_shared/lib.ts';
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
 
@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
         const acted = reports.filter((r) => r.archive.length > 0 || r.overLimitSince !== null);
         console.log(`plan-enforcer: ${reports.length} judged, ${acted.length} acted`, JSON.stringify(acted));
       })
-      .catch((err) => console.error('plan-enforcer failed', err)),
+      .catch((err) => console.error('plan-enforcer failed', loggable(err))),
   );
   return jsonResponse({ accepted: true }, 202);
 });
