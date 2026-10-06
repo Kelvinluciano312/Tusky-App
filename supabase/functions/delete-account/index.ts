@@ -2,7 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 import { deleteAccount } from '../_shared/account.ts';
 import { disconnectItem } from '../_shared/connections.ts';
-import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, jsonResponse, requireSecondStep } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, jsonResponse, loggable, requireSecondStep } from '../_shared/lib.ts';
 import { forgetRevenueCatUser } from '../_shared/revenuecat.ts';
 
 /**
@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
     console.log(`delete-account: deleted ${user.id}`);
     return jsonResponse({ deleted: true });
   } catch (err) {
-    console.error(`delete-account failed for ${user.id}`, err);
+    console.error(`delete-account failed for ${user.id}`, loggable(err));
     return jsonResponse({ error: 'delete_failed' }, 500);
   }
 });

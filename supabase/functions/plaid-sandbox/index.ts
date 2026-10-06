@@ -9,7 +9,7 @@
 
 import { SandboxItemFireWebhookRequestWebhookCodeEnum } from 'npm:plaid@30';
 
-import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, getWebhookUrl, jsonResponse, requireSecondStep } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, getWebhookUrl, jsonResponse, loggable, requireSecondStep } from '../_shared/lib.ts';
 
 type Body = { item_id?: string; action?: 'reset_login' | 'fire_webhook' };
 
@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
     }
     return jsonResponse({ ok: true });
   } catch (err) {
-    console.error(`sandbox ${body.action} failed`, err);
+    console.error(`sandbox ${body.action} failed`, loggable(err));
     return jsonResponse({ error: `${body.action} failed` }, 500);
   }
 });
