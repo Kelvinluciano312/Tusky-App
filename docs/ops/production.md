@@ -44,7 +44,7 @@ S=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('he
 npx -y supabase@2.118.0 db query --linked --project-ref awiwcgrisyzimzxgddxu "select vault.create_secret('https://awiwcgrisyzimzxgddxu.supabase.co', 'project_url', 'This project''s URL, for cron jobs (Phase 14b)')"
 ```
 
-**RevenueCat (Phase 14c).** Production gets its own webhook in the same RevenueCat project, limited to the Play app, pointing at `https://awiwcgrisyzimzxgddxu.supabase.co/functions/v1/revenuecat-webhook` with its own Authorization value. Set `REVENUECAT_SECRET_KEY` (RevenueCat's v1 secret key) and `REVENUECAT_WEBHOOK_SECRET` (that Authorization value) with `secrets set --project-ref awiwcgrisyzimzxgddxu`, one at a time, never printed. Without the webhook secret every webhook is refused, which is the safe default. Store builds carry `EXPO_PUBLIC_PROD_REVENUECAT_KEY` (the `goog_` key) in the EAS `production` environment, so internal testers buy through Play's license testing (`docs/ops/release.md`). Production never accepts Test Store purchases: that needs `PLAID_ENV=sandbox`.
+**RevenueCat (Phase 14c).** Production gets its own webhook in the same RevenueCat project (`Tusky production`; the one named `Tusky` is dev's), limited to the Play app, pointing at `https://awiwcgrisyzimzxgddxu.supabase.co/functions/v1/revenuecat-webhook` with its own Authorization value. Set `REVENUECAT_SECRET_KEY` (RevenueCat's v1 secret key) and `REVENUECAT_WEBHOOK_SECRET` (that Authorization value) with `secrets set --project-ref awiwcgrisyzimzxgddxu`, one at a time, never printed. The Authorization value is a random string made for this (`openssl rand -hex 32`), pasted bare into RevenueCat: the function compares the whole header, so a `Bearer ` prefix fails with 401. Without the webhook secret every webhook is refused, which is the safe default. Store builds carry `EXPO_PUBLIC_PROD_REVENUECAT_KEY` (the `goog_` key) in the EAS `production` environment, so internal testers buy through Play's license testing (`docs/ops/release.md`). Production never accepts Test Store purchases: that needs `PLAID_ENV=sandbox`.
 
 ## Settings outside the repo
 
@@ -95,13 +95,13 @@ Restart Metro after editing `.env`.
   - expo-router treats the return intent as a deep link to an unknown route.
 
   Diagnose with `adb logcat` on the phone (wireless adb, same Wi-Fi) during an OAuth link.
-- **The RevenueCat webhook has not been seen to fire.** The purchase path itself is proven
-  (2026-10-06): with Pedro's row set to a trial, Restore purchases ran `plan-refresh`, which rewrote it
-  to `tusk`, store `play`, ending when the paid period does. So `REVENUECAT_SECRET_KEY` is right. But
-  production logged no call to `revenuecat-webhook` in the 24 hours in which Pedro cancelled that
-  subscription. The webhook is what extends a renewing user's end date; without it a row runs out at
-  the end of the first period unless the user taps Restore. Check the production webhook and its
-  deliveries in RevenueCat (Integrations → Webhooks). Pedro's row is a comp again.
+- **No real RevenueCat event has reached production yet.** Production had no webhook until 2026-10-06:
+  RevenueCat's only one pointed at dev, so a renewal would never have extended a row. `Tusky production`
+  now exists (Play app, Production only, all events) with a fresh random `REVENUECAT_WEBHOOK_SECRET`,
+  and RevenueCat's test event got 200 and logged `no_row` for its made-up user, so the secret matches.
+  The purchase path is proven separately: with Pedro's row set to a trial, Restore purchases ran
+  `plan-refresh`, which rewrote it to `tusk`, store `play`, ending when the paid period does (his row
+  is a comp again). What is left is to see a real renewal or cancellation arrive and write a row.
 - **Email can land in spam.** The sending domain is new. The first confirmation email went to Gmail's
   spam folder while its link still pointed at `localhost`; later ones reached the inbox, in a thread
   with one already marked not spam, so that is not clean proof. Watch the first outside sign-ups.
