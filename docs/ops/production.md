@@ -95,11 +95,13 @@ Restart Metro after editing `.env`.
   - expo-router treats the return intent as a deep link to an unknown route.
 
   Diagnose with `adb logcat` on the phone (wireless adb, same Wi-Fi) during an OAuth link.
-- **No purchase has been seen to write a store row.** Pedro bought Tusk Monthly through Play on
-  2026-10-02 (a real charge, renewing monthly) and `plan-refresh` ran, but his row is a comp, which
-  `syncSubscriber` never changes, so the row proves nothing either way. The first purchase by an
-  account that is not comped is the proof: its row should leave store `trial`. Also check the
-  production webhook's deliveries in RevenueCat.
+- **The RevenueCat webhook has not been seen to fire.** The purchase path itself is proven
+  (2026-10-06): with Pedro's row set to a trial, Restore purchases ran `plan-refresh`, which rewrote it
+  to `tusk`, store `play`, ending when the paid period does. So `REVENUECAT_SECRET_KEY` is right. But
+  production logged no call to `revenuecat-webhook` in the 24 hours in which Pedro cancelled that
+  subscription. The webhook is what extends a renewing user's end date; without it a row runs out at
+  the end of the first period unless the user taps Restore. Check the production webhook and its
+  deliveries in RevenueCat (Integrations → Webhooks). Pedro's row is a comp again.
 - **Email can land in spam.** The sending domain is new. The first confirmation email went to Gmail's
   spam folder while its link still pointed at `localhost`; later ones reached the inbox, in a thread
   with one already marked not spam, so that is not clean proof. Watch the first outside sign-ups.
