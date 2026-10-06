@@ -48,8 +48,13 @@ npx -y supabase@2.118.0 db query --linked --project-ref awiwcgrisyzimzxgddxu "se
 
 ## Settings outside the repo
 
-- **Auth:** email confirmation is OFF while only Pedro and Kelvyn use it. Turn it ON before anyone else gets access.
-- **Plaid dashboard (Kelvyn):** `com.ouroborosstudios.tusky` is under Developers → API → Allowed Android package names. `plaid-create-link-token` sends this package name for native Android Link. Big OAuth banks wait on Plaid's production approval.
+These are set per project, in dashboards. Dev and production both have them (2026-10-06).
+
+- **Email (Resend).** Auth → SMTP Settings uses Resend (`smtp.resend.com`, port 465, user `resend`, the API key as password), sending as `noreply@studiosouroboros.com`. The domain is verified in Resend; its DKIM, SPF and DMARC records live in Cloudflare DNS, all DNS only. Supabase's own sender delivers only to the org's team members, so nobody else can sign up without this.
+- **Auth → Sign In / Providers → Email:** email confirmation ON, minimum password length 12, requirements "Lowercase, uppercase letters, digits and symbols", Email OTP length 8 (`CODE_LENGTH` in the app must match).
+- **Auth → Emails → Magic link or OTP:** the body shows `{{ .Token }}` and no link. The subject carries no code (it would show on a lock screen).
+- **Auth → URL Configuration → Site URL:** `https://studiosouroboros.com/tusky/confirmed.html`. A confirmation link verifies at Supabase and then lands there. The default, `http://localhost:3000`, is a dead page and reads as spam. The page is in the Ouroboros-Inc repo (`public/tusky/confirmed.html`); it shows a "link didn't work" message when the address carries an error.
+- **Plaid dashboard: allowed Android package names are per Plaid team.** `com.ouroborosstudios.tusky` must be under Developers → API → Allowed Android package names on the team that owns the keys in use: Kelvyn's team for production, Pedro's individual account for dev's Sandbox keys. Without it `/link/token/create` answers 400 `INVALID_FIELD` and `plaid-create-link-token` returns 500. Big OAuth banks wait on Plaid's production approval.
 - **Backups:** the Free plan has none. Optional: a periodic `db dump` to a folder outside the repo.
 
 ## The app
@@ -61,19 +66,26 @@ npx -y supabase@2.118.0 db query --linked --project-ref awiwcgrisyzimzxgddxu "se
 
 Restart Metro after editing `.env`.
 
-## State (2026-10-05)
+## State (2026-10-06)
 
 - All migrations through Phase 16e are applied (the five Phase 16 migrations pushed 2026-10-05, after #37–#39 merged).
-- Secrets set: the three Plaid secrets, `JEV_API_KEY`, and (2026-10-05) `CRON_SECRET` with the Vault
-  `cron_secret` and `project_url`. The hourly `plan-enforcer` run is live. Its first dry run judged 2
-  users and would archive nothing. RevenueCat secrets (`REVENUECAT_SECRET_KEY`, `REVENUECAT_WEBHOOK_SECRET`):
-  not verified from the repo; check `secrets list`.
-- All 14 functions are deployed (2026-10-05), everything except `plaid-sandbox`, including the new
-  `two-factor` (v1). `plaid-webhook`, `plan-enforcer` and `revenuecat-webhook` run with `verify_jwt = false`
-  and check their own secret.
+- Secrets set: the three Plaid secrets, `JEV_API_KEY`, `CRON_SECRET` (with the Vault `cron_secret` and
+  `project_url`), `REVENUECAT_SECRET_KEY` and `REVENUECAT_WEBHOOK_SECRET` (`secrets list`, 2026-10-06:
+  names only, so present but not proven correct).
+- The hourly `plan-enforcer` run is live: every hour it answers 202 and logs `2 judged, 0 acted`.
+- All 14 functions are deployed (2026-10-06, from master at #41), everything except `plaid-sandbox`.
+  `plaid-webhook`, `plan-enforcer` and `revenuecat-webhook` run with `verify_jwt = false` and check
+  their own secret.
   - Claude's auto mode blocks production deploys, pushes and queries unless Pedro allows them in `/permissions`; otherwise Pedro runs the command and Claude verifies with `db push --dry-run` and `functions list`.
-- **Still outside the repo, per project (dev and production):** Auth password policy (12+, lower, upper, digits, symbols), Email OTP Length 8 (`CODE_LENGTH`), the Magic Link template showing `{{ .Token }}`, and SMTP (Phase 16e).
-- Pedro is signed up. His email was confirmed by SQL: the confirmation email arrived without a usable link.
+- **Plaid errors no longer reach the logs whole (#41).** Before it, a failed Plaid call logged the SDK
+  error with its request, `PLAID-SECRET` header included. Production's logs showed no such line in the
+  24 hours before the fix, which is as far back as the log query reaches.
+- **Email and Auth settings are in place and tested (2026-10-06)**, see "Settings outside the repo". On
+  production, through the Auth API: three weak passwords were refused, a sign-up sent a confirmation
+  email whose link redirects to the confirmed page, and a sign-in code arrived with 8 digits. Both came
+  from `noreply@studiosouroboros.com`.
+- Four accounts: Pedro (`tusk`, comp, one bank), and three on the signup trial (one with a bank, trial
+  ends 2026-11-01; it will buy a plan, not be comped).
 - First real bank: Bread Savings, active, synced.
 
 ## Known issues
@@ -83,5 +95,13 @@ Restart Metro after editing `.env`.
   - expo-router treats the return intent as a deep link to an unknown route.
 
   Diagnose with `adb logcat` on the phone (wireless adb, same Wi-Fi) during an OAuth link.
-- **The confirmation email has no usable link.** Check Authentication → Email Templates (Confirm signup should contain `{{ .ConfirmationURL }}`) and the Site URL before Kelvyn signs up. Until then, confirm by SQL: `update auth.users set email_confirmed_at = now() where email = '…' and email_confirmed_at is null;`.
-- **The default Supabase email only delivers to the org's team members.** Custom SMTP is needed before anyone else joins.
+- **No purchase has been seen to write a store row.** Pedro bought Tusk Monthly through Play on
+  2026-10-02 (a real charge, renewing monthly) and `plan-refresh` ran, but his row is a comp, which
+  `syncSubscriber` never changes, so the row proves nothing either way. The first purchase by an
+  account that is not comped is the proof: its row should leave store `trial`. Also check the
+  production webhook's deliveries in RevenueCat.
+- **Email can land in spam.** The sending domain is new. The first confirmation email went to Gmail's
+  spam folder while its link still pointed at `localhost`; later ones reached the inbox, in a thread
+  with one already marked not spam, so that is not clean proof. Watch the first outside sign-ups.
+- **Gmail folds a repeat email.** A second identical email in the same thread shows as "Show quoted
+  text", link hidden. It only affects someone who signs up or asks for a link twice.
