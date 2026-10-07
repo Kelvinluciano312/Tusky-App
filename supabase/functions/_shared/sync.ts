@@ -106,8 +106,29 @@ export async function loadCategoryMaps(
   return { categoryMap, detailedMap, fallbackId: fallback.id };
 }
 
-/** Ids per auto-review update (16b): the ids ride in the request URL. */
-const AUTO_REVIEW_CHUNK = 100;
+/** Ids per `.in()` call (reads, deletes, 16b updates): the ids ride in the request URL. */
+const ID_CHUNK = 100;
+
+/**
+ * The rows already stored for these Plaid transaction ids, by id. Throws on a
+ * failed chunk: a silent miss would make every row look new, and the upsert
+ * would then write `category_is_manual: false` over hand-picked categories.
+ */
+export async function loadExistingRows(
+  admin: SupabaseClient,
+  ids: string[],
+): Promise<Map<string, ExistingRow>> {
+  const byId = new Map<string, ExistingRow>();
+  for (let i = 0; i < ids.length; i += ID_CHUNK) {
+    const { data, error } = await admin
+      .from('transactions')
+      .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split, corrected_from, category_source')
+      .in('plaid_transaction_id', ids.slice(i, i + ID_CHUNK));
+    if (error) throw error;
+    for (const r of (data ?? []) as ExistingRow[]) byId.set(r.plaid_transaction_id, r);
+  }
+  return byId;
+}
 
 /** Merchant keys per labels query: keeps the PostgREST URL short. */
 /**
@@ -662,13 +683,9 @@ export async function syncItem(
       const ids = [...new Set(upserts.flatMap((t) =>
         t.pending_transaction_id ? [t.transaction_id, t.pending_transaction_id] : [t.transaction_id]
       ))];
-      const { data: existingRows } = await admin
-        .from('transactions')
-        .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split, corrected_from, category_source')
-        .in('plaid_transaction_id', ids);
       const { existingFor, notes: carriedNotes, payers: carriedPayers } = carryForward(
         upserts,
-        new Map(((existingRows ?? []) as ExistingRow[]).map((r) => [r.plaid_transaction_id, r])),
+        await loadExistingRows(admin, ids),
       );
 
       const rows = upserts
@@ -740,11 +757,11 @@ export async function syncItem(
       // predecessor. Dated, not "first sync": Plaid delivers history in stages.
       const cutoff = reviewCutoff(claimed.created_at);
       const autoIds = autoReviewIds(rows, existingFor, cutoff);
-      for (let i = 0; i < autoIds.length; i += AUTO_REVIEW_CHUNK) {
+      for (let i = 0; i < autoIds.length; i += ID_CHUNK) {
         const { error } = await admin
           .from('transactions')
           .update({ reviewed_at: new Date().toISOString(), auto_reviewed: true })
-          .in('plaid_transaction_id', autoIds.slice(i, i + AUTO_REVIEW_CHUNK))
+          .in('plaid_transaction_id', autoIds.slice(i, i + ID_CHUNK))
           .is('reviewed_at', null);
         if (error) throw error;
       }
@@ -779,10 +796,13 @@ export async function syncItem(
     }
 
     if (removed.length > 0) {
-      const { error } = await admin
-        .from('transactions').delete()
-        .in('plaid_transaction_id', removed.map((r) => r.transaction_id));
-      if (error) throw error;
+      const removedIds = removed.map((r) => r.transaction_id);
+      for (let i = 0; i < removedIds.length; i += ID_CHUNK) {
+        const { error } = await admin
+          .from('transactions').delete()
+          .in('plaid_transaction_id', removedIds.slice(i, i + ID_CHUNK));
+        if (error) throw error;
+      }
     }
 
     // Cursor last: a crash before here means the next run re-applies the same

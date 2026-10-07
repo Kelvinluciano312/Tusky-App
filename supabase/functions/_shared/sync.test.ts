@@ -1,9 +1,9 @@
-import { assertEquals } from 'jsr:@std/assert';
+import { assertEquals, assertRejects } from 'jsr:@std/assert';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
 import type { AiCategory, AiRow } from './ai.ts';
 import type { JevAsk, JevResponse } from './jev.ts';
-import { jevEnabled, loadCommunity, runAiPass, runTriagePass } from './sync.ts';
+import { jevEnabled, loadCommunity, loadExistingRows, runAiPass, runTriagePass } from './sync.ts';
 
 // A fake PostgREST client. Every builder method records itself and returns the
 // builder; awaiting the chain pops the next planned response for
@@ -318,6 +318,27 @@ Deno.test('loadCommunity applies the threshold to what the database tallied', as
     }),
   } as unknown as SupabaseClient;
   assertEquals((await loadCommunity(admin, ['k:shell'])).get('k:shell|out|2'), 'gas');
+});
+
+const stored = (id: string) => ({ plaid_transaction_id: id, category_id: 'c', category_is_manual: true });
+
+Deno.test('loadExistingRows: reads in chunks and merges them', async () => {
+  const ids = Array.from({ length: 150 }, (_, i) => `t${i}`);
+  const { admin, of } = fakeAdmin({
+    'transactions:select': [{ data: [stored('t0')] }, { data: [stored('t149')] }],
+  });
+  const map = await loadExistingRows(admin, ids);
+  assertEquals([...map.keys()], ['t0', 't149']);
+  const chunks = of('transactions', 'select').map((c) => (c.filters[0][2] as string[]).length);
+  assertEquals(chunks, [100, 50]);
+});
+
+Deno.test('loadExistingRows: a failed chunk throws instead of looking like no rows', async () => {
+  const ids = Array.from({ length: 150 }, (_, i) => `t${i}`);
+  const { admin } = fakeAdmin({
+    'transactions:select': [{ data: [stored('t0')] }, { data: null, error: new Error('boom') }],
+  });
+  await assertRejects(() => loadExistingRows(admin, ids), Error, 'boom');
 });
 
 // --- Triage (12d) ------------------------------------------------------------
