@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
     });
     const { data, error } = await probe.auth.verifyOtp({ email: user.email, token: code, type: 'email' });
     if (error || !data.session) {
-      const failure = verifyFailure(error?.status);
+      const failure = verifyFailure(error?.status, error?.code);
       if (failure === 'wrong_code') return jsonResponse({ error: 'wrong_code' }, 403);
       // The code was never judged: give the attempt back.
       await refund();

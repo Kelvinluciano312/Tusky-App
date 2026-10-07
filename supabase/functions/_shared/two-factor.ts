@@ -55,10 +55,22 @@ export function markableSession(claims: Record<string, unknown> | null): { sessi
   return { sessionId };
 }
 
-/** What a failed verifyOtp means. 429 is the vendor's own limit; other 4xx are a wrong or expired code; the rest is not the user's fault. */
-export function verifyFailure(status: number | undefined): 'wrong_code' | 'too_many_attempts' | 'unavailable' {
+/**
+ * The Auth error codes verifyOtp answers for a code that is wrong or expired.
+ * Not yet confirmed against the hosted dev project (expected: 403 otp_expired).
+ * A captcha or provider error has another code and must not burn an attempt.
+ */
+const WRONG_CODE_ERRORS = new Set(['otp_expired', 'invalid_credentials']);
+
+/** What a failed verifyOtp means. 429 is the vendor's own limit; a known wrong-or-expired code is a wrong code; the rest is not the user's fault. */
+export function verifyFailure(
+  status: number | undefined,
+  code?: string,
+): 'wrong_code' | 'too_many_attempts' | 'unavailable' {
   if (status === 429) return 'too_many_attempts';
-  if (typeof status === 'number' && status >= 400 && status < 500) return 'wrong_code';
+  if (typeof status === 'number' && status >= 400 && status < 500 && code !== undefined && WRONG_CODE_ERRORS.has(code)) {
+    return 'wrong_code';
+  }
   return 'unavailable';
 }
 

@@ -72,10 +72,15 @@ Deno.test('markableSession: no session id, no mark', () => {
 });
 
 Deno.test('verifyFailure: wrong codes, vendor limits and outages are told apart', () => {
-  assertEquals(verifyFailure(403), 'wrong_code');
-  assertEquals(verifyFailure(422), 'wrong_code');
-  assertEquals(verifyFailure(400), 'wrong_code');
+  assertEquals(verifyFailure(403, 'otp_expired'), 'wrong_code');
+  assertEquals(verifyFailure(400, 'invalid_credentials'), 'wrong_code');
+  // A config or provider error is not a wrong code: it must not burn an attempt.
+  assertEquals(verifyFailure(400, 'captcha_failed'), 'unavailable');
+  assertEquals(verifyFailure(422, 'validation_failed'), 'unavailable');
+  assertEquals(verifyFailure(403), 'unavailable');
+  assertEquals(verifyFailure(403, 'otp_disabled'), 'unavailable');
   assertEquals(verifyFailure(429), 'too_many_attempts');
+  assertEquals(verifyFailure(429, 'over_request_rate_limit'), 'too_many_attempts');
   assertEquals(verifyFailure(500), 'unavailable');
   assertEquals(verifyFailure(502), 'unavailable');
   assertEquals(verifyFailure(0), 'unavailable');
