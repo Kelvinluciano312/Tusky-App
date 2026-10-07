@@ -471,6 +471,14 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   without equivalent verification. It replies 200 at once and syncs in `EdgeRuntime.waitUntil`
   (Plaid abandons a delivery after 10s and retries any non-200 for 24h). The sync itself is
   `syncItem` in `_shared/sync.ts`, shared with `plaid-sync-transactions`.
+- **Plaid troubleshooting log** (`plaid_events`, server-only). Plaid support asks for a `request_id`,
+  Plaid's `item_id` and Link's `link_session_id`, and Free-plan function logs last about a day, so
+  they are kept in a table: 90 days (pg_cron `plaid-events-prune`), deleted with the user. Every write
+  goes through `recordPlaidEvent` (`_shared/plaid-log.ts`), which never throws: a lost log row must
+  never fail a sync, a link or a disconnect. `plaidErrorFields` reads only `response.data` and the
+  message, never the request. `item_id` has no foreign key on purpose, so the log outlives a deleted
+  bank. The app reports Link exits to `plaid-link-event` (30 per user per hour) and sends
+  `link_session_id` with the token exchange. A new Plaid call that can fail should record an event.
 - Webhook URLs: new Items get one on `linkTokenCreate`. Items linked before 2026-09-22 have none,
   and Plaid then silently sends nothing — either dev action below registers it.
 - `plaid-sandbox` is **dev/test only**, with two actions: `reset_login` forces a real

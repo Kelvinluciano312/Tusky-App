@@ -94,6 +94,29 @@ Restart Metro after editing `.env`.
   ends 2026-11-01; it will buy a plan, not be comped).
 - First real bank: Bread Savings, active, synced.
 
+## Reading the Plaid log
+
+Dashboard → Table editor → `plaid_events`, newest first, or SQL:
+
+    select created_at, event, error_code, error_message, request_id, plaid_item_id, link_session_id
+    from plaid_events where user_id = '<user id>' order by id desc limit 20;
+
+For a Plaid support ticket give `request_id`, `plaid_item_id` (their item_id) and, for a failed
+connection, `link_session_id`. Plaid's Item Debugger takes the same item_id. Rows last 90 days.
+Function logs (Edge Functions → Logs) carry the same request ids but only for about a day on the
+Free plan.
+
+## Suspending a user
+
+Dashboard → Authentication → Users → the user's menu → **Ban user**, with a duration. A banned user
+cannot sign in or refresh a session; a session already open ends when its token expires, within the
+hour. Lift it from the same menu.
+
+What a ban does NOT do: their banks keep syncing through Plaid's webhooks, Plaid keeps billing for
+them, and a store subscription keeps renewing. Stopping those needs code that does not exist yet
+(a server-side suspend that removes their Items at Plaid). Until then, for abuse that costs money,
+ask Pedro before touching their banks by hand.
+
 ## Known issues
 
 - **OAuth banks can return to a white screen (Android).** When Link hands off to the browser (the bank's own login) and comes back, Tusky showed a blank white screen, and no Item was saved. A second attempt connected at once, likely because the browser still held the approval and skipped the hop. Metro logged several fresh bundle loads during the attempt, which hints the app was restarted. Suspects:
