@@ -12,6 +12,9 @@ import {
   resendLabel,
   resendSecondsLeft,
   sanitizeCode,
+  sendFailure,
+  RATE_LIMITED_MESSAGE,
+  SEND_FAILED_MESSAGE,
   WRONG_CODE_MESSAGE,
 } from './two-factor.ts';
 
@@ -23,6 +26,16 @@ test('the second step is for opted-in users whose session the server has not ver
   assert.equal(needsSecondStep({ two_factor: false }, false), false);
   assert.equal(needsSecondStep({ two_factor: null }, false), false);
   assert.equal(needsSecondStep(null, false), false);
+});
+
+test('a rate-limited send still counts as sent; a real failure does not', () => {
+  assert.deepEqual(sendFailure({ status: 429, message: 'x' }), { message: RATE_LIMITED_MESSAGE, sent: true });
+  assert.deepEqual(sendFailure({ message: 'For security purposes, you can only request this after 59 seconds' }), {
+    message: RATE_LIMITED_MESSAGE,
+    sent: true,
+  });
+  assert.deepEqual(sendFailure({ status: 500, message: 'boom' }), { message: SEND_FAILED_MESSAGE, sent: false });
+  assert.deepEqual(sendFailure({}), { message: SEND_FAILED_MESSAGE, sent: false });
 });
 
 test('each refusal of the two-factor function has words a person can read', () => {

@@ -72,6 +72,21 @@ export function codeFailureMessage(code: string | undefined): string {
   }
 }
 
+export const RATE_LIMITED_MESSAGE = 'A code was sent a moment ago. Wait a minute, then ask for another.';
+export const SEND_FAILED_MESSAGE = 'We could not send a code. Check your connection and try again.';
+
+/**
+ * What the screen shows when asking for a code failed. `sent` is true when a
+ * code did go out a moment ago (the per-address rate limit), so the resend
+ * countdown stays; false for a real failure, which must not start one.
+ */
+export function sendFailure(error: { status?: number; message?: string }): { message: string; sent: boolean } {
+  if (error.status === 429 || /rate limit|security purposes/i.test(error.message ?? '')) {
+    return { message: RATE_LIMITED_MESSAGE, sent: true };
+  }
+  return { message: SEND_FAILED_MESSAGE, sent: false };
+}
+
 /** An Edge Function's 403 for an unverified session on a two-step account (`requireSecondStep`). */
 export const TWO_FACTOR_REQUIRED = 'two_factor_required';
 
