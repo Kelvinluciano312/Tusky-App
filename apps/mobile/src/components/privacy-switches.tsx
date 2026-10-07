@@ -1,5 +1,5 @@
 import { ShieldCheck, Sparkles, UsersRound } from 'lucide-react-native';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import { Switch, View } from 'react-native';
 import { dialog } from '@/components/ui/dialog';
 
@@ -103,6 +103,8 @@ export function TwoFactorSwitch() {
   const [target, setTarget] = useState<boolean | null>(null);
   const [sentAt, setSentAt] = useState<number | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  // The server accepted the code: a retry after a failed switch must not spend it again.
+  const confirmed = useRef(false);
 
   const send = async () => {
     setSentAt(Date.now());
@@ -110,6 +112,7 @@ export function TwoFactorSwitch() {
   };
 
   const open = (next: boolean) => {
+    confirmed.current = false;
     setTarget(next);
     setSentAt(null);
     setSendError(null);
@@ -117,8 +120,11 @@ export function TwoFactorSwitch() {
   };
 
   const submit = async (code: string): Promise<string | null> => {
-    const failure = await confirmLoginCode(code);
-    if (failure) return failure;
+    if (!confirmed.current) {
+      const failure = await confirmLoginCode(code);
+      if (failure) return failure;
+      confirmed.current = true;
+    }
     const next = target === true;
     try {
       await set.mutateAsync(next);
