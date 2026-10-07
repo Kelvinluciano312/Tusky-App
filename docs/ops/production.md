@@ -69,11 +69,17 @@ Restart Metro after editing `.env`.
 ## State (2026-10-06)
 
 - All migrations through Phase 16e are applied (the five Phase 16 migrations pushed 2026-10-05, after #37–#39 merged).
+  Since then, pushed 2026-10-06 after #45 and #46: `delete_personal_herd` (20261016120000) and the advisor fixes
+  (20261016130000: the category-map policy and three `transactions` indexes). `db push --dry-run` reports up to date.
 - Secrets set: the three Plaid secrets, `JEV_API_KEY`, `CRON_SECRET` (with the Vault `cron_secret` and
   `project_url`), `REVENUECAT_SECRET_KEY` and `REVENUECAT_WEBHOOK_SECRET` (`secrets list`, 2026-10-06:
   names only, so present but not proven correct).
 - The hourly `plan-enforcer` run is live: every hour it answers 202 and logs `2 judged, 0 acted`.
 - All 14 functions are deployed (2026-10-06, from master at #41), everything except `plaid-sandbox`.
+  Four were redeployed after #45 and #46: `delete-account`, `plaid-sync-transactions`, `plaid-webhook` and
+  `two-factor`. They are deployed but not yet exercised on production. `two-factor` counts only
+  `otp_expired` and `invalid_credentials` as a wrong code (confirmed on dev, not on production): any other
+  Auth error answers 502, so try one wrong code on a real two-step sign-in.
   `plaid-webhook`, `plan-enforcer` and `revenuecat-webhook` run with `verify_jwt = false` and check
   their own secret.
   - Claude's auto mode blocks production deploys, pushes and queries unless Pedro allows them in `/permissions`; otherwise Pedro runs the command and Claude verifies with `db push --dry-run` and `functions list`.
