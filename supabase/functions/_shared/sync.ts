@@ -22,7 +22,7 @@ import { communityAnswers, communityCategory, crowdMerchants, type Tally } from 
 import { applyCustom, askCustom, type CatRow, type CustomRow, type CustomVerdict, planCustom } from './custom-ai.ts';
 import { askJev, hasJevKey, JEV_CONCURRENCY, JEV_PASS_BUDGET_MS, type JevAsk, mapLimit } from './jev.ts';
 import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
-import { loggable } from './lib.ts';
+import { describeError, loggable } from './lib.ts';
 import { mergeReconnected } from './merge.ts';
 import { aiAllowed, loadPlan } from './plans.ts';
 import {
@@ -63,14 +63,6 @@ export type SyncContext = {
   /** Built-in categories recurring detection ignores (transfers, except card payments); syncItem adds the owner's custom transfers. */
   transferCategoryIds: string[];
 };
-
-/** Plaid SDK errors carry the useful detail on response.data. */
-export function describeError(err: unknown): string {
-  const data = (err as { response?: { data?: { error_code?: string; error_message?: string } } })
-    ?.response?.data;
-  if (data?.error_code) return `${data.error_code}: ${data.error_message ?? ''}`.trim();
-  return (err as Error)?.message ?? 'unknown error';
-}
 
 /** Marker so an already-recorded failure isn't recorded twice by the catch. */
 const HANDLED = '__handled__';
