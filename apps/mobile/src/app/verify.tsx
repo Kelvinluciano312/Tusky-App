@@ -8,6 +8,7 @@ import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Layout, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import type { FirstRunState } from '@/lib/first-run';
 import { confirmLoginCode, sendLoginCode } from '@/lib/login-code';
 import { useSession } from '@/lib/session';
 import { supabase } from '@/lib/supabase';
@@ -41,6 +42,8 @@ export default function VerifyScreen() {
   const [sentAt, setSentAt] = useState<number | null>(initial.at);
   const [sendError, setSendError] = useState<string | null>(null);
   const started = useRef(false);
+  // The server accepted the code: a retry after a failed refetch only refetches.
+  const confirmed = useRef(false);
 
   useEffect(() => {
     // The ref keeps StrictMode's second run from mailing two codes.
@@ -58,11 +61,19 @@ export default function VerifyScreen() {
   };
 
   const submit = async (code: string) => {
-    const failure = await confirmLoginCode(code);
-    if (failure) return failure;
-    lastSent.delete(email);
+    if (!confirmed.current) {
+      const failure = await confirmLoginCode(code);
+      if (failure) return failure;
+      confirmed.current = true;
+    }
     // The unverified session saw nothing; everything is fetched again, the gate's own answer included.
-    void queryClient.invalidateQueries();
+    await queryClient.invalidateQueries();
+    // If the gate's own read failed, the screen would stay on `verify` with the field busy for good.
+    const state = queryClient.getQueryData<FirstRunState>(['first-run', session?.user.id]);
+    if (state?.secondStepDone !== true) {
+      return 'Your code was accepted, but we could not open Tusky. Check your connection and try again.';
+    }
+    lastSent.delete(email);
     return null;
   };
 
