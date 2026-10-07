@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient, type User } from 'npm:@supabase/supabase-js@2';
 import { Configuration, PlaidApi, PlaidEnvironments } from 'npm:plaid@30';
 
-import { claimsOfToken, secondStepRequired, sessionIdOfClaims } from './two-factor.ts';
+import { claimsOfRequest, secondStepRequired, sessionIdOfClaims } from './two-factor.ts';
 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -68,8 +68,7 @@ export async function requireSecondStep(
   const { data, error } = await admin.from('profiles').select('two_factor').eq('user_id', userId).maybeSingle();
   if (error) return jsonResponse({ error: 'two_factor_check_failed' }, 500);
   if (data?.two_factor !== true) return null;
-  const token = (req.headers.get('Authorization') ?? '').slice('Bearer '.length);
-  const sessionId = sessionIdOfClaims(claimsOfToken(token));
+  const sessionId = sessionIdOfClaims(claimsOfRequest(req));
   let verified = false;
   if (sessionId) {
     const { data: row, error: rowError } = await admin

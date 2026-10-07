@@ -31,6 +31,12 @@ export function claimsOfToken(token: string): Record<string, unknown> | null {
   }
 }
 
+/** The claims of the request's bearer token (already validated by getAuthedUser); null when absent or unreadable. */
+export function claimsOfRequest(req: Request): Record<string, unknown> | null {
+  const header = req.headers.get('Authorization') ?? '';
+  return header.startsWith('Bearer ') ? claimsOfToken(header.slice('Bearer '.length)) : null;
+}
+
 /** The session the token belongs to; null when absent or not a uuid. */
 export function sessionIdOfClaims(claims: Record<string, unknown> | null): string | null {
   const id = claims?.session_id;

@@ -2,7 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 import { corsHeaders, getAdminClient, getAuthedUser, jsonResponse } from '../_shared/lib.ts';
 import {
-  claimsOfToken,
+  claimsOfRequest,
   markableSession,
   MAX_WRONG_CODES,
   MAX_WRONG_CODES_PER_USER,
@@ -30,8 +30,7 @@ Deno.serve(async (req) => {
   const user = await getAuthedUser(req, admin);
   if (!user || !user.email) return jsonResponse({ error: 'Unauthorized' }, 401);
 
-  const token = (req.headers.get('Authorization') ?? '').slice('Bearer '.length);
-  const mark = markableSession(claimsOfToken(token));
+  const mark = markableSession(claimsOfRequest(req));
   if (!mark) return jsonResponse({ error: 'password_session_required' }, 403);
 
   let code = '';

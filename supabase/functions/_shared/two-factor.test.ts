@@ -1,6 +1,7 @@
 import { assertEquals } from 'jsr:@std/assert';
 
 import {
+  claimsOfRequest,
   claimsOfToken,
   hasPasswordMethod,
   markableSession,
@@ -34,6 +35,14 @@ Deno.test('claimsOfToken: a malformed token has no claims', () => {
   for (const bad of ['', 'abc', 'a.b.c', 'a..c', 'a.%%%.c', `a.${btoa('[1]')}.c`, `a.${btoa('null')}.c`]) {
     assertEquals(claimsOfToken(bad), null);
   }
+});
+
+Deno.test('claimsOfRequest: reads the bearer token, and nothing else', () => {
+  const req = (auth?: string) => new Request('https://x.test', { headers: auth ? { Authorization: auth } : {} });
+  assertEquals(claimsOfRequest(req(`Bearer ${tokenWith({ session_id: SID })}`)), { session_id: SID });
+  assertEquals(claimsOfRequest(req()), null);
+  assertEquals(claimsOfRequest(req(tokenWith({ session_id: SID }))), null);
+  assertEquals(claimsOfRequest(req('Bearer junk')), null);
 });
 
 Deno.test('sessionIdOfClaims: only a uuid string counts', () => {
