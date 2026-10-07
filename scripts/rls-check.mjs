@@ -487,6 +487,19 @@ begin
   exception when insufficient_privilege then
     w := w || jsonb_build_object('read_community_labels', 'denied');
   end;
+  -- Plaid troubleshooting log: server-only, no reads and no writes.
+  begin
+    perform 1 from public.plaid_events limit 1;
+    w := w || jsonb_build_object('read_plaid_events', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('read_plaid_events', 'denied');
+  end;
+  begin
+    insert into public.plaid_events (event) values ('link_exit');
+    w := w || jsonb_build_object('insert_plaid_events', 'allowed');
+  exception when insufficient_privilege then
+    w := w || jsonb_build_object('insert_plaid_events', 'denied');
+  end;
   begin
     perform public.community_tallies(array['k:test']);
     w := w || jsonb_build_object('call_community_tallies', 'allowed');
@@ -711,6 +724,8 @@ const WRITE_EXPECT = {
   own_ai_switch: true,
   mates_ai_switch_rows: 0,
   read_community_labels: 'denied',
+  read_plaid_events: 'denied',
+  insert_plaid_events: 'denied',
   call_community_tallies: 'denied',
   insert_consent_directly: 'denied',
   mates_consents_visible: 0,

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { createPlaidLinkSession } from 'react-native-plaid-link-sdk';
 
 import { readFunctionError } from '@/lib/functions';
+import { linkExitBody } from '@/lib/link-log';
 import { planLimitMessage } from '@/lib/plans';
 import { HIDDEN_DEPENDENT_KEYS } from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
@@ -61,6 +62,8 @@ export function useConnectBank() {
                   institution_name: institution?.name,
                   // Name and mask only: the server's duplicate check compares them.
                   accounts: success.metadata.accounts.map(({ name, mask }) => ({ name, mask })),
+                  // Plaid support asks for it; the server keeps it with the new Item.
+                  link_session_id: success.metadata.linkSessionId,
                 },
               });
               if (exchangeError) {
@@ -89,6 +92,10 @@ export function useConnectBank() {
           }
         },
         onExit: (exit) => {
+          // Fire and forget: a lost log line must never touch the Link flow.
+          void supabase.functions
+            .invoke('plaid-link-event', { body: linkExitBody(exit, itemId) })
+            .catch(() => {});
           if (exit.error?.errorMessage) {
             setError(exit.error.errorMessage);
           }

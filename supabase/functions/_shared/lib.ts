@@ -103,12 +103,15 @@ export function getPlaidClient(): PlaidApi {
 /**
  * What to log for a caught error. A Plaid SDK (axios) error carries its
  * request: the headers hold our Plaid secret and the body may hold a bank's
- * access token, so only Plaid's code and message are kept. Anything else is
- * logged whole, stack included.
+ * access token, so only Plaid's code, message and request_id are kept (the id
+ * is what Plaid support asks for). Anything else is logged whole, stack
+ * included.
  */
 export function loggable(err: unknown): unknown {
   if (!(err as { isAxiosError?: boolean } | null)?.isAxiosError) return err;
-  return describeError(err);
+  const requestId = (err as { response?: { data?: { request_id?: unknown } } }).response?.data?.request_id;
+  const text = describeError(err);
+  return typeof requestId === 'string' && requestId ? `${text} [request_id ${requestId}]` : text;
 }
 
 /** Plaid SDK errors carry the useful detail on response.data. */

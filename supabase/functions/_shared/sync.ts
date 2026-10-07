@@ -24,6 +24,7 @@ import { askJev, hasJevKey, JEV_CONCURRENCY, JEV_PASS_BUDGET_MS, type JevAsk, ma
 import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
 import { describeError, loggable } from './lib.ts';
 import { mergeReconnected } from './merge.ts';
+import { plaidErrorFields, recordPlaidEvent } from './plaid-log.ts';
 import { aiAllowed, loadPlan } from './plans.ts';
 import {
   ignoredCategoryIds,
@@ -640,6 +641,7 @@ export async function syncItem(
         }
         if (code === 'ITEM_LOGIN_REQUIRED') {
           await admin.from('plaid_items').update({ status: 'login_required' }).eq('id', item.id);
+          await recordPlaidEvent(admin, { event: 'login_required', user_id: item.user_id, item_id: item.id, ...plaidErrorFields(err) });
           result = { ...base, status: 'login_required' };
           throw new Error(HANDLED);
         }
@@ -904,6 +906,7 @@ export async function syncItem(
     if ((err as Error).message !== HANDLED) {
       const message = describeError(err);
       console.error(`sync failed for item ${item.id}: ${message}`, loggable(err));
+      await recordPlaidEvent(admin, { event: 'sync_failed', user_id: item.user_id, item_id: item.id, ...plaidErrorFields(err) });
       result = { ...base, status: 'error', message };
     }
   } finally {

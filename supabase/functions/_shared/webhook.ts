@@ -9,7 +9,7 @@ export type PlaidWebhookBody = {
   webhook_code?: string;
   item_id?: string;
   environment?: string;
-  error?: { error_code?: string } | null;
+  error?: { error_code?: string; error_type?: string; error_message?: string; request_id?: string } | null;
 };
 
 export type WebhookAction = 'sync' | 'login_required' | 'ignore';
