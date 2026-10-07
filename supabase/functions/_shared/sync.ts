@@ -32,7 +32,7 @@ import {
   type RecurringDecide,
   refreshRecurring,
 } from './recurring.ts';
-import { autoReviewIds, type CarriedPayer, carryForward, type ExistingRow, reviewCutoff } from './review.ts';
+import { type CarriedPayer, carryForward, type ExistingRow, partitionAutoReview, reviewCutoff } from './review.ts';
 import { groupTriage, readTriage, TRIAGE_PER_SYNC, triageQuestions, type TriageRow, triageState } from './triage.ts';
 
 const PAGE_SIZE = 500;
@@ -745,24 +745,25 @@ export async function syncItem(
           };
         });
 
-      if (rows.length > 0) {
-        const { error } = await admin
-          .from('transactions').upsert(rows, { onConflict: 'plaid_transaction_id' });
+      // Only the last two weeks go to review (16b): rows this sync inserts that
+      // are older than the Item's link date minus 14 days are inserted already
+      // reviewed, so a failure can never leave them in the queue (a retry finds
+      // them existing). Two upserts keep the union-of-keys rule: only the first
+      // carries the review columns. Only rows nobody has touched qualify: no row
+      // of their own, no pending predecessor. Dated, not "first sync": Plaid
+      // delivers history in stages.
+      const { auto, rest } = partitionAutoReview(rows, existingFor, reviewCutoff(claimed.created_at));
+      if (auto.length > 0) {
+        const reviewedAt = new Date().toISOString();
+        const { error } = await admin.from('transactions').upsert(
+          auto.map((r) => ({ ...r, reviewed_at: reviewedAt, auto_reviewed: true })),
+          { onConflict: 'plaid_transaction_id' },
+        );
         if (error) throw error;
       }
-      // Only the last two weeks go to review (16b): rows this sync inserted that
-      // are older than the Item's link date minus 14 days count as reviewed. A
-      // separate update, never in the upsert payload above (union of keys), and
-      // only for rows nobody has touched: no row of their own, no pending
-      // predecessor. Dated, not "first sync": Plaid delivers history in stages.
-      const cutoff = reviewCutoff(claimed.created_at);
-      const autoIds = autoReviewIds(rows, existingFor, cutoff);
-      for (let i = 0; i < autoIds.length; i += ID_CHUNK) {
+      if (rest.length > 0) {
         const { error } = await admin
-          .from('transactions')
-          .update({ reviewed_at: new Date().toISOString(), auto_reviewed: true })
-          .in('plaid_transaction_id', autoIds.slice(i, i + ID_CHUNK))
-          .is('reviewed_at', null);
+          .from('transactions').upsert(rest, { onConflict: 'plaid_transaction_id' });
         if (error) throw error;
       }
       // One small update per carried memo, and never over a memo already there.
