@@ -572,8 +572,11 @@ export async function syncItem(
       console.warn(`account refresh failed for item ${item.id}: ${describeError(err)}`);
     }
 
-    const { data: accountRows } = await admin
+    // A failed read must stop the sync: an empty map would filter out every row
+    // while the cursor still advanced, and those transactions would be lost.
+    const { data: accountRows, error: accountError } = await admin
       .from('accounts').select('id, plaid_account_id, is_private').eq('item_id', item.id);
+    if (accountError) throw accountError;
     const accountByPlaidId = new Map<string, string>(
       (accountRows ?? []).map((a) => [a.plaid_account_id, a.id]),
     );
