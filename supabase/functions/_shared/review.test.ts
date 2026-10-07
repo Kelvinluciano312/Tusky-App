@@ -1,6 +1,6 @@
 import { assertEquals } from 'jsr:@std/assert';
 
-import { autoReviewIds, carryForward, type ExistingRow, REVIEW_WINDOW_DAYS, reviewCutoff } from './review.ts';
+import { autoReviewIds, carryForward, type ExistingRow, partitionAutoReview, REVIEW_WINDOW_DAYS, reviewCutoff } from './review.ts';
 
 const row = (id: string, over: Partial<ExistingRow> = {}): ExistingRow => ({
   plaid_transaction_id: id,
@@ -152,4 +152,11 @@ Deno.test('autoReviewIds: only new, posted rows dated before the cutoff', () => 
     ['old-pending', null],
   ]);
   assertEquals(autoReviewIds(rows, existingFor, '2026-10-01'), ['old-new']);
+
+  const { auto, rest } = partitionAutoReview(rows, existingFor, '2026-10-01');
+  assertEquals(auto.map((r) => r.plaid_transaction_id), ['old-new']);
+  assertEquals(
+    rest.map((r) => r.plaid_transaction_id),
+    ['on-cutoff', 'recent', 'old-existing', 'old-posted-from-pending', 'old-pending'],
+  );
 });

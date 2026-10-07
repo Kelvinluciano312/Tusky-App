@@ -98,3 +98,20 @@ export function autoReviewIds(
     .filter((r) => !r.pending && r.date < cutoff && existingFor.get(r.plaid_transaction_id) === null)
     .map((r) => r.plaid_transaction_id);
 }
+
+/**
+ * The rows split into those to insert already reviewed and the rest. Two upserts
+ * keep supabase-js's union-of-keys rule intact: only `auto` carries the review
+ * columns, so no other row gets them nulled.
+ */
+export function partitionAutoReview<R extends { plaid_transaction_id: string; date: string; pending: boolean }>(
+  rows: R[],
+  existingFor: Map<string, ExistingRow | null>,
+  cutoff: string,
+): { auto: R[]; rest: R[] } {
+  const ids = new Set(autoReviewIds(rows, existingFor, cutoff));
+  return {
+    auto: rows.filter((r) => ids.has(r.plaid_transaction_id)),
+    rest: rows.filter((r) => !ids.has(r.plaid_transaction_id)),
+  };
+}

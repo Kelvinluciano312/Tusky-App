@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient, type User } from 'npm:@supabase/supabase-js@2';
 import { Configuration, PlaidApi, PlaidEnvironments } from 'npm:plaid@30';
 
-import { claimsOfToken, secondStepRequired, sessionIdOfClaims } from './two-factor.ts';
+import { claimsOfRequest, secondStepRequired, sessionIdOfClaims } from './two-factor.ts';
 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -68,8 +68,7 @@ export async function requireSecondStep(
   const { data, error } = await admin.from('profiles').select('two_factor').eq('user_id', userId).maybeSingle();
   if (error) return jsonResponse({ error: 'two_factor_check_failed' }, 500);
   if (data?.two_factor !== true) return null;
-  const token = (req.headers.get('Authorization') ?? '').slice('Bearer '.length);
-  const sessionId = sessionIdOfClaims(claimsOfToken(token));
+  const sessionId = sessionIdOfClaims(claimsOfRequest(req));
   let verified = false;
   if (sessionId) {
     const { data: row, error: rowError } = await admin
@@ -108,13 +107,14 @@ export function getPlaidClient(): PlaidApi {
  * logged whole, stack included.
  */
 export function loggable(err: unknown): unknown {
-  const e = err as {
-    isAxiosError?: boolean;
-    message?: string;
-    response?: { data?: { error_code?: string; error_message?: string } };
-  } | null;
-  if (!e?.isAxiosError) return err;
-  const data = e.response?.data;
+  if (!(err as { isAxiosError?: boolean } | null)?.isAxiosError) return err;
+  return describeError(err);
+}
+
+/** Plaid SDK errors carry the useful detail on response.data. */
+export function describeError(err: unknown): string {
+  const data = (err as { response?: { data?: { error_code?: string; error_message?: string } } })
+    ?.response?.data;
   if (data?.error_code) return `${data.error_code}: ${data.error_message ?? ''}`.trim();
-  return e.message ?? 'unknown error';
+  return (err as Error)?.message ?? 'unknown error';
 }

@@ -22,7 +22,7 @@ import { communityAnswers, communityCategory, crowdMerchants, type Tally } from 
 import { applyCustom, askCustom, type CatRow, type CustomRow, type CustomVerdict, planCustom } from './custom-ai.ts';
 import { askJev, hasJevKey, JEV_CONCURRENCY, JEV_PASS_BUDGET_MS, type JevAsk, mapLimit } from './jev.ts';
 import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
-import { loggable } from './lib.ts';
+import { describeError, loggable } from './lib.ts';
 import { mergeReconnected } from './merge.ts';
 import { aiAllowed, loadPlan } from './plans.ts';
 import {
@@ -32,7 +32,7 @@ import {
   type RecurringDecide,
   refreshRecurring,
 } from './recurring.ts';
-import { autoReviewIds, type CarriedPayer, carryForward, type ExistingRow, reviewCutoff } from './review.ts';
+import { type CarriedPayer, carryForward, type ExistingRow, partitionAutoReview, reviewCutoff } from './review.ts';
 import { groupTriage, readTriage, TRIAGE_PER_SYNC, triageQuestions, type TriageRow, triageState } from './triage.ts';
 
 const PAGE_SIZE = 500;
@@ -63,14 +63,6 @@ export type SyncContext = {
   /** Built-in categories recurring detection ignores (transfers, except card payments); syncItem adds the owner's custom transfers. */
   transferCategoryIds: string[];
 };
-
-/** Plaid SDK errors carry the useful detail on response.data. */
-export function describeError(err: unknown): string {
-  const data = (err as { response?: { data?: { error_code?: string; error_message?: string } } })
-    ?.response?.data;
-  if (data?.error_code) return `${data.error_code}: ${data.error_message ?? ''}`.trim();
-  return (err as Error)?.message ?? 'unknown error';
-}
 
 /** Marker so an already-recorded failure isn't recorded twice by the catch. */
 const HANDLED = '__handled__';
@@ -106,8 +98,29 @@ export async function loadCategoryMaps(
   return { categoryMap, detailedMap, fallbackId: fallback.id };
 }
 
-/** Ids per auto-review update (16b): the ids ride in the request URL. */
-const AUTO_REVIEW_CHUNK = 100;
+/** Ids per `.in()` call (reads, deletes, 16b updates): the ids ride in the request URL. */
+const ID_CHUNK = 100;
+
+/**
+ * The rows already stored for these Plaid transaction ids, by id. Throws on a
+ * failed chunk: a silent miss would make every row look new, and the upsert
+ * would then write `category_is_manual: false` over hand-picked categories.
+ */
+export async function loadExistingRows(
+  admin: SupabaseClient,
+  ids: string[],
+): Promise<Map<string, ExistingRow>> {
+  const byId = new Map<string, ExistingRow>();
+  for (let i = 0; i < ids.length; i += ID_CHUNK) {
+    const { data, error } = await admin
+      .from('transactions')
+      .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split, corrected_from, category_source')
+      .in('plaid_transaction_id', ids.slice(i, i + ID_CHUNK));
+    if (error) throw error;
+    for (const r of (data ?? []) as ExistingRow[]) byId.set(r.plaid_transaction_id, r);
+  }
+  return byId;
+}
 
 /** Merchant keys per labels query: keeps the PostgREST URL short. */
 /**
@@ -572,8 +585,11 @@ export async function syncItem(
       console.warn(`account refresh failed for item ${item.id}: ${describeError(err)}`);
     }
 
-    const { data: accountRows } = await admin
+    // A failed read must stop the sync: an empty map would filter out every row
+    // while the cursor still advanced, and those transactions would be lost.
+    const { data: accountRows, error: accountError } = await admin
       .from('accounts').select('id, plaid_account_id, is_private').eq('item_id', item.id);
+    if (accountError) throw accountError;
     const accountByPlaidId = new Map<string, string>(
       (accountRows ?? []).map((a) => [a.plaid_account_id, a.id]),
     );
@@ -659,13 +675,9 @@ export async function syncItem(
       const ids = [...new Set(upserts.flatMap((t) =>
         t.pending_transaction_id ? [t.transaction_id, t.pending_transaction_id] : [t.transaction_id]
       ))];
-      const { data: existingRows } = await admin
-        .from('transactions')
-        .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split, corrected_from, category_source')
-        .in('plaid_transaction_id', ids);
       const { existingFor, notes: carriedNotes, payers: carriedPayers } = carryForward(
         upserts,
-        new Map(((existingRows ?? []) as ExistingRow[]).map((r) => [r.plaid_transaction_id, r])),
+        await loadExistingRows(admin, ids),
       );
 
       const rows = upserts
@@ -725,24 +737,25 @@ export async function syncItem(
           };
         });
 
-      if (rows.length > 0) {
-        const { error } = await admin
-          .from('transactions').upsert(rows, { onConflict: 'plaid_transaction_id' });
+      // Only the last two weeks go to review (16b): rows this sync inserts that
+      // are older than the Item's link date minus 14 days are inserted already
+      // reviewed, so a failure can never leave them in the queue (a retry finds
+      // them existing). Two upserts keep the union-of-keys rule: only the first
+      // carries the review columns. Only rows nobody has touched qualify: no row
+      // of their own, no pending predecessor. Dated, not "first sync": Plaid
+      // delivers history in stages.
+      const { auto, rest } = partitionAutoReview(rows, existingFor, reviewCutoff(claimed.created_at));
+      if (auto.length > 0) {
+        const reviewedAt = new Date().toISOString();
+        const { error } = await admin.from('transactions').upsert(
+          auto.map((r) => ({ ...r, reviewed_at: reviewedAt, auto_reviewed: true })),
+          { onConflict: 'plaid_transaction_id' },
+        );
         if (error) throw error;
       }
-      // Only the last two weeks go to review (16b): rows this sync inserted that
-      // are older than the Item's link date minus 14 days count as reviewed. A
-      // separate update, never in the upsert payload above (union of keys), and
-      // only for rows nobody has touched: no row of their own, no pending
-      // predecessor. Dated, not "first sync": Plaid delivers history in stages.
-      const cutoff = reviewCutoff(claimed.created_at);
-      const autoIds = autoReviewIds(rows, existingFor, cutoff);
-      for (let i = 0; i < autoIds.length; i += AUTO_REVIEW_CHUNK) {
+      if (rest.length > 0) {
         const { error } = await admin
-          .from('transactions')
-          .update({ reviewed_at: new Date().toISOString(), auto_reviewed: true })
-          .in('plaid_transaction_id', autoIds.slice(i, i + AUTO_REVIEW_CHUNK))
-          .is('reviewed_at', null);
+          .from('transactions').upsert(rest, { onConflict: 'plaid_transaction_id' });
         if (error) throw error;
       }
       // One small update per carried memo, and never over a memo already there.
@@ -776,10 +789,13 @@ export async function syncItem(
     }
 
     if (removed.length > 0) {
-      const { error } = await admin
-        .from('transactions').delete()
-        .in('plaid_transaction_id', removed.map((r) => r.transaction_id));
-      if (error) throw error;
+      const removedIds = removed.map((r) => r.transaction_id);
+      for (let i = 0; i < removedIds.length; i += ID_CHUNK) {
+        const { error } = await admin
+          .from('transactions').delete()
+          .in('plaid_transaction_id', removedIds.slice(i, i + ID_CHUNK));
+        if (error) throw error;
+      }
     }
 
     // Cursor last: a crash before here means the next run re-applies the same

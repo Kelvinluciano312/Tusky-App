@@ -439,8 +439,9 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   - Write shared values with `.set()` and read them with `.get()`, never `.value`: the React Compiler lint rejects `.value` writes.
 - **Review window (16b).** Only the last two weeks go to review. A row sync inserts dated before its
   Item's `created_at` minus `REVIEW_WINDOW_DAYS` (14) gets `reviewed_at = now(), auto_reviewed = true`
-  (`reviewCutoff`, `autoReviewIds` in `_shared/review.ts`; one chunked update right after the upsert,
-  never in its payload). Keyed on the date, not "first sync", because Plaid delivers history in stages;
+  (`reviewCutoff`, `partitionAutoReview` in `_shared/review.ts`). Those rows go in their own upsert
+  that carries both columns, and every other row in a second upsert without them (union of keys), so a
+  failure between the two can never leave old history in the queue. Keyed on the date, not "first sync", because Plaid delivers history in stages;
   only truly new posted rows (no row of their own, no pending predecessor) qualify. `auto_reviewed` is
   server-only and keeps such rows out of `merchant_labels`' accepted guesses (a guess nobody looked at must
   not teach), and `ag_transactions_clear_auto_reviewed` clears it when `reviewed_at` goes back to null (a
