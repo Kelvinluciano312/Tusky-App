@@ -14,8 +14,12 @@ export type AccountOps = {
   leaveHerd(userId: string): Promise<void>;
   liveItems(userId: string): Promise<{ id: string; status: string }[]>;
   disconnect(item: { id: string; status: string }): Promise<DisconnectResult>;
-  herdOf(userId: string): Promise<string | null>;
-  deleteHerd(herdId: string): Promise<void>;
+  /**
+   * Deletes the user's herd only while they are alone in it and it holds no
+   * live bank, checked and deleted in one transaction (delete_personal_herd).
+   * False when it refused; true when the herd is gone, now or already.
+   */
+  deletePersonalHerd(userId: string): Promise<boolean>;
   deleteUser(userId: string): Promise<void>;
   forgetPurchaser(userId: string): Promise<void>;
 };
@@ -38,8 +42,9 @@ export async function deleteAccount(ops: AccountOps, userId: string, password: u
   }
   // Now alone: the herd and everything in it go, then the user (profile,
   // subscription and consents cascade; the consents trigger forgets crowd labels).
-  const herd = await ops.herdOf(userId);
-  if (herd) await ops.deleteHerd(herd);
+  // The herd is never read here and deleted by id: a join since the check above
+  // would make that someone else's herd. A refusal is `busy`; a retry sorts it out.
+  if (!(await ops.deletePersonalHerd(userId))) return 'busy';
   await ops.deleteUser(userId);
   await ops.forgetPurchaser(userId).catch((err) => console.warn('RevenueCat forget failed', err));
   return 'deleted';
