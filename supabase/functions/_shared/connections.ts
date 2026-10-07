@@ -7,7 +7,8 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import type { PlaidApi } from 'npm:plaid@30';
 
-import { claimItem, describeError } from './sync.ts';
+import { describeError } from './lib.ts';
+import { claimItem } from './sync.ts';
 
 export type DisconnectMode = 'archive' | 'delete';
 export type DisconnectPlan = 'noop' | 'delete_local' | 'remove_then_archive' | 'remove_then_delete';

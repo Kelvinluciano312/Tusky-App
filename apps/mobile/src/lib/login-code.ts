@@ -4,17 +4,16 @@
 
 import { readFunctionError } from '@/lib/functions';
 import { supabase } from '@/lib/supabase';
-import { codeFailureMessage } from '@/lib/two-factor';
+import { codeFailureMessage, sendFailure } from '@/lib/two-factor';
 
-/** Email a sign-in code to an existing account. Returns an error message, or null when it was sent. */
-export async function sendLoginCode(email: string): Promise<string | null> {
+/**
+ * Email a sign-in code to an existing account. Returns null when it was sent,
+ * else a message and whether a code is on its way anyway (`sent`: the rate
+ * limit means one went out a moment ago, so the countdown should run).
+ */
+export async function sendLoginCode(email: string): Promise<{ message: string; sent: boolean } | null> {
   const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
-  if (!error) return null;
-  // Supabase rate-limits sends per address; say so plainly rather than "failed".
-  if (error.status === 429 || /rate limit|security purposes/i.test(error.message)) {
-    return 'A code was sent a moment ago. Wait a minute, then ask for another.';
-  }
-  return 'We could not send a code. Check your connection and try again.';
+  return error ? sendFailure(error) : null;
 }
 
 /**

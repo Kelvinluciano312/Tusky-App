@@ -1,6 +1,7 @@
 import { assertEquals } from 'jsr:@std/assert';
 
 import {
+  claimsOfRequest,
   claimsOfToken,
   hasPasswordMethod,
   markableSession,
@@ -34,6 +35,14 @@ Deno.test('claimsOfToken: a malformed token has no claims', () => {
   for (const bad of ['', 'abc', 'a.b.c', 'a..c', 'a.%%%.c', `a.${btoa('[1]')}.c`, `a.${btoa('null')}.c`]) {
     assertEquals(claimsOfToken(bad), null);
   }
+});
+
+Deno.test('claimsOfRequest: reads the bearer token, and nothing else', () => {
+  const req = (auth?: string) => new Request('https://x.test', { headers: auth ? { Authorization: auth } : {} });
+  assertEquals(claimsOfRequest(req(`Bearer ${tokenWith({ session_id: SID })}`)), { session_id: SID });
+  assertEquals(claimsOfRequest(req()), null);
+  assertEquals(claimsOfRequest(req(tokenWith({ session_id: SID }))), null);
+  assertEquals(claimsOfRequest(req('Bearer junk')), null);
 });
 
 Deno.test('sessionIdOfClaims: only a uuid string counts', () => {
@@ -72,10 +81,15 @@ Deno.test('markableSession: no session id, no mark', () => {
 });
 
 Deno.test('verifyFailure: wrong codes, vendor limits and outages are told apart', () => {
-  assertEquals(verifyFailure(403), 'wrong_code');
-  assertEquals(verifyFailure(422), 'wrong_code');
-  assertEquals(verifyFailure(400), 'wrong_code');
+  assertEquals(verifyFailure(403, 'otp_expired'), 'wrong_code');
+  assertEquals(verifyFailure(400, 'invalid_credentials'), 'wrong_code');
+  // A config or provider error is not a wrong code: it must not burn an attempt.
+  assertEquals(verifyFailure(400, 'captcha_failed'), 'unavailable');
+  assertEquals(verifyFailure(422, 'validation_failed'), 'unavailable');
+  assertEquals(verifyFailure(403), 'unavailable');
+  assertEquals(verifyFailure(403, 'otp_disabled'), 'unavailable');
   assertEquals(verifyFailure(429), 'too_many_attempts');
+  assertEquals(verifyFailure(429, 'over_request_rate_limit'), 'too_many_attempts');
   assertEquals(verifyFailure(500), 'unavailable');
   assertEquals(verifyFailure(502), 'unavailable');
   assertEquals(verifyFailure(0), 'unavailable');
