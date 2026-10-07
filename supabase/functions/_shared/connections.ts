@@ -8,6 +8,7 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import type { PlaidApi } from 'npm:plaid@30';
 
 import { describeError } from './lib.ts';
+import { plaidErrorFields, recordPlaidEvent } from './plaid-log.ts';
 import { claimItem } from './sync.ts';
 
 export type DisconnectMode = 'archive' | 'delete';
@@ -102,6 +103,8 @@ export async function disconnectItem(
       } catch (err) {
         if (!isItemGone(err)) {
           console.error(`item/remove failed for item ${item.id}: ${describeError(err)}`);
+          // user_id and Plaid's item id are filled from the Item, which still exists here.
+          await recordPlaidEvent(admin, { event: 'remove_failed', item_id: item.id, ...plaidErrorFields(err) });
           await release();
           return 'plaid_failed';
         }

@@ -1,6 +1,7 @@
 import { CountryCode, Products } from 'npm:plaid@30';
 
 import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, getWebhookUrl, jsonResponse, loggable, requireSecondStep } from '../_shared/lib.ts';
+import { plaidErrorFields, recordPlaidEvent } from '../_shared/plaid-log.ts';
 import { canAddBank, historyDays, loadPlan, planLimitBody, type PlanState } from '../_shared/plans.ts';
 
 /** Optional body. With item_id, Link opens in update mode to repair that Item. */
@@ -90,6 +91,8 @@ Deno.serve(async (req) => {
     return jsonResponse({ link_token: data.link_token, expiration: data.expiration, update_mode: accessToken !== null });
   } catch (err) {
     console.error('linkTokenCreate failed', loggable(err));
+    // body.item_id passed the ownership check above, or is absent.
+    await recordPlaidEvent(admin, { event: 'link_token_failed', user_id: user.id, item_id: body.item_id ?? null, ...plaidErrorFields(err) });
     return jsonResponse({ error: 'Failed to create link token' }, 500);
   }
 });
