@@ -863,7 +863,7 @@ Expected: two rows. `check-ls-1` has `check-rq-1`, `requires_credentials`, `INVA
 - [ ] **Step 3: One emulator pass** (Pixel_7, dev build, Metro fresh; `node scripts/emu.mjs ui` to navigate, no screenshots). As the test user:
   1. Start connecting a bank, then close Link with its X. Expect a `link_exit` row with a `link_session_id`.
   2. Connect First Platypus Bank (`ins_109508`, the plain entry) with `user_good` / `pass_good`. Expect an `exchange_ok` row with `plaid_item_id`, `request_id` and the same kind of `link_session_id`.
-  3. On that bank's screen use the dev tool that forces a login reset, then pull to refresh on Home. Expect a `login_required` row with `error_code = ITEM_LOGIN_REQUIRED` and a `request_id`.
+  3. On that bank's screen use the dev tool that forces a login reset, then pull to refresh on the Transactions tab (Home's refresh only refetches queries and never syncs), or use the webhook: the ITEM ERROR webhook that follows the reset now records the row itself. Expect a `login_required` row with `error_code = ITEM_LOGIN_REQUIRED` and a `request_id`.
   4. Disconnect the bank ("Delete everything"). The three rows must still be there, with `plaid_item_id` kept.
 
 ```sh

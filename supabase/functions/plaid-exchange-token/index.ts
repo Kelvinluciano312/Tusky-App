@@ -38,6 +38,9 @@ Deno.serve(async (req) => {
   }
 
   const plaid = getPlaidClient();
+  // What we know of the Item once Plaid has made it: a failure after the
+  // exchange still leaves a billed Item, so its ids go in the failure row.
+  let exchanged: { plaid_item_id: string; request_id?: string; item_id?: string } | null = null;
 
   try {
     // 0. Refuse a duplicate BEFORE the exchange, as Plaid advises: no access
@@ -73,6 +76,7 @@ Deno.serve(async (req) => {
     const { data: exchange } = await plaid.itemPublicTokenExchange({
       public_token: body.public_token,
     });
+    exchanged = { plaid_item_id: exchange.item_id, request_id: exchange.request_id };
 
     // 2. Record the item
     // Upsert, not insert: a reconnect can legitimately return an item_id we
@@ -93,6 +97,7 @@ Deno.serve(async (req) => {
       .select('id')
       .single();
     if (itemError) throw itemError;
+    exchanged.item_id = item.id;
 
     // 3. Store the access token (service-role-only table)
     // Same reasoning: re-linking an existing Item replaces its token.
@@ -139,12 +144,16 @@ Deno.serve(async (req) => {
     return jsonResponse({ item_id: item.id });
   } catch (err) {
     console.error('exchange-token failed', loggable(err));
+    const fields = plaidErrorFields(err);
     await recordPlaidEvent(admin, {
       event: 'exchange_failed',
       user_id: user.id,
       link_session_id: body.link_session_id,
       institution_id: body.institution_id,
-      ...plaidErrorFields(err),
+      item_id: exchanged?.item_id,
+      plaid_item_id: exchanged?.plaid_item_id,
+      ...fields,
+      request_id: fields.request_id ?? exchanged?.request_id,
     });
     return jsonResponse({ error: 'Failed to connect bank' }, 500);
   }

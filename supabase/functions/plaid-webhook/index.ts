@@ -3,6 +3,7 @@
 // authentication — nothing below it runs for a request that fails it.
 
 import { getAdminClient, getPlaidClient, jsonResponse, loggable } from '../_shared/lib.ts';
+import { recordPlaidEvent } from '../_shared/plaid-log.ts';
 import { loadSyncContext, syncItem } from '../_shared/sync.ts';
 import { classifyWebhook, type PlaidJwk, type PlaidWebhookBody, verifyPlaidWebhook } from '../_shared/webhook.ts';
 
@@ -97,6 +98,16 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Update failed' }, 500);
     }
     console.log(`${tag}: item ${item.id} → login_required`);
+    await recordPlaidEvent(admin, {
+      event: 'login_required',
+      user_id: item.user_id,
+      item_id: item.id,
+      plaid_item_id: body.item_id,
+      request_id: body.error?.request_id,
+      error_type: body.error?.error_type,
+      error_code: body.error?.error_code,
+      error_message: body.error?.error_message,
+    });
     return ok();
   }
 

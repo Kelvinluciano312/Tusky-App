@@ -109,8 +109,8 @@ Free plan.
 ## Suspending a user
 
 Dashboard → Authentication → Users → the user's menu → **Ban user**, with a duration. A banned user
-cannot sign in or refresh a session; a session already open ends when its token expires, within the
-hour. Lift it from the same menu.
+cannot sign in or refresh a session; a session already open ends when its access token expires (1 hour by
+default; the hosted value is the Auth JWT expiry setting in the dashboard). Lift it from the same menu.
 
 What a ban does NOT do: their banks keep syncing through Plaid's webhooks, Plaid keeps billing for
 them, and a store subscription keeps renewing. Stopping those needs code that does not exist yet
