@@ -4,7 +4,7 @@ import { type AccountOps, deleteAccount } from './account.ts';
 import type { DisconnectResult } from './connections.ts';
 
 /** Records every call in order; `herd` and `items` describe the user's state. */
-function fakeOps(s: { size: number; herd: string | null; items: string[]; fail?: Record<string, DisconnectResult>; forgetThrows?: boolean; password?: string; verifyThrows?: boolean }) {
+function fakeOps(s: { size: number; herd: string | null; items: string[]; fail?: Record<string, DisconnectResult>; forgetThrows?: boolean; password?: string; verifyThrows?: boolean; joinsDuringPlaid?: boolean }) {
   const log: string[] = [];
   const ops: AccountOps = {
     verifyPassword: (u, p) => (log.push('verify ' + u), s.verifyThrows ? Promise.reject(new Error('auth down')) : Promise.resolve(p === (s.password ?? 'right'))),
@@ -15,10 +15,18 @@ function fakeOps(s: { size: number; herd: string | null; items: string[]; fail?:
       log.push(`disconnect ${item.id}`);
       const r = s.fail?.[item.id] ?? 'ok';
       if (r === 'ok') s.items = s.items.filter((i) => i !== item.id);
+      // The race: a join lands while the banks are being removed at Plaid.
+      if (s.joinsDuringPlaid) { s.size = 2; s.herd = 'theirs'; s.joinsDuringPlaid = false; }
       return Promise.resolve(r);
     },
-    herdOf: () => Promise.resolve(s.herd),
-    deleteHerd: (h) => (log.push(`delete herd ${h}`), s.herd = null, Promise.resolve()),
+    // As delete_personal_herd: refuses a shared herd or one with a live bank.
+    deletePersonalHerd: () => {
+      if (s.herd === null) return Promise.resolve(true);
+      if (s.size > 1 || s.items.length > 0) return Promise.resolve(false);
+      log.push(`delete herd ${s.herd}`);
+      s.herd = null;
+      return Promise.resolve(true);
+    },
     deleteUser: (u) => (log.push(`delete user ${u}`), Promise.resolve()),
     forgetPurchaser: (u) => (log.push(`forget ${u}`), s.forgetThrows ? Promise.reject(new Error('rc down')) : Promise.resolve()),
   };
@@ -67,4 +75,16 @@ Deno.test('a run that stopped after the herd went still deletes the user', async
 Deno.test('RevenueCat being down never fails a deletion', async () => {
   const { ops } = fakeOps({ size: 1, herd: 'h1', items: [], forgetThrows: true });
   assertEquals(await deleteAccount(ops, 'u', 'right'), 'deleted');
+});
+
+Deno.test('a join during the Plaid pass: the shared herd is never deleted, and a retry leaves it', async () => {
+  const s = { size: 1, herd: 'h1' as string | null, items: ['a'], joinsDuringPlaid: true };
+  const first = fakeOps(s);
+  assertEquals(await deleteAccount(first.ops, 'u', 'right'), 'busy');
+  assertEquals(first.log, ['verify u', 'disconnect a']);
+  assertEquals(s.herd, 'theirs');
+  const second = fakeOps(s);
+  // The fake's leave keeps the herd name; what matters is leave comes first.
+  assertEquals(await deleteAccount(second.ops, 'u', 'right'), 'deleted');
+  assertEquals(second.log.slice(0, 2), ['verify u', 'leave u']);
 });

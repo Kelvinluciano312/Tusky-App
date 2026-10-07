@@ -359,7 +359,10 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     subscription link. Then: leave the herd if
     others remain, then `/item/remove` every live Item and stop on the first failure (502
     `plaid_failed`, nothing deleted: the token is the only way to stop Plaid's billing), then delete
-    the personal herd and the auth user (the cascade does the rest), then ask RevenueCat to forget the
+    the personal herd through `delete_personal_herd(p_user)` (service role only: it takes the same
+    locks as a join and refuses, 409 `busy`, a herd with another member or a live bank, so a join
+    during the Plaid calls can never get a shared herd deleted; never delete a herd by id here) and
+    the auth user (the cascade does the rest), then ask RevenueCat to forget the
     purchaser (errors only warned). It does not cancel a store subscription; the app warns first
     (`deleteWarning`). A deleted member's settlements go with them.
   - **Release builds.** EAS profiles and the Play upload flow: `docs/ops/release.md`. **Every store build

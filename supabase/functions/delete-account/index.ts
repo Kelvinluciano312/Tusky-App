@@ -46,7 +46,6 @@ Deno.serve(async (req) => {
         await anon.auth.signOut({ scope: 'local' }).catch(() => {});
         return data.user?.id === user.id;
       },
-      herdOf,
       herdSize: async (id) => {
         const herd = await herdOf(id);
         if (!herd) return 0;
@@ -66,9 +65,10 @@ Deno.serve(async (req) => {
         return data ?? [];
       },
       disconnect: (item) => disconnectItem(admin, plaid, item, 'delete'),
-      deleteHerd: async (herd) => {
-        const { error } = await admin.from('herds').delete().eq('id', herd);
+      deletePersonalHerd: async (id) => {
+        const { data, error } = await admin.rpc('delete_personal_herd', { p_user: id });
         if (error) throw error;
+        return data === true;
       },
       deleteUser: async (id) => {
         const { error } = await admin.auth.admin.deleteUser(id);
