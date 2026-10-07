@@ -50,14 +50,26 @@ export default function VerifyScreen() {
     if (started.current || !email || !initial.send) return;
     started.current = true;
     lastSent.set(email, initial.at);
-    void sendLoginCode(email).then(setSendError);
+    void sendLoginCode(email).then((failure) => {
+      setSendError(failure?.message ?? null);
+      // A failed send must not hold the resend button behind a countdown, nor block a remount's retry.
+      if (failure && !failure.sent) {
+        setSentAt(null);
+        lastSent.delete(email);
+      }
+    });
   }, [email, initial]);
 
   const resend = async () => {
     const at = Date.now();
     lastSent.set(email, at);
     setSentAt(at);
-    setSendError(await sendLoginCode(email));
+    const failure = await sendLoginCode(email);
+    setSendError(failure?.message ?? null);
+    if (failure && !failure.sent) {
+      setSentAt(null);
+      lastSent.delete(email);
+    }
   };
 
   const submit = async (code: string) => {

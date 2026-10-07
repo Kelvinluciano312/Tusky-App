@@ -108,7 +108,9 @@ export function TwoFactorSwitch() {
 
   const send = async () => {
     setSentAt(Date.now());
-    setSendError(await sendLoginCode(email));
+    const failure = await sendLoginCode(email);
+    setSendError(failure?.message ?? null);
+    if (failure && !failure.sent) setSentAt(null);
   };
 
   const open = (next: boolean) => {
