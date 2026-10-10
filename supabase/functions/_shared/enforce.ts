@@ -61,7 +61,7 @@ export async function runEnforcer(
   dryRun: boolean,
 ): Promise<EnforceReport[]> {
   const { data: live, error: liveError } = await admin
-    .from('plaid_items').select('user_id, herd_id').in('status', ['active', 'login_required']);
+    .from('plaid_items').select('user_id, herd_id').eq('is_demo', false).in('status', ['active', 'login_required']);
   if (liveError) throw liveError;
   const { data: flagged, error: flaggedError } = await admin
     .from('subscriptions').select('user_id').not('over_limit_since', 'is', null);
@@ -83,7 +83,7 @@ export async function runEnforcer(
         herdsDone.add(herdId);
       }
 
-      const scoped = admin.from('plaid_items').select('id, created_at, status').neq('status', 'archived');
+      const scoped = admin.from('plaid_items').select('id, created_at, status').eq('is_demo', false).neq('status', 'archived');
       const { data: items, error: itemsError } = await (plan.scope === 'herd'
         ? scoped.eq('herd_id', herdId)
         : scoped.eq('user_id', userId));

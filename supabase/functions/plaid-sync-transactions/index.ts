@@ -24,11 +24,13 @@ Deno.serve(async (req) => {
   // (Plaid bills per Item, not per pull) and the whole herd sees the result.
   // Include login_required: after Link update mode repairs an Item, a successful
   // sync is what returns it to active. Filtering to active only would strand a
-  // repaired Item as permanently un-syncable.
+  // repaired Item as permanently un-syncable. A demo Item (App Review) has no
+  // Plaid Item behind it, so there is nothing to pull.
   const { data: items, error: itemsError } = await admin
     .from('plaid_items')
     .select('id, user_id, herd_id, status')
     .eq('herd_id', herdId)
+    .eq('is_demo', false)
     .in('status', ['active', 'login_required']);
   if (itemsError) {
     console.error('failed to load items', itemsError);

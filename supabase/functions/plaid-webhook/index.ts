@@ -80,6 +80,7 @@ Deno.serve(async (req) => {
     .from('plaid_items')
     .select('id, user_id, herd_id')
     .eq('plaid_item_id', body.item_id)
+    .eq('is_demo', false)
     .in('status', ['active', 'login_required'])
     .maybeSingle();
   if (itemError) {
