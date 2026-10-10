@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Linking, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AppleSignIn } from '@/components/apple-sign-in';
 import { PasswordChecklist } from '@/components/password-checklist';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
@@ -168,6 +169,7 @@ export default function SignUpScreen() {
               loading={submitting}
               disabled={!isSupabaseConfigured || !validName || !email || !passwordOk(password, email) || !passwordsMatch(password, confirm) || !agreed}
             />
+            <AppleSignIn mode="sign-up" />
 
             <View style={{ flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-start' }}>
               <LockKeyhole size={16} color={colors.textDim} strokeWidth={1.75} style={{ marginTop: 2 }} />

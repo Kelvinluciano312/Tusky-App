@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Image, KeyboardAvoidingView, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AppleSignIn } from '@/components/apple-sign-in';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
@@ -93,6 +94,7 @@ export default function SignInScreen() {
             loading={submitting}
             disabled={!isSupabaseConfigured || !email || !password}
           />
+          <AppleSignIn mode="sign-in" />
         </View>
 
         <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: Spacing.lg, gap: Spacing.xs }}>
