@@ -1,11 +1,12 @@
 import { CountryCode, Products } from 'npm:plaid@30';
 
 import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, getWebhookUrl, jsonResponse, loggable, requireSecondStep } from '../_shared/lib.ts';
+import { linkPlatformFields } from '../_shared/link-platform.ts';
 import { plaidErrorFields, recordPlaidEvent } from '../_shared/plaid-log.ts';
 import { canAddBank, historyDays, loadPlan, planLimitBody, type PlanState } from '../_shared/plans.ts';
 
-/** Optional body. With item_id, Link opens in update mode to repair that Item. */
-type LinkTokenBody = { item_id?: string };
+/** Optional body. With item_id, Link opens in update mode to repair that Item. `platform` is 'ios' or 'android'. */
+type LinkTokenBody = { item_id?: string; platform?: string };
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -64,6 +65,11 @@ Deno.serve(async (req) => {
     if (!canAddBank(plan)) return jsonResponse(planLimitBody(plan), 402);
   }
 
+  const iosRedirectUri = Deno.env.get('PLAID_IOS_REDIRECT_URI') ?? '';
+  if (body.platform === 'ios' && !iosRedirectUri) {
+    console.warn('PLAID_IOS_REDIRECT_URI is not set: OAuth banks cannot link on iOS');
+  }
+
   try {
     const plaid = getPlaidClient();
     const { data } = await plaid.linkTokenCreate({
@@ -83,9 +89,9 @@ Deno.serve(async (req) => {
       language: 'en',
       // New Items register for webhooks at birth; see plaid-webhook.
       webhook: getWebhookUrl(),
-      // Required for the native Android Link SDK; must also be registered as an
-      // Allowed Android package name in the Plaid dashboard (API settings).
-      android_package_name: 'com.ouroborosstudios.tusky',
+      // Android: the package name, registered as an Allowed Android package name in the Plaid
+      // dashboard. iOS: the universal-link redirect_uri, registered under Allowed redirect URIs.
+      ...linkPlatformFields(body.platform, iosRedirectUri),
     });
 
     return jsonResponse({ link_token: data.link_token, expiration: data.expiration, update_mode: accessToken !== null });

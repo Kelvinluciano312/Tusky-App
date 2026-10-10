@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Platform } from 'react-native';
 import { createPlaidLinkSession } from 'react-native-plaid-link-sdk';
 
 import { readFunctionError } from '@/lib/functions';
@@ -35,7 +36,8 @@ export function useConnectBank() {
     setIsConnecting(true);
     try {
       const { data, error: fnError } = await supabase.functions.invoke('plaid-create-link-token', {
-        body: itemId ? { item_id: itemId } : {},
+        // The server picks the OAuth return path by platform: package name on Android, universal link on iOS.
+        body: itemId ? { item_id: itemId, platform: Platform.OS } : { platform: Platform.OS },
       });
       if (fnError) {
         const { status, message, body } = await readFunctionError(fnError);
