@@ -1,10 +1,12 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
-import { appleCanceled, appleDisplayName } from '@/lib/apple';
+import { appleCanceled, appleDisplayName, appleSub } from '@/lib/apple';
 import { validatePersonName } from '@/lib/profile';
+import { useIdentities } from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
 
 export type AppleSignInResult =
@@ -76,6 +78,42 @@ export async function confirmWithApple(): Promise<{ identity_token: string; auth
     throw new Error('Apple did not confirm it’s you. Nothing was deleted.');
   }
   return { identity_token: credential.identityToken, authorization_code: credential.authorizationCode };
+}
+
+/**
+ * Someone who stops using Sign in with Apple for Tusky (iOS Settings > Apple
+ * Account) is signed out the next time the app opens. Only REVOKED counts:
+ * NOT_FOUND also means this phone's Apple ID is not the linked one, and an
+ * error (the simulator always throws) is not a revocation.
+ */
+export function useAppleCredentialWatch(userId: string | undefined) {
+  const queryClient = useQueryClient();
+  const { data: identities } = useIdentities(Platform.OS === 'ios' ? userId : undefined);
+  const sub = appleSub(identities);
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || !sub) return;
+    let alive = true;
+    const check = async () => {
+      try {
+        const state = await AppleAuthentication.getCredentialStateAsync(sub);
+        if (alive && state === AppleAuthentication.AppleAuthenticationCredentialState.REVOKED) {
+          await supabase.auth.signOut();
+          queryClient.clear();
+        }
+      } catch {
+        // Not a revocation: leave the session alone.
+      }
+    };
+    void check();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void check();
+    });
+    return () => {
+      alive = false;
+      subscription.remove();
+    };
+  }, [sub, queryClient]);
 }
 
 /** True on an iPhone or iPad that can show Apple's sheet; always false on Android. */

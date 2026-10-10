@@ -15,6 +15,7 @@ import { RealDataBanner } from '@/components/real-data-banner';
 import { DialogHost } from '@/components/ui/dialog';
 import { Palette } from '@/constants/theme';
 import { TERMS_VERSION } from '@/constants/legal';
+import { useAppleCredentialWatch } from '@/lib/apple-auth';
 import { gateFor } from '@/lib/first-run';
 import { identifyPurchaser } from '@/lib/purchases';
 import { useFirstRun } from '@/lib/queries';
@@ -106,6 +107,9 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   useEffect(() => {
     void identifyPurchaser(userId);
   }, [userId]);
+
+  // Stopping Sign in with Apple for Tusky in iOS Settings signs the person out here (Phase 17).
+  useAppleCredentialWatch(userId ?? undefined);
 
   useEffect(() => {
     if (ready) {
