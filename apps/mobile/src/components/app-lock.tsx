@@ -10,6 +10,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { shouldLockOnResume } from '@/lib/app-lock';
 import { promptUnlock, useLockMethodLabel } from '@/lib/app-lock-auth';
 import { readAppLock, writeAppLock } from '@/lib/app-lock-store';
+import { usePrivacyShield } from '@/lib/privacy-shield';
 import { useSession } from '@/lib/session';
 import { supabase } from '@/lib/supabase';
 
@@ -37,6 +38,7 @@ export function AppLockProvider({ children }: PropsWithChildren) {
   const [enabled, setEnabledState] = useState(readAppLock);
   // The very first frame is already locked when the preference is on: nothing shows before the prompt.
   const [locked, setLocked] = useState(enabled);
+  usePrivacyShield(enabled);
 
   // Who was signed in once the stored session was restored (undefined until then). Nobody is locked
   // out of a signed-out app, and someone who has just signed in has just proven who they are; only
