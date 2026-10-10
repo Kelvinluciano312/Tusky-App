@@ -173,3 +173,59 @@ Hide My Email person could never receive a two-step code.
 5. iOS Settings → Apple Account → Sign in with Apple → Tusky → Stop using: back in the app, it signs out.
 6. Account screen: "Signed in with Apple" shows, and the password row reads "Set a password".
 7. Android: the sign-in and sign-up screens are unchanged (no Apple button).
+
+## M5 — Account deletion for Apple users, revocation, Apple notifications (code done; deployed to dev)
+
+What changed:
+
+- `_shared/apple.ts` (pure but for the two fetches; 12 tests): verifies Apple's identity token (RS256 against Apple's keys,
+  issuer, audience `com.ouroborosstudios.tusky`, at most 10 minutes old, and `sub` equal to the caller's own Apple identity),
+  builds the ES256 client secret, trades an authorization code for a refresh token, revokes it, and verifies the signed
+  server-to-server notification. Nothing in it logs a token, a code or the key.
+- `delete-account` takes `{ password }` or `{ apple: { identity_token, authorization_code } }` (`parseProof`). The Apple user to
+  match is read from the caller's own identity on the server, never from the request. The code is traded for a refresh token
+  **before** the slow Plaid pass (it is single-use and lives 5 minutes), and the token is revoked after the user is gone
+  (Guideline 5.1.1(v)). A refused or unreachable Apple never fails a deletion. A wrong Apple proof is a 403
+  `apple_unverified` with nothing touched. **Accepted limit:** a password proof (for example from Android) cannot revoke Apple's
+  grant, because only an Apple sign-in yields the code.
+- App: an Apple-only account on iOS (`deleteProofKind`) sees no password field in the delete sheet. It types `DELETE`, then Apple
+  asks (`confirmWithApple`), and the tokens go to the function. Password accounts and Android are unchanged.
+- `apple-notifications` (new, public, `verify_jwt = false` in `config.toml`): POST only; the body's `payload` must be a JWS
+  signed by Apple or the answer is 401 before anything else runs. `consent-revoked` and `account-delete` end that user's
+  sessions (`user_for_apple_sub` then `end_user_sessions`, migration `20261018130000_apple_identity.sql`, service_role only).
+  `email-enabled`/`email-disabled` are logged by type. It never deletes data: an orphaned account's banks are archived by
+  `plan-enforcer` when its trial ends, which stops Plaid billing. The Apple user id is never logged.
+- **Task 5.4 path that held:** `postgres` may `DELETE` from `auth.sessions` (rehearsed in a rolled-back block on dev), so
+  `end_user_sessions` stayed in. Verified on dev: garbage bodies answer 401, GET answers 405, `anon` and `authenticated` cannot
+  execute either function, and `node scripts/rls-check.mjs` passes.
+
+### For Kelvin (Task 5.5): dev secrets
+
+Without them the function still deletes accounts but cannot revoke Apple's grant (it logs `apple: not configured`). From the
+repo root, with the `.p8` from P3 (never commit it or paste it into chat):
+
+```powershell
+npx supabase secrets set APPLE_TEAM_ID=<Team ID> APPLE_KEY_ID=<Key ID>
+npx supabase secrets set "APPLE_PRIVATE_KEY=$(Get-Content C:\path\to\AuthKey_XXXX.p8 -Raw)"
+```
+
+### Production commands (Pedro, each only on his go-ahead; the CLI stays linked to dev)
+
+```sh
+npx supabase db push --project-ref awiwcgrisyzimzxgddxu   # migration 20261018130000_apple_identity.sql
+npx supabase secrets set APPLE_TEAM_ID=<Team ID> APPLE_KEY_ID=<Key ID> --project-ref awiwcgrisyzimzxgddxu
+npx supabase secrets set "APPLE_PRIVATE_KEY=<contents of AuthKey_XXXX.p8>" --project-ref awiwcgrisyzimzxgddxu
+npx supabase functions deploy apple-notifications --use-api --project-ref awiwcgrisyzimzxgddxu
+npx supabase functions deploy delete-account --use-api --project-ref awiwcgrisyzimzxgddxu
+```
+
+Then Apple Developer → Identifiers → `com.ouroborosstudios.tusky` → Sign in with Apple → Configure → **Server-to-Server
+Notification Endpoint** = `https://awiwcgrisyzimzxgddxu.supabase.co/functions/v1/apple-notifications`.
+
+### Device checks (iPhone, dev Sandbox; needs the dev secrets above)
+
+1. Delete an **Apple-only** test account: Apple's prompt appears after typing `DELETE`, then the account, herd and banks are
+   gone and the function log shows no error. iOS Settings → Apple Account → Sign in with Apple: Tusky is no longer listed.
+2. Cancel Apple's prompt: nothing is deleted and the sheet stays open.
+3. Delete a **password** account on iPhone and on Android: unchanged (password field, no Apple prompt).
+4. If you can send a test notification from Apple, check the dev log shows only the event type.

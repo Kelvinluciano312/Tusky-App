@@ -399,6 +399,11 @@ verify_jwt = false
 [functions.revenuecat-webhook]
 verify_jwt = false
 
+# Apple calls this too; the message is a JWS signed by Apple, verified in the
+# function before anything else runs (_shared/apple.ts).
+[functions.apple-notifications]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
