@@ -6,7 +6,8 @@ Approved plan/phases: see README Status. Phases 0–13 are merged, including Pha
 Track P (production) is live and waits only on Plaid's production access for OAuth banks. Now:
 Phase 14, monetization (`docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md`),
 milestones 14a (plans and limits) → 14b (lifecycle, reconnect merge) → 14c (purchases), all merged
-→ 14d (launch readiness: Play Billing, account deletion, release builds), on `pedro-14d`.
+→ 14d (launch readiness: Play Billing, account deletion, release builds), on `pedro-14d`. The iPhone app
+(14d-2) is planned in `docs/superpowers/plans/2026-10-07-phase-14d-2-ios.md`.
 
 **Plaid keys per project.** Dev stays on Sandbox, and all general testing happens there. Production
 keys live only in the production project's secrets. Phase 6's old "key switch" step is superseded by

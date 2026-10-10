@@ -1204,6 +1204,8 @@ gh pr create --base master --title "Phase 14d-1: Android launch readiness" --bod
 
 # 14d-2 — iOS
 
+> **Superseded (2026-10-07)** by `2026-10-07-phase-14d-2-ios.md`, which covers what this section missed (cross-store billing, Plaid's iOS redirect URI, dialogs over sheets, the Keychain surviving a reinstall, Apple's upload checks). Kept for history; don't execute Tasks 9–11.
+
 Starts after 14d-1 merges, on `pedro-14d-ios` from master, and only once D4 is answered: an Apple Developer account and an iPhone.
 
 ### Task 9: The app on iOS
