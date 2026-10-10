@@ -320,8 +320,10 @@ max_frequency = "5s"
 # `discord`, `facebook`, `github`, `gitlab`, `google`, `keycloak`, `linkedin_oidc`, `notion`, `twitch`,
 # `twitter`, `x`, `slack`, `spotify`, `workos`, `zoom`.
 [auth.external.apple]
-enabled = false
-client_id = ""
+# Native Sign in with Apple (Phase 17): the app sends Apple's identity token, so the client id is the iOS bundle id
+# and no secret is needed. This is the local copy only; the hosted projects are set in the dashboard.
+enabled = true
+client_id = "com.ouroborosstudios.tusky"
 # DO NOT commit your OAuth provider secret to git. Use environment variable substitution instead:
 secret = "env(SUPABASE_AUTH_EXTERNAL_APPLE_SECRET)"
 # Overrides the default auth callback URL derived from auth.external_url.

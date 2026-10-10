@@ -119,3 +119,57 @@ npx supabase functions deploy plaid-create-link-token --use-api --project-ref aw
 1. Link "First Platypus Bank" (`user_good` / `pass_good`): it links.
 2. Link **Chase** (OAuth): the bank page opens, returns into Link, and the bank appears.
 3. Android emulator: First Platypus still links (the request body now carries `platform: 'android'`).
+
+## M4 — Sign in with Apple (code done; `two-factor` deployed to dev)
+
+What changed:
+
+- `lib/apple.ts` (pure, tested): name from Apple's first authorization, Hide My Email detection, onboarding name
+  suggestion, identity helpers, which proof account deletion needs, cancel detection.
+- `lib/apple-auth.ts`: `signInWithApple()` sends Apple the SHA-256 (hex) of a random nonce and Supabase the raw nonce, then
+  `signInWithIdToken({ provider: 'apple' })`. `saveAppleName` keeps the name Apple shared, but only before onboarding, so an
+  existing account that links Apple later keeps its own name. `confirmWithApple()` is for account deletion (M5).
+  `useAppleCredentialWatch()` (called in `RootNavigator`) signs out when `getCredentialStateAsync` reports `REVOKED`, on
+  launch and on every return to the foreground. `NOT_FOUND` and errors are ignored.
+- `components/apple-sign-in.tsx`: the button, under the primary button on sign-in and sign-up. It renders nothing on Android.
+- Onboarding prefills the name from the profile unless it is only a relay address's local part; Account shows
+  "Signed in with Apple" and labels the password row "Set a password" for an Apple-only account.
+- Two-step (`_shared/two-factor.ts`): `hasFirstFactor` accepts `password` or `oauth` (provider Apple, or none named) as the
+  first factor; otp, magiclink, recovery and invite sessions still cannot be marked. The error code
+  `password_session_required` is unchanged so old clients keep working.
+- `supabase/config.toml` `[auth.external.apple]`: enabled, client id `com.ouroborosstudios.tusky` (local copy only).
+
+### For Kelvin (P8): dashboards
+
+Supabase → Authentication → Providers → Apple: enable it, **Client IDs** = `com.ouroborosstudios.tusky`; no secret is
+needed for native sign-in. Do it on dev now and on production with Pedro. Also confirm **Email → Confirm email = ON** on both
+projects: it is what stops someone pre-registering a victim's email to hijack the Apple link.
+
+### For Kelvin (P4): Apple private email relay
+
+Apple Developer → Services → *Sign in with Apple for Email Communication*: register `studiosouroboros.com` and the sender
+`noreply@studiosouroboros.com`. Without it, confirmation and two-step emails to `@privaterelay.appleid.com` bounce, so a
+Hide My Email person could never receive a two-step code.
+
+### Still unknown until a real iPhone signs in (record the answers here, then in CLAUDE.md)
+
+1. **The real `amr`** of an Apple session. Expected `[{ method: 'oauth', provider: 'apple', … }]`. Add a temporary
+   `if (__DEV__) console.log(JSON.parse(atob(session.access_token.split('.')[1])).amr)` after sign-in, read it from Metro, and
+   remove it. If the method has another name, change `FIRST_FACTOR_METHODS` in `_shared/two-factor.ts` (and its test), then
+   redeploy `two-factor`. Observed value: _not yet observed_.
+2. Whether `supabase.auth.updateUser({ password })` for an Apple-only person creates an `email` identity. If it does not,
+   "Set a password" only adds a password to the same user and the row label should not promise email sign-in.
+3. That `getUserIdentities()` returns the Apple identity with `identity_data.sub` (the watch and account deletion depend on it).
+4. Whether `getCredentialStateAsync` works on the device. It throws on the simulator, which the watch deliberately ignores.
+
+### Device checks (iPhone, dev Sandbox; needs an iOS dev build, P2, and the Apple provider enabled on dev)
+
+1. A new Apple sign-up, once sharing the name and once with **Hide My Email**. Check the rows on dev: profile, herd, trial
+   subscription, crowd consent, no terms consent. The app shows accept-terms, then onboarding with the name prefilled (empty
+   for a relay address with no name), then Home.
+2. Sign out, then sign in with Apple again: the same account.
+3. An existing email account signs in with Apple using the **same** email: it links to that account (same data).
+4. Two-step on as an Apple-only person: a code arrives at the relay address (needs P4) and verifies.
+5. iOS Settings → Apple Account → Sign in with Apple → Tusky → Stop using: back in the app, it signs out.
+6. Account screen: "Signed in with Apple" shows, and the password row reads "Set a password".
+7. Android: the sign-in and sign-up screens are unchanged (no Apple button).
