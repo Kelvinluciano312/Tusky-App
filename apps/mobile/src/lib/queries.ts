@@ -1557,14 +1557,19 @@ export function useSetAccountPrivate() {
  * Delete my account (Phase 14d). The server removes every bank at Plaid first;
  * if one fails, nothing is deleted and trying again finishes the job.
  */
+export type DeleteAccountProof =
+  | { password: string }
+  | { apple: { identity_token: string; authorization_code: string } };
+
 export function useDeleteAccount() {
   return useMutation({
-    // The server checks the password before it touches anything (Phase 16d).
-    mutationFn: async (password: string) => {
-      const { error } = await supabase.functions.invoke('delete-account', { body: { password } });
+    // The server checks the proof before it touches anything (Phase 16d): a password, or a fresh Apple sign-in (Phase 17).
+    mutationFn: async (proof: DeleteAccountProof) => {
+      const { error } = await supabase.functions.invoke('delete-account', { body: proof });
       if (!error) return;
       const { message } = await readFunctionError(error);
       if (message === 'wrong_password') throw new Error('That password is not right. Nothing was deleted.');
+      if (message === 'apple_unverified') throw new Error("Apple could not confirm it's you. Nothing was deleted.");
       if (message === 'plaid_failed') {
         throw new Error('A bank could not be disconnected at Plaid, so nothing was deleted. Try again in a few minutes.');
       }

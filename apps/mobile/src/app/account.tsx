@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, KeyRound, LogOut } from 'lucide-react-native';
 import { type ReactNode, useState } from 'react';
-import { Linking, Pressable, ScrollView } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView } from 'react-native';
 import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -13,9 +13,10 @@ import { Card } from '@/components/ui/card';
 import { DELETE_URL, PRIVACY_URL, TERMS_URL } from '@/constants/legal';
 import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { hasProvider } from '@/lib/apple';
+import { deleteProofKind, hasProvider } from '@/lib/apple';
+import { confirmWithApple } from '@/lib/apple-auth';
 import { deleteWarning } from '@/lib/paywall';
-import { useDeleteAccount, useIdentities, usePlan } from '@/lib/queries';
+import { type DeleteAccountProof, useDeleteAccount, useIdentities, usePlan } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { supabase } from '@/lib/supabase';
 
@@ -62,15 +63,32 @@ export default function AccountScreen() {
 
   const warning = plan ? deleteWarning(plan, new Date()) : null;
 
+  // An Apple-only account on iOS has no password: Apple asks again, which also lets the server revoke its grant.
+  const proofKind = deleteProofKind(identities, Platform.OS);
+
   // The sheet shows the failure inline (a wrong password most often).
-  const doDelete = (password: string) =>
-    deleteAccount.mutate(password, {
+  const doDelete = async (password: string | null) => {
+    let proof: DeleteAccountProof;
+    if (proofKind === 'apple') {
+      try {
+        const confirmed = await confirmWithApple();
+        if (!confirmed) return;
+        proof = { apple: confirmed };
+      } catch {
+        dialog.alert('Apple did not answer', 'Nothing was deleted. Try again.');
+        return;
+      }
+    } else {
+      proof = { password: password ?? '' };
+    }
+    deleteAccount.mutate(proof, {
       onSuccess: async () => {
         setDeleting(false);
         await supabase.auth.signOut();
         queryClient.clear();
       },
     });
+  };
 
   return (
     <ScrollView
@@ -129,9 +147,10 @@ export default function AccountScreen() {
         key={`delete-${deleting}`}
         visible={deleting}
         warning={warning}
+        proof={proofKind}
         isDeleting={deleteAccount.isPending}
         error={deleteAccount.error?.message ?? null}
-        onDelete={doDelete}
+        onDelete={(password) => void doDelete(password)}
         onClose={() => setDeleting(false)}
       />
 

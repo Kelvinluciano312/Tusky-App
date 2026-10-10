@@ -16,18 +16,22 @@ type Props = {
   visible: boolean;
   /** From `deleteWarning`: set when a store subscription outlives the account. */
   warning: string | null;
+  /** What proves it is them: the password, or (Apple-only accounts on iOS) a fresh Sign in with Apple. */
+  proof: 'password' | 'apple';
   isDeleting?: boolean;
   error?: string | null;
-  onDelete: (password: string) => void;
+  /** The typed password, or null when the screen confirms with Apple itself. */
+  onDelete: (password: string | null) => void;
   onClose: () => void;
 };
 
 /**
  * Deleting the account asks for more than a tap (Phase 16d): what is lost, the
  * subscription warning, the word DELETE and the password. The server checks the
- * password before it touches anything, so a wrong one shows up here as `error`.
+ * proof before it touches anything, so a wrong one shows up here as `error`.
+ * An Apple-only account has no password, so Apple asks next instead (Phase 17).
  */
-export function DeleteAccountSheet({ visible, warning, isDeleting, error, onDelete, onClose }: Props) {
+export function DeleteAccountSheet({ visible, warning, proof, isDeleting, error, onDelete, onClose }: Props) {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
   // Empty on each opening; the screen keys this sheet by visibility.
@@ -100,14 +104,20 @@ export function DeleteAccountSheet({ visible, warning, isDeleting, error, onDele
               autoCorrect={false}
               placeholder={DELETE_WORD}
             />
-            <TextField
-              label="Your password"
-              value={password}
-              onChangeText={setPassword}
-              password
-              autoComplete="current-password"
-              placeholder="Password"
-            />
+            {proof === 'password' ? (
+              <TextField
+                label="Your password"
+                value={password}
+                onChangeText={setPassword}
+                password
+                autoComplete="current-password"
+                placeholder="Password"
+              />
+            ) : (
+              <AppText variant="caption" tone="dim">
+                You&apos;ll confirm with Apple next.
+              </AppText>
+            )}
 
             {error ? (
               <AppText variant="caption" tone="negative">
@@ -118,9 +128,9 @@ export function DeleteAccountSheet({ visible, warning, isDeleting, error, onDele
             <Button
               title="Delete my account"
               loading={isDeleting}
-              disabled={word !== DELETE_WORD || password === ''}
+              disabled={word !== DELETE_WORD || (proof === 'password' && password === '')}
               style={{ backgroundColor: colors.negative }}
-              onPress={() => onDelete(password)}
+              onPress={() => onDelete(proof === 'password' ? password : null)}
             />
             <Button title="Cancel" variant="ghost" disabled={isDeleting} onPress={close} />
           </ScrollView>
