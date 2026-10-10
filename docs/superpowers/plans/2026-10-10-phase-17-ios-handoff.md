@@ -229,3 +229,52 @@ Notification Endpoint** = `https://awiwcgrisyzimzxgddxu.supabase.co/functions/v1
 2. Cancel Apple's prompt: nothing is deleted and the sheet stays open.
 3. Delete a **password** account on iPhone and on Android: unchanged (password field, no Apple prompt).
 4. If you can send a test notification from Apple, check the dev log shows only the event type.
+
+## M6 — Security hardening, iOS and Android (code done; app only, nothing to deploy)
+
+What changed:
+
+- **Session keychain accessibility (6.1).** `createSecureStorage(secure, legacy?, options?)` passes `options` on every read, write
+  and delete, chunks included (tested). `supabase.ts` passes `{ keychainAccessible: WHEN_UNLOCKED_THIS_DEVICE_ONLY }`: on iOS the
+  session never leaves the phone in a backup or a device transfer, and is unreadable while the phone is locked. Android ignores
+  the option. Existing sessions upgrade the next time the token refreshes, because each write rewrites every chunk.
+- **App lock (6.2).** Opt-in, per device, never synced: `tusky.appLock` in the keystore (`lib/app-lock-store.ts`, read
+  synchronously so the first frame is already locked). `AppLockProvider` (`components/app-lock.tsx`) wraps `RootNavigator`. With the
+  preference on and a signed-in user it locks at cold start and after 60 s away (`shouldLockOnResume`, pure and tested; a clock that
+  moved backwards locks too). The lock is a full-screen `Modal`, so it covers sheets, dialogs and Plaid Link. The system prompt
+  (`authenticateAsync`, with the phone's passcode as fallback) opens by itself once per lock; the button asks again; **Sign out**
+  is the escape. Someone who has just signed in is not locked, and nobody is locked out of a signed-out app. The switch is in the
+  Account screen's Sign-in card, under two-step. Turning it on or off needs one successful prompt, and turning it on needs a
+  phone with a passcode or biometrics.
+- **Privacy shield (6.3).** `lib/privacy-shield.ts`. iOS always blurs Tusky in the app switcher
+  (`enableAppSwitcherProtectionAsync(1)`). Android, while App lock is on, blanks the Recents card and blocks screenshots and screen
+  recording (`preventScreenCaptureAsync('app-lock')`, FLAG_SECURE). With the lock off, Android is exactly as before.
+- **Dependency audit (6.4).** See "iOS launch" in `docs/ops/security-review-2026-09-27.md`. Only build-tooling packages moved
+  (16 lockfile entries, `package.json` untouched); everything else needs a breaking `--force` and is not shipped in the bundle.
+
+Notes for whoever runs the first iOS build:
+
+- **The iOS Keychain outlives an uninstall.** Delete Tusky and reinstall it, and the session, and the App lock preference, are
+  still there. That is a feature for the lock (it cannot be reset by reinstalling), but a person who expects "reinstall = signed
+  out" will be surprised. If it matters, the fix is a first-run marker in `AsyncStorage` (which is wiped with the app): when it is
+  missing, clear the Tusky keystore entries once. Not built; decide after seeing it on a device.
+- **`npx expo install --check` is not clean, and was not before this phase.** Seven patch-level mismatches exist in packages this
+  phase did not touch. Run `npx expo install --fix`, then retest, before the first iOS build.
+- **Rebuild the Android dev client** (`npx expo run:android --device Pixel_7`): `expo-local-authentication`,
+  `expo-screen-capture`, `expo-apple-authentication` and `expo-crypto` are native. The app will not start on an old dev client.
+
+### Device checks (iPhone, iPad and Android; needs the rebuilt dev clients)
+
+1. Account → Lock with Face ID (or fingerprint / passcode): the switch asks once, then turns on. On a phone with no passcode and
+   no biometrics, it refuses with "Set up Face ID, a fingerprint or a passcode on this device first."
+2. Lock on → background Tusky for more than a minute → opening it shows "Tusky is locked" with the prompt already open.
+3. Face ID unlocks. Cancel the prompt: the lock stays, no error text; **Unlock** asks again. On iOS, failing Face ID offers the
+   passcode, and the passcode unlocks.
+4. **Sign out** from the lock screen: confirm, and you land on the sign-in screen with nothing of the last account in the cache.
+5. Background for less than a minute → no lock. Kill the app and open it → locked.
+6. iOS app switcher: Tusky's card is blurred, with no balances readable (App lock on or off).
+7. Android Recents: a blank card while the lock is on, and screenshots are blocked. With the lock off, both work as before.
+8. Lock off → no change at all, on either platform.
+9. iPad landscape and Split View: the lock screen is centred and readable.
+10. Open Plaid Link, go to a bank's OAuth page for longer than a minute, and return: the lock covers Link, and unlocking returns
+    to it. If Link is hidden behind the lock and cannot be reached afterwards, record it here as a bug.

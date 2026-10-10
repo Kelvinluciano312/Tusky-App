@@ -16,7 +16,7 @@ probes ran inside rolled-back blocks on dev only.
 | 3 | Email confirmation off on production | Open — deliberate until a third person signs up |
 | 4 | `set_updated_at` search_path | **Fixed** — migration `20261004120000` |
 | 5 | Webhook key-fetch amplification | **Fixed** — negative cache + kid shape check |
-| 6 | npm advisories in build tooling | Open — no runtime exposure |
+| 6 | npm advisories in build tooling | Partly fixed 2026-10-10 (41 → 34, no critical) — rest needs Expo; see "iOS launch" |
 | 7 | `rls_auto_enable` | No action — verified inert |
 | 8 | Settlements trust model | No action — by design |
 
@@ -90,6 +90,9 @@ re-tested against dev after deploying: both 401.
 `@expo/config-plugins`, `@expo/prebuild-config` and `expo-splash-screen`. They are parsing and
 denial-of-service issues in code that runs on a developer's machine at build time. **None of it
 ships to the phone.** Worth an `npm audit fix` when Expo's versions allow, not worth forcing.
+
+*Update 2026-10-10 (Phase 17):* the count had grown to 41 (1 critical, 28 high, 12 moderate). The tooling-only
+fixes brought it to 34 (23 high, 11 moderate, no critical); see "iOS launch" below for what remains.
 
 ### 7. `rls_auto_enable` is executable by anon — INFO, no action
 
@@ -167,4 +170,70 @@ Recorded so the next review can start from here rather than re-deriving it.
 1. **Turn on leaked-password protection** on both projects: Authentication → Policies. A toggle,
    and the single best return left on this list.
 2. **Before anyone else signs up:** email confirmation on, plus custom SMTP (finding 3).
-3. `npm audit fix` when Expo's versions allow (finding 6). No hurry: none of it ships to the phone.
+3. The remaining `npm audit` advisories (finding 6) when Expo's versions allow. No hurry: see "iOS launch" for why.
+
+## iOS launch (Phase 17, 2026-10-10)
+
+Tusky is going to the App Store, so this is a pass over what the iPhone and iPad builds add, and over what the
+two platforms now share. Everything below is in the code on branch `kelvin` unless it says otherwise.
+
+### Controls added
+
+| Control | What it closes |
+| --- | --- |
+| Session in the Keychain, `WHEN_UNLOCKED_THIS_DEVICE_ONLY` (`lib/secure-storage.ts`, `lib/supabase.ts`) | The refresh token cannot be read while the phone is locked, and never leaves the phone in an iCloud or iTunes backup or a device transfer. Android already used the keystore (finding 1). |
+| App lock (`components/app-lock.tsx`, `lib/app-lock*.ts`) | A borrowed or stolen unlocked phone no longer opens Tusky: Face ID, Touch ID, fingerprint, or the phone's passcode, on open and after 60 s away. Opt-in, per device. A clock moved backwards locks (fails closed). A keystore that cannot be read turns the lock off rather than locking the owner out; Sign out is always one tap from the lock screen. |
+| App-switcher privacy (`lib/privacy-shield.ts`) | iOS blurs Tusky in the app switcher. Android blanks the Recents card and blocks screenshots and screen recording (FLAG_SECURE) while App lock is on. |
+| Sign in with Apple, with a nonce | The identity token is bound to this sign-in: Apple gets the SHA-256 of a random value, Supabase gets the raw value, so a stolen token cannot be replayed. |
+| Server-checked Apple proof for account deletion (`_shared/apple.ts`, `delete-account`) | Deleting an Apple-only account needs a fresh Apple token whose `sub` matches the caller's own Apple identity, read server-side. The client never says which Apple user it is. |
+| Apple token revocation on deletion | Guideline 5.1.1(v): Apple's grant is revoked, so Tusky disappears from the person's Sign in with Apple list. A password proof cannot revoke (accepted, documented). |
+| `apple-notifications` (second public function) | Apple's consent-revoked and account-delete events end that person's sessions. Public by necessity (`verify_jwt = false`), but the body must be a JWS signed by Apple (RS256, issuer, audience) or the answer is 401 before anything else runs. It never deletes data and never logs the Apple user id. |
+| Two-step accepts an Apple session as the first factor | Without it, an Apple-only person could never complete the second step. `otp`, `magiclink`, `recovery` and `invite` sessions are still refused. |
+| Credential watch (`useAppleCredentialWatch`) | Stopping Sign in with Apple for Tusky in iOS Settings signs the app out on its next foreground. Only `REVOKED` does it; `NOT_FOUND` also means "a different Apple ID on this phone" and is ignored. |
+| Demo Items flagged `is_demo` (M7) | The App Review account's banks have no token and no Plaid Item, and sync, the webhook and the plan enforcer skip them, so a reviewer cannot trigger a Plaid call, a bill or an error. |
+| Privacy manifest and honest purpose strings | The app declares what it collects and that nothing is used for tracking, and `ITSAppUsesNonExemptEncryption` is false. No analytics or crash-reporting SDK exists to declare. |
+
+### Things to know
+
+- **Email confirmation is the guard against pre-hijacking.** Supabase links an Apple sign-in to an existing account with the
+  same verified email. An attacker who signs up with a victim's address before the victim does can be linked to the victim's
+  later Apple sign-in unless that first address had to be confirmed. Production has confirmation ON with Resend
+  (`docs/ops/production.md`); re-check it before launch and never turn it off. This is finding 3, now with a second reason.
+- **Leaked-password protection (finding 2)** is a Supabase Pro setting. Turn it on in both projects if the production plan
+  allows it. If it does not, record that here as accepted: Apple sign-in and the two-step switch cover the same credential-stuffing
+  risk for the people who use them.
+- **The iOS Keychain survives an uninstall.** A reinstalled Tusky still has the session and the App lock preference. For the
+  lock that is the safe direction. See the handoff for the first-run marker that would change it.
+- **Not built, on purpose:** jailbreak/root detection and certificate pinning. Both are bypassable by anyone who controls the
+  phone, and pinning would brick the app when Supabase rotates its certificate. Apple requires neither. EAS Update code signing
+  is worth adding later and needs the paid EAS plan.
+
+### Dependency audit (`npm audit --omit=dev`, apps/mobile)
+
+41 advisories (1 critical, 28 high, 12 moderate) became **34 (0 critical, 23 high, 11 moderate)**. What was applied: a targeted
+`npm update` of 16 lockfile entries in build tooling only (`shell-quote` 1.9.0 → 1.12.0, `@xmldom/xmldom` inside the plist parser
+0.9.10 → 0.9.12, `brace-expansion` 5.0.7 → 5.0.12 and the nested 1.1.16 → 1.1.21 copies, `js-yaml` 4.3.0 → 4.3.2,
+`source-map-js`, `browserslist`, and the data packages it pulls: `baseline-browser-mapping`, `caniuse-lite`,
+`electron-to-chromium`, `node-releases`, `update-browserslist-db`). `package.json` did not change.
+
+`npm audit fix` itself was **not** used. It bumped the native modules (Plaid SDK, RevenueCat, Expo, expo-router) and pruned dev
+dependencies until `npx expo install --check` failed; it was undone, and the lockfile restored before the targeted update.
+
+What remains has no fix that is not a breaking `--force` (npm's suggestions include downgrading Expo to version 44), and all of
+it arrives through these chains:
+
+| Chain | Advisory kind | Reaches the phone? |
+| --- | --- | --- |
+| `expo`, `@expo/cli`, `@expo/metro*`, `@expo/config*`, `@expo/prebuild-config`, `metro*`, `@react-native/community-cli-plugin`, `@react-native/metro-config`, `micromatch`/`braces`, `image-size`, `xcode`, `uuid` | Parsing and denial-of-service in the dev server, bundler and prebuild | No. Runs on the developer's or EAS's machine at build time. |
+| `react-native`, `react-native-reanimated`, `react-native-worklets`, `react-native-plaid-link-sdk`, `react-native-purchases` | The same tooling packages, reached through their build scripts and peer ranges | No. The advisory is in the build toolchain they depend on, not in code they ship. |
+| `expo-splash-screen`, `expo-updates` → `@expo/code-signing-certificates` → `node-forge` | Certificate parsing | Not in the app: EAS Update is not used, and `node-forge` is invoked only by the build step that signs update manifests. |
+| `expo-router` → `query-string` → `decode-uri-component` | A malformed query string can make parsing slow (ReDoS) | **Yes, in the bundle**, but the worst case is a slow parse of a deep link the person themselves opened. No data is exposed. Revisit when Expo ships a router that drops it. |
+
+Re-run the audit after each Expo SDK upgrade, and do not run `npm audit fix --force`.
+
+### Verified, and what is left for a device
+
+Automated checks on every commit of this phase: app typecheck, lint and tests, the Deno tests for the shared helpers, and
+`node scripts/rls-check.mjs` after the migrations. What no script can check is listed in the handoff: the real Apple `amr`,
+whether `updateUser({ password })` gives an Apple-only person an email identity, `getCredentialStateAsync` on a phone, Chase OAuth
+through the universal link, the lock screen over Plaid Link, and the iPad in landscape.
