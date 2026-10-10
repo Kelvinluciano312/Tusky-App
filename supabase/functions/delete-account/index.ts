@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-import { deleteAccount } from '../_shared/account.ts';
+import { deleteAccount, parseProof } from '../_shared/account.ts';
+import { appleEnv, exchangeAppleCode, formPost, revokeAppleToken, verifyAppleIdentity } from '../_shared/apple.ts';
 import { disconnectItem } from '../_shared/connections.ts';
 import { corsHeaders, getAdminClient, getAuthedUser, getPlaidClient, jsonResponse, loggable, requireSecondStep } from '../_shared/lib.ts';
 import { forgetRevenueCatUser } from '../_shared/revenuecat.ts';
@@ -8,6 +9,10 @@ import { forgetRevenueCatUser } from '../_shared/revenuecat.ts';
 /**
  * Delete the caller's account (Phase 14d). Banks go at Plaid first; any
  * failure there stops everything, and calling again finishes the job.
+ * The body proves who is asking: { password }, or { apple: { identity_token,
+ * authorization_code } } from a fresh Sign in with Apple (Phase 17), which also
+ * lets us revoke Apple's grant. A password proof cannot revoke it: only an
+ * Apple sign-in yields the code.
  */
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -17,8 +22,7 @@ Deno.serve(async (req) => {
   const blocked = await requireSecondStep(admin, req, user.id);
   if (blocked) return blocked;
   const plaid = getPlaidClient();
-  const body = await req.json().catch(() => ({}));
-  const password: unknown = body?.password;
+  const proof = parseProof(await req.json().catch(() => null));
 
   const herdOf = async (id: string) => {
     const { data, error } = await admin.from('herd_members').select('herd_id').eq('user_id', id).maybeSingle();
@@ -45,6 +49,26 @@ Deno.serve(async (req) => {
         // Discard the throwaway session; local scope revokes only it, never the caller's.
         await anon.auth.signOut({ scope: 'local' }).catch(() => {});
         return data.user?.id === user.id;
+      },
+      // The Apple user to match comes from the caller's own identity, never from the request.
+      verifyApple: async (id, identityToken) => {
+        const { data, error } = await admin.auth.admin.getUserById(id);
+        if (error) throw error;
+        const sub = data.user?.identities?.find((i) => i.provider === 'apple')?.identity_data?.sub;
+        return typeof sub === 'string' && (await verifyAppleIdentity(identityToken, sub));
+      },
+      appleGrant: async (code) => {
+        const env = appleEnv((k) => Deno.env.get(k));
+        if (!env) {
+          console.warn('apple: not configured, token not revoked');
+          return null;
+        }
+        return await exchangeAppleCode(formPost, env, code, new Date());
+      },
+      revokeApple: async (refreshToken) => {
+        const env = appleEnv((k) => Deno.env.get(k));
+        if (!env) return;
+        if (!(await revokeAppleToken(formPost, env, refreshToken, new Date()))) console.warn('apple: revoke was refused');
       },
       herdSize: async (id) => {
         const herd = await herdOf(id);
@@ -75,9 +99,10 @@ Deno.serve(async (req) => {
         if (error) throw error;
       },
       forgetPurchaser: (id) => forgetRevenueCatUser(Deno.env.get('REVENUECAT_SECRET_KEY') ?? '', id),
-    }, user.id, password);
+    }, user.id, proof);
 
     if (result === 'wrong_password') return jsonResponse({ error: 'wrong_password' }, 403);
+    if (result === 'apple_unverified') return jsonResponse({ error: 'apple_unverified' }, 403);
     if (result === 'plaid_failed') return jsonResponse({ error: 'plaid_failed' }, 502);
     if (result === 'busy') return jsonResponse({ error: 'busy' }, 409);
     console.log(`delete-account: deleted ${user.id}`);
