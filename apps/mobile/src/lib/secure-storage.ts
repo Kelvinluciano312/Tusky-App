@@ -22,11 +22,14 @@ export type KeyValueStore = {
   removeItem(key: string): Promise<void>;
 };
 
-/** The slice of expo-secure-store this uses. */
-export type SecureBackend = {
-  getItemAsync(key: string): Promise<string | null>;
-  setItemAsync(key: string, value: string): Promise<void>;
-  deleteItemAsync(key: string): Promise<void>;
+/**
+ * The slice of expo-secure-store this uses. `O` is its options object (for
+ * example `{ keychainAccessible }`), kept generic so this file imports nothing native.
+ */
+export type SecureBackend<O = unknown> = {
+  getItemAsync(key: string, options?: O): Promise<string | null>;
+  setItemAsync(key: string, value: string, options?: O): Promise<void>;
+  deleteItemAsync(key: string, options?: O): Promise<void>;
 };
 
 const chunkKey = (key: string, i: number) => `${key}.${i}`;
@@ -42,11 +45,14 @@ const split = (value: string): string[] => {
  * @param secure the keystore.
  * @param legacy the AsyncStorage sessions were kept in before; when given, a
  *   value found there is moved across on first read and deleted from it.
+ * @param options passed on every keystore call, chunks and deletes included. On
+ *   iOS `keychainAccessible` is applied when an item is written, so each write
+ *   (the next token refresh) moves an existing session to the new class.
  */
-export function createSecureStorage(secure: SecureBackend, legacy?: KeyValueStore): KeyValueStore {
+export function createSecureStorage<O>(secure: SecureBackend<O>, legacy?: KeyValueStore, options?: O): KeyValueStore {
   /** How many chunks `key` currently holds, or null when it holds nothing. */
   const readCount = async (key: string): Promise<number | null> => {
-    const manifest = await secure.getItemAsync(key);
+    const manifest = await secure.getItemAsync(key, options);
     if (manifest === null) return null;
     const count = Number(manifest);
     return Number.isInteger(count) && count > 0 ? count : null;
@@ -57,17 +63,17 @@ export function createSecureStorage(secure: SecureBackend, legacy?: KeyValueStor
     const count = knownCount === undefined ? await readCount(key) : knownCount;
     // The manifest goes first: a read racing this fails closed rather than
     // reassembling a half-deleted session.
-    await secure.deleteItemAsync(key);
-    for (let i = 0; i < (count ?? 0); i++) await secure.deleteItemAsync(chunkKey(key, i));
+    await secure.deleteItemAsync(key, options);
+    for (let i = 0; i < (count ?? 0); i++) await secure.deleteItemAsync(chunkKey(key, i), options);
   };
 
   const write = async (key: string, value: string) => {
     const stale = await readCount(key);
     await clear(key, stale);
     const parts = split(value);
-    for (const [i, part] of parts.entries()) await secure.setItemAsync(chunkKey(key, i), part);
+    for (const [i, part] of parts.entries()) await secure.setItemAsync(chunkKey(key, i), part, options);
     // Manifest last, so the key only reads as present once every chunk is there.
-    await secure.setItemAsync(key, String(parts.length));
+    await secure.setItemAsync(key, String(parts.length), options);
   };
 
   return {
@@ -86,7 +92,7 @@ export function createSecureStorage(secure: SecureBackend, legacy?: KeyValueStor
         }
         let value = '';
         for (let i = 0; i < count; i++) {
-          const part = await secure.getItemAsync(chunkKey(key, i));
+          const part = await secure.getItemAsync(chunkKey(key, i), options);
           // A missing chunk means an interrupted write: report nothing rather
           // than a truncated token that would fail in confusing ways later.
           if (part === null) return null;

@@ -54,8 +54,13 @@ export function switchBackend(next: Backend) {
  * The session lives in the keystore, not in AsyncStorage: it carries a
  * long-lived refresh token, and AsyncStorage is an unencrypted file. Sessions
  * written by older builds are moved across on first read (see secure-storage.ts).
+ * On iOS the Keychain class is "when unlocked, this device only": the session
+ * never leaves the phone in a backup or a restore. Refresh runs only in the
+ * foreground (below), when the phone is unlocked. Android ignores the option.
  */
-const sessionStorage = createSecureStorage(SecureStore, AsyncStorage);
+const sessionStorage = createSecureStorage(SecureStore, AsyncStorage, {
+  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+});
 
 export const supabase = createClient(
   target.url || 'http://localhost:54321',

@@ -121,3 +121,45 @@ test('a read never throws, so a broken keystore signs the user out instead of cr
   await storage.setItem(KEY, 'x');
   await storage.removeItem(KEY);
 });
+
+/** Records the options every keystore call receives. */
+function optionsSpy<O>(): SecureBackend<O> & { seen: { op: string; key: string; options: O | undefined }[] } {
+  const store = new Map<string, string>();
+  const seen: { op: string; key: string; options: O | undefined }[] = [];
+  return {
+    seen,
+    getItemAsync: (k, options) => (seen.push({ op: 'get', key: k, options }), Promise.resolve(store.get(k) ?? null)),
+    setItemAsync: (k, v, options) => (seen.push({ op: 'set', key: k, options }), store.set(k, v), Promise.resolve()),
+    deleteItemAsync: (k, options) => (seen.push({ op: 'delete', key: k, options }), store.delete(k), Promise.resolve()),
+  };
+}
+
+test('keychain options reach every keystore call, chunks and deletes included', async () => {
+  const options = { keychainAccessible: 9 };
+  const spy = optionsSpy<typeof options>();
+  const storage = createSecureStorage(spy, undefined, options);
+  await storage.setItem(KEY, bigSession);
+  await storage.getItem(KEY);
+  await storage.setItem(KEY, 'small'); // clears the old chunks first
+  await storage.removeItem(KEY);
+  assert.ok(spy.seen.length > 10);
+  assert.ok(spy.seen.some((c) => c.op === 'set' && c.key === `${KEY}.1`));
+  assert.ok(spy.seen.some((c) => c.op === 'delete' && c.key === `${KEY}.1`));
+  for (const call of spy.seen) assert.equal(call.options, options, `${call.op} ${call.key}`);
+});
+
+test('without options nothing extra is passed', async () => {
+  const spy = optionsSpy<{ keychainAccessible: number }>();
+  const storage = createSecureStorage(spy);
+  await storage.setItem(KEY, 'x');
+  await storage.getItem(KEY);
+  for (const call of spy.seen) assert.equal(call.options, undefined);
+});
+
+test('the legacy migration also writes with the options', async () => {
+  const options = { keychainAccessible: 9 };
+  const spy = optionsSpy<typeof options>();
+  const storage = createSecureStorage(spy, fakeLegacy({ [KEY]: 'old' }), options);
+  assert.equal(await storage.getItem(KEY), 'old');
+  for (const call of spy.seen) assert.equal(call.options, options, `${call.op} ${call.key}`);
+});
