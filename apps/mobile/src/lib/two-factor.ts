@@ -66,7 +66,7 @@ export function codeFailureMessage(code: string | undefined): string {
     case 'too_many_attempts':
       return 'Too many wrong codes. Wait a few minutes, then ask for a new one.';
     case 'password_session_required':
-      return 'Sign in with your password first, then enter the code. Tap Sign out and start again.';
+      return 'Sign in again with your password or Apple, then enter the code. Tap Sign out and start again.';
     default:
       return 'We could not check the code. Check your connection and try again.';
   }

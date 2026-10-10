@@ -3,7 +3,7 @@ import { assertEquals } from 'jsr:@std/assert';
 import {
   claimsOfRequest,
   claimsOfToken,
-  hasPasswordMethod,
+  hasFirstFactor,
   markableSession,
   reservedAttempt,
   MAX_WRONG_CODES,
@@ -16,6 +16,8 @@ import {
 const SID = '3f1c2a52-7b1e-4a86-9d0b-1c2d3e4f5a6b';
 const OTP = [{ method: 'otp', timestamp: 1 }];
 const PASSWORD = [{ method: 'password', timestamp: 1 }];
+const OAUTH = [{ method: 'oauth', timestamp: 1 }];
+const OAUTH_APPLE = [{ method: 'oauth', provider: 'apple', timestamp: 1 }];
 
 function tokenWith(claims: unknown): string {
   const b64 = (v: unknown) => btoa(JSON.stringify(v)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -52,14 +54,23 @@ Deno.test('sessionIdOfClaims: only a uuid string counts', () => {
   }
 });
 
-Deno.test('hasPasswordMethod: only a password entry counts', () => {
-  assertEquals(hasPasswordMethod(PASSWORD), true);
-  assertEquals(hasPasswordMethod([...OTP, ...PASSWORD]), true);
-  assertEquals(hasPasswordMethod(OTP), false);
-  assertEquals(hasPasswordMethod([{ method: 'recovery' }]), false);
-  assertEquals(hasPasswordMethod([]), false);
+Deno.test('hasFirstFactor: a password or an Apple (oauth) entry counts', () => {
+  assertEquals(hasFirstFactor(PASSWORD), true);
+  assertEquals(hasFirstFactor([...OTP, ...PASSWORD]), true);
+  assertEquals(hasFirstFactor(OAUTH), true);
+  assertEquals(hasFirstFactor(OAUTH_APPLE), true);
+  assertEquals(hasFirstFactor([...OTP, ...OAUTH_APPLE]), true);
+});
+
+Deno.test('hasFirstFactor: a mailbox method or another provider does not', () => {
+  assertEquals(hasFirstFactor(OTP), false);
+  assertEquals(hasFirstFactor([{ method: 'recovery' }]), false);
+  assertEquals(hasFirstFactor([{ method: 'magiclink' }]), false);
+  assertEquals(hasFirstFactor([{ method: 'invite' }]), false);
+  assertEquals(hasFirstFactor([{ method: 'oauth', provider: 'google' }]), false);
+  assertEquals(hasFirstFactor([]), false);
   for (const junk of [null, undefined, 'password', 7, {}, { method: 'password' }, [null], ['password'], [{ method: 5 }]]) {
-    assertEquals(hasPasswordMethod(junk), false);
+    assertEquals(hasFirstFactor(junk), false);
   }
 });
 
@@ -68,9 +79,15 @@ Deno.test('markableSession: a password session with an id may be marked', () => 
   assertEquals(markableSession({ session_id: SID, amr: [...PASSWORD, ...OTP] }), { sessionId: SID });
 });
 
+Deno.test('markableSession: an Apple (oauth) session with an id may be marked', () => {
+  assertEquals(markableSession({ session_id: SID, amr: OAUTH }), { sessionId: SID });
+  assertEquals(markableSession({ session_id: SID, amr: OAUTH_APPLE }), { sessionId: SID });
+});
+
 Deno.test('markableSession: an otp-only (mailbox) session never can be', () => {
   assertEquals(markableSession({ session_id: SID, amr: OTP }), null);
   assertEquals(markableSession({ session_id: SID, amr: [{ method: 'recovery' }] }), null);
+  assertEquals(markableSession({ session_id: SID, amr: [{ method: 'magiclink' }] }), null);
   assertEquals(markableSession({ session_id: SID }), null);
 });
 

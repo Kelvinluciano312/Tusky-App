@@ -1,7 +1,8 @@
 // Two-step sign-in (Phase 16e), the Edge Function side. A session is verified
 // when `two_factor_sessions` has a row for its `session_id`, written only by the
 // `two-factor` function after it checked an emailed code FROM a session that
-// already proved the password. The JWT's `amr` cannot be the proof: verifyOtp
+// already proved a first factor (the password, or Sign in with Apple since
+// Phase 17). The JWT's `amr` alone cannot be the proof: verifyOtp
 // makes its own session with amr [otp], which a mailbox alone can obtain.
 // Everything here is pure, so it is tested apart from Deno.serve.
 
@@ -43,21 +44,35 @@ export function sessionIdOfClaims(claims: Record<string, unknown> | null): strin
   return typeof id === 'string' && UUID.test(id) ? id : null;
 }
 
-/** Did this session sign in with a password? Anything unreadable counts as no. */
-export function hasPasswordMethod(amr: unknown): boolean {
+/**
+ * The sign-in methods that count as the first step: a password, or Apple (Phase
+ * 17). Apple's own identity token proves the person, and Apple is the only OAuth
+ * provider this project enables; if an `oauth` entry names a provider it must be
+ * Apple. A code from a mailbox (otp, magiclink, recovery, invite) never counts.
+ */
+export const FIRST_FACTOR_METHODS = new Set(['password', 'oauth']);
+
+/** Did this session sign in with a password or Apple? Anything unreadable counts as no. */
+export function hasFirstFactor(amr: unknown): boolean {
   return (
     Array.isArray(amr) &&
-    amr.some((e) => typeof e === 'object' && e !== null && (e as { method?: unknown }).method === 'password')
+    amr.some((e) => {
+      if (typeof e !== 'object' || e === null) return false;
+      const { method, provider } = e as { method?: unknown; provider?: unknown };
+      if (typeof method !== 'string' || !FIRST_FACTOR_METHODS.has(method)) return false;
+      return method !== 'oauth' || provider === undefined || provider === 'apple';
+    })
   );
 }
 
 /**
- * May this session be marked verified? Only one that proved the password:
- * an otp- or recovery-created session never can, which is the whole point.
+ * May this session be marked verified? Only one that proved a first factor
+ * (password or Apple): an otp- or recovery-created session never can, which is
+ * the whole point.
  */
 export function markableSession(claims: Record<string, unknown> | null): { sessionId: string } | null {
   const sessionId = sessionIdOfClaims(claims);
-  if (!sessionId || !hasPasswordMethod(claims?.amr)) return null;
+  if (!sessionId || !hasFirstFactor(claims?.amr)) return null;
   return { sessionId };
 }
 

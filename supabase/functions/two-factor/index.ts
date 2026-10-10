@@ -13,11 +13,11 @@ import {
 
 /**
  * The second step of sign-in (Phase 16e): POST { code }. The caller's session
- * must already have proved the password; the emailed code is then checked on a
- * throwaway client and the CALLER'S session is marked in two_factor_sessions.
- * A session made by verifyOtp alone (amr otp: a mailbox, no password) can never
- * be marked, so the code is a second step and never a replacement for the
- * password.
+ * must already have proved a first factor (the password, or Sign in with Apple);
+ * the emailed code is then checked on a throwaway client and the CALLER'S
+ * session is marked in two_factor_sessions. A session made by verifyOtp alone
+ * (amr otp: a mailbox, no password) can never be marked, so the code is a second
+ * step and never a replacement for the first factor.
  *
  * This function deliberately does NOT call requireSecondStep: it is how a
  * session becomes verified.

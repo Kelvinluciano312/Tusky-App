@@ -41,7 +41,7 @@ test('a rate-limited send still counts as sent; a real failure does not', () => 
 test('each refusal of the two-factor function has words a person can read', () => {
   assert.equal(codeFailureMessage('wrong_code'), WRONG_CODE_MESSAGE);
   assert.match(codeFailureMessage('too_many_attempts'), /Too many/);
-  assert.match(codeFailureMessage('password_session_required'), /password first/);
+  assert.match(codeFailureMessage('password_session_required'), /password or Apple/);
   assert.match(codeFailureMessage(undefined), /could not check/);
   assert.match(codeFailureMessage('verify_unavailable'), /could not check/);
 });
