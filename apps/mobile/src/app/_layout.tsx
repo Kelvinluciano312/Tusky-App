@@ -7,9 +7,10 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { AppState, useColorScheme } from 'react-native';
+import { AppState, Platform, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { PaywallClose } from '@/components/paywall-close';
 import { RealDataBanner } from '@/components/real-data-banner';
 import { DialogHost } from '@/components/ui/dialog';
 import { Palette } from '@/constants/theme';
@@ -138,15 +139,24 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="rules" options={{ headerShown: true, title: 'Merchant rules' }} />
         {/* Pushed from the feed; the page sets its own title. */}
         <Stack.Screen name="transaction/[id]" options={{ headerShown: true, title: '' }} />
-        {/* Pushed from Home's review card; the page sets "3 of 12" as its title. */}
-        <Stack.Screen name="review" options={{ headerShown: true, title: 'Review' }} />
+        {/* Pushed from Home's review card; the page sets "3 of 12" as its title. The deck owns horizontal
+            swipes, so iOS's edge swipe-back is off and Back is the header button, as on Android. */}
+        <Stack.Screen name="review" options={{ headerShown: true, title: 'Review', gestureEnabled: false }} />
         {/* Pushed from Settings; /join/[code] also opens from a tusky:///join/<code> invite link. */}
         <Stack.Screen name="herd" options={{ headerShown: true, title: 'Herd' }} />
         <Stack.Screen name="join-herd" options={{ headerShown: true, title: 'Join a herd' }} />
         <Stack.Screen name="join/[code]" options={{ headerShown: true, title: 'Invite' }} />
         <Stack.Screen name="plan" options={{ headerShown: true, title: 'Plan' }} />
         <Stack.Screen name="account" options={{ headerShown: true, title: 'Account & privacy' }} />
-        <Stack.Screen name="paywall" options={{ headerShown: true, title: 'Plans', presentation: 'modal' }} />
+        <Stack.Screen
+          name="paywall"
+          options={{
+            headerShown: true,
+            title: 'Plans',
+            presentation: 'modal',
+            headerRight: Platform.OS === 'ios' ? () => <PaywallClose /> : undefined,
+          }}
+        />
         {/* Pushed from Home's balance card and the herd screen (11b). */}
         <Stack.Screen name="settle" options={{ headerShown: true, title: 'Settle up' }} />
       </Stack.Protected>
