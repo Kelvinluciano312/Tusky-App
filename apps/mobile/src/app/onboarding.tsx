@@ -12,6 +12,7 @@ import { Card } from '@/components/ui/card';
 import { TextField } from '@/components/ui/text-field';
 import { Layout, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { nameSuggestion } from '@/lib/apple';
 import { nextStep, type OnboardingStep, previousStep, stepLabel } from '@/lib/first-run';
 import { PLAN_NAMES, tierLines } from '@/lib/paywall';
 import { useConnectBank } from '@/lib/plaid';
@@ -122,9 +123,11 @@ function Welcome({ onNext }: { onNext: () => void }) {
 
 function NameStep({ userId, onNext }: { userId: string | undefined; onNext: () => void }) {
   const { data: profile } = useProfile(userId);
+  const { session } = useSession();
   const setName = useSetDisplayName();
   const [typed, setTyped] = useState<string | null>(null);
-  const value = typed ?? profile?.display_name ?? '';
+  // A Hide My Email address gives sign-up a random-looking fallback name: start empty then.
+  const value = typed ?? nameSuggestion(profile?.display_name, session?.user.email);
   const valid = validatePersonName(value);
 
   return (

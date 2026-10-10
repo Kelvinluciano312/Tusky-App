@@ -13,8 +13,9 @@ import { Card } from '@/components/ui/card';
 import { DELETE_URL, PRIVACY_URL, TERMS_URL } from '@/constants/legal';
 import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { hasProvider } from '@/lib/apple';
 import { deleteWarning } from '@/lib/paywall';
-import { useDeleteAccount, usePlan } from '@/lib/queries';
+import { useDeleteAccount, useIdentities, usePlan } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { supabase } from '@/lib/supabase';
 
@@ -30,6 +31,9 @@ export default function AccountScreen() {
   const { session } = useSession();
   const email = session?.user.email ?? '';
   const { data: plan } = usePlan(session?.user.id);
+  const { data: identities } = useIdentities(session?.user.id);
+  // Until the identities load, assume the common case so an email user never sees "Set a password".
+  const hasPassword = !identities || hasProvider(identities, 'email');
   const deleteAccount = useDeleteAccount();
   const [changing, setChanging] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -52,6 +56,7 @@ export default function AccountScreen() {
       return;
     }
     setChanging(false);
+    void queryClient.invalidateQueries({ queryKey: ['identities'] });
     dialog.alert('Password changed', 'Use the new one next time you sign in.');
   };
 
@@ -76,7 +81,8 @@ export default function AccountScreen() {
           Sign-in
         </AppText>
         <AppText tone="dim">{email}</AppText>
-        <Row icon={<KeyRound size={20} color={colors.brand} strokeWidth={1.75} />} label="Change password" onPress={() => {
+        {hasProvider(identities, 'apple') ? <AppText tone="dim">Signed in with Apple</AppText> : null}
+        <Row icon={<KeyRound size={20} color={colors.brand} strokeWidth={1.75} />} label={hasPassword ? 'Change password' : 'Set a password'} onPress={() => {
           setPasswordError(null);
           setChanging(true);
         }} />

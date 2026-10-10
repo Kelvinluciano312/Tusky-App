@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import type { IdentityLike } from '@/lib/apple';
 import type { FirstRunState } from '@/lib/first-run';
 import { readFunctionError } from '@/lib/functions';
 import type { MerchantRule, MerchantRules } from '@/lib/merchants';
@@ -989,6 +990,22 @@ export function useProfile(userId: string | undefined) {
         .single();
       if (error) throw error;
       return data;
+    },
+  });
+}
+
+/**
+ * The sign-in methods linked to this account (Phase 17): "email", "apple", or both.
+ * Read from Supabase Auth, so it covers an Apple account that never set a password.
+ */
+export function useIdentities(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['identities', userId],
+    enabled: !!userId,
+    queryFn: async (): Promise<IdentityLike[]> => {
+      const { data, error } = await supabase.auth.getUserIdentities();
+      if (error) throw error;
+      return data.identities.map((i) => ({ provider: i.provider, identity_data: i.identity_data ?? null }));
     },
   });
 }
