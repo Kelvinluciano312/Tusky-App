@@ -1,12 +1,14 @@
-import { ShieldCheck, Sparkles, UsersRound } from 'lucide-react-native';
+import { Lock, ShieldCheck, Sparkles, UsersRound } from 'lucide-react-native';
 import { type ReactNode, useRef, useState } from 'react';
-import { Switch, View } from 'react-native';
+import { Platform, Switch, View } from 'react-native';
 import { dialog } from '@/components/ui/dialog';
 
 import { AppText } from '@/components/ui/app-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useAppLock } from '@/components/app-lock';
 import { CodeSheet } from '@/components/code-sheet';
+import { canLockHere, promptUnlock, useLockMethodLabel } from '@/lib/app-lock-auth';
 import { confirmLoginCode, sendLoginCode } from '@/lib/login-code';
 import { useCrowdConsent, useProfile, useSetAiCategorize, useSetCrowdConsent, useSetTwoFactor } from '@/lib/queries';
 import { useSession } from '@/lib/session';
@@ -168,5 +170,52 @@ export function TwoFactorSwitch() {
         onClose={() => setTarget(null)}
       />
     </>
+  );
+}
+
+/**
+ * App lock (Phase 17): this device only, never synced to the account. Both
+ * directions need one successful unlock first, so a borrowed, unlocked phone
+ * cannot switch the lock off.
+ */
+export function AppLockSwitch() {
+  const colors = useTheme();
+  const { enabled, setEnabled } = useAppLock();
+  const method = useLockMethodLabel();
+  const [busy, setBusy] = useState(false);
+
+  const change = async (next: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (next && !(await canLockHere())) {
+        dialog.alert('Cannot turn on App lock', 'Set up Face ID, a fingerprint or a passcode on this device first.');
+        return;
+      }
+      const proof = await promptUnlock(next ? 'Turn on App lock' : 'Turn off App lock');
+      if (!proof.ok) {
+        if (proof.message) dialog.alert("Could not confirm it's you", proof.message);
+        return;
+      }
+      await setEnabled(next);
+    } catch {
+      failed();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SwitchRow
+      icon={<Lock size={20} color={colors.brand} strokeWidth={1.75} />}
+      label={`Lock with ${method}`}
+      caption={
+        `Asks for ${method} when you open Tusky and after a minute away. Only on this device.` +
+        (Platform.OS === 'android' ? ' Also hides Tusky in recent apps and blocks screenshots.' : '')
+      }
+      value={enabled}
+      disabled={busy}
+      onChange={(next) => void change(next)}
+    />
   );
 }

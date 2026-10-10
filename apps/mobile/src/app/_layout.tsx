@@ -10,6 +10,7 @@ import { useEffect } from 'react';
 import { AppState, Platform, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { AppLockProvider } from '@/components/app-lock';
 import { PaywallClose } from '@/components/paywall-close';
 import { RealDataBanner } from '@/components/real-data-banner';
 import { DialogHost } from '@/components/ui/dialog';
@@ -79,7 +80,9 @@ export default function RootLayout() {
       <SessionProvider>
         <ThemeProvider value={scheme === 'light' ? navThemes.light : navThemes.dark}>
           <StatusBar style={scheme === 'light' ? 'dark' : 'light'} />
-          <RootNavigator fontsLoaded={fontsLoaded} />
+          <AppLockProvider>
+            <RootNavigator fontsLoaded={fontsLoaded} />
+          </AppLockProvider>
           <RealDataBanner />
           <DialogHost />
         </ThemeProvider>
