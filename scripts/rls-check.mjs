@@ -201,6 +201,7 @@ declare
   crowd_cat uuid;
   crowd_expected boolean;
   custom_cat uuid;
+  crowd_rows integer;
 begin
   ${setup}
   select herd_id, role into h, r from public.herd_members where user_id = u;
@@ -517,6 +518,7 @@ begin
       (select count(*) from public.consents where user_id = mate));
   end if;
   perform public.set_consent('crowd_labels', true);
+  select count(*) into crowd_rows from public.consents where user_id = u and kind = 'crowd_labels';
   w := w || jsonb_build_object('own_consent_granted',
     (select count(*) = 1 from public.consents where user_id = u and kind = 'crowd_labels' and withdrawn_at is null));
   if auto_tx is not null then
@@ -549,7 +551,7 @@ begin
   perform public.set_consent('crowd_labels', false);
   perform public.set_consent('crowd_labels', true);
   w := w || jsonb_build_object('crowd_regrant',
-    (select count(*) = 2 from public.consents where user_id = u and kind = 'crowd_labels'));
+    (select count(*) = crowd_rows + 1 from public.consents where user_id = u and kind = 'crowd_labels'));
   perform public.set_consent('crowd_labels', false);
   reset role;
   w := w || jsonb_build_object('crowd_withdraw_forgets',
