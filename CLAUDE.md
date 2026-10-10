@@ -7,6 +7,11 @@ Track P (production) is live and waits only on Plaid's production access for OAu
 Phase 14, monetization (`docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md`),
 milestones 14a (plans and limits) → 14b (lifecycle, reconnect merge) → 14c (purchases), all merged
 → 14d (launch readiness: Play Billing, account deletion, release builds), on `pedro-14d`.
+Phase 17, the iPhone and native iPad app (Sign in with Apple, App lock, the App Review demo account),
+is built on `kelvin` and waits for its PR and the people-only steps: plan
+`docs/superpowers/plans/2026-10-10-phase-17-ios.md`, handoff
+`docs/superpowers/plans/2026-10-10-phase-17-ios-handoff.md` (every command only a person can run,
+and the device checks, are collected there). Nothing of Phase 17 is on production yet.
 
 **Plaid keys per project.** Dev stays on Sandbox, and all general testing happens there. Production
 keys live only in the production project's secrets. Phase 6's old "key switch" step is superseded by
@@ -56,6 +61,19 @@ question. JS edits hot-reload via Metro — never rebuild for them.
 - **A Metro that outlived its Claude session hangs.** It still answers `/status`, but bundle requests stall, so the phone shows a white screen. After any new session, kill whatever listens on 8081 and start Metro fresh. Test with a real bundle fetch (`/node_modules/expo-router/entry.bundle?platform=android&dev=true`), not `/status`.
 - A native rebuild needs wireless adb, which works only on the same Wi-Fi: `npx expo run:android --device Pixel_10_Pro`. Expo matches the model name, not the adb serial.
 
+**iPhone and iPad (Phase 17).** Nothing is built on this PC: the code runs on Windows, the native build runs
+in EAS's cloud.
+- Dev build: `cd apps/mobile && npx eas-cli build --platform ios --profile development`. It is an ad hoc build, so
+  each device must be registered first (`npx eas-cli device:create`, open the link on the device). The first run is
+  interactive (Apple login; EAS manages certificates). On a Mac, `--profile development-simulator` builds for the
+  Simulator.
+- Metro works exactly as above: start it with `REACT_NATIVE_PACKAGER_HOSTNAME='100.108.96.124'`, and open
+  `http://100.108.96.124:8081` from the dev client (iOS has no `adb`; type or scan the address). ATS does not apply to
+  raw IP addresses, so the Tailscale address works while a release build still refuses cleartext to named hosts.
+- A native module added to `package.json` needs a new dev build on **both** platforms (`expo-apple-authentication`,
+  `expo-crypto`, `expo-local-authentication` and `expo-screen-capture` were added in Phase 17).
+- Store builds, TestFlight and App Review: `docs/ops/release.md` ("iOS builds") and `docs/ops/app-review.md`.
+
 ## Hard-won gotchas
 
 - **Expo Go cannot run this app** (native Plaid SDK). Dev builds only.
@@ -63,6 +81,30 @@ question. JS edits hot-reload via Metro — never rebuild for them.
   Link's webview loses its `link/workflow/poll` requests while Chrome holds the bank page and returns
   to a blank screen. Test Link against OAuth banks on a physical device; everything else is fine on
   the emulator.
+- **Plaid OAuth on iOS needs a universal link, and the link-token body must say `platform`.** Android names
+  its package (`android_package_name`); iOS needs a registered `redirect_uri`
+  (`https://studiosouroboros.com/tusky/plaid/oauth`, secret `PLAID_IOS_REDIRECT_URI`, listed under Allowed redirect
+  URIs in the Plaid dashboard, and an `apple-app-site-association` file on the site). `plaid-create-link-token`
+  picks the field from `platform` (`_shared/link-platform.ts`); an old client sends none and stays Android. Without
+  the redirect URI, banks that skip OAuth still link and OAuth banks fail at the bank step. The app must not route
+  Plaid's return link: `src/app/+native-intent.tsx` returns null for it (`lib/deep-links.ts`), and Plaid's SDK
+  resumes Link itself.
+- **iOS prebuild does not run on Windows** ("Skipping generating the iOS native project files"). Check iOS config
+  there with `npx expo config --type introspect --json`; the real `ios/` check runs once on a Mac (handoff, "Findings").
+  `ios/` and `android/` are generated and gitignored, so native config goes in `app.json`.
+- **ATS is pinned in `app.json`** (`NSAllowsArbitraryLoads=false`, local networking and a `localhost` exception).
+  Expo's default introspection has arbitrary loads ON; do not remove the explicit block.
+- **`expo-calendar`'s config plugin is applied automatically** (it is on `@expo/prebuild-config`'s legacy list, applied
+  whenever the package is installed), whatever `plugins` says. `android.blockedPermissions` in `app.json` is what keeps
+  `READ_CALENDAR` and `WRITE_CALENDAR` out of the Android manifest (verified with a real prebuild). iOS gets honest
+  calendar and reminders purpose strings in `ios.infoPlist` instead, because App Store validation (ITMS-90683) wants them
+  while "Add to calendar" never reads the calendar. `expo-local-authentication` is on the same auto list.
+- **The iOS Keychain outlives an uninstall.** Delete and reinstall Tusky and the session, and the App lock preference,
+  are still there (`tusky.appLock` is deliberately not wiped, so reinstalling cannot lift the lock). Android clears its
+  keystore with the app. A first-run marker in AsyncStorage would change this; not built.
+- **Apple sessions' `amr` is not observed yet.** `FIRST_FACTOR_METHODS` in `_shared/two-factor.ts` accepts `password` and
+  `oauth` (provider Apple, or none named), which is what Supabase should report. Record the real value (handoff, M4,
+  "Still unknown") after the first Apple sign-in on a device, and fix the set if it differs.
 - `expo run:android` builds ONLY the target device's ABI — an arm64 build crashes the x86_64 emulator with "Cannot find native module". Build per device.
 - Unset `EXPO_PUBLIC_*` env vars arrive as `''`, not `undefined` — use `||` fallbacks, never `??`.
 - Env vars bake into the JS bundle at Metro start — restart Metro after editing `.env`.
@@ -383,16 +425,18 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     rule applies on their next change.
 - **Recurring → calendar** (15g). Tapping a recurring row offers "Add to calendar", which opens the
   phone's own new-event screen through `createEventInCalendarAsync` from `expo-calendar/legacy`
-  (SDK 57 made the root export throw). It needs no calendar permission, so the config plugin is left
-  out of `app.json` on purpose: adding it would request READ/WRITE_CALENDAR and change the Play Data
-  safety answers. `lib/calendar.ts` (`eventFor`) builds the all-day repeating event.
+  (SDK 57 made the root export throw). It needs no calendar permission, so the app must not request
+  READ/WRITE_CALENDAR (that would change the Play Data safety answers). The config plugin is NOT optional
+  though: it is applied automatically once the package is installed, so `android.blockedPermissions` in
+  `app.json` is what keeps those permissions out (see the gotcha above). `lib/calendar.ts` (`eventFor`) builds
+  the all-day repeating event.
   expo-calendar is native: dev clients need a rebuild.
 - **Account & privacy** (`app/account.tsx`, 15f) holds sign-in, the AI and crowd switches
   (`components/privacy-switches.tsx`), legal links, and a quiet "Delete my account" at the bottom.
   Settings links to it in one row.
 - **Two-step sign-in (16e).** Opt-in (`profiles.two_factor`, default off), by emailed code, **bound to the session on the server**.
   - **Why not `amr`.** `verifyOtp({ type: 'email' })` makes its OWN session with `amr` `[{method:'otp'}]` and no password anywhere, so a mailbox alone could mint a "verified" session and skip the password. The JWT's `amr` is therefore never the proof (the first 16e design was exactly that, and was wrong).
-  - **The rule.** A session is verified when `two_factor_sessions` has a row for its `session_id` (and the user's id). Only the `two-factor` Edge Function writes it: POST `{ code }` from a session whose `amr` has `password` (otherwise 403 `password_session_required`: an otp- or recovery-created session can never be marked), it checks the code on a throwaway anon client (`verifyOtp`, then revokes that probe session), and marks the CALLER'S session. Wrong code: 403 `wrong_code`. **Attempts are reserved atomically BEFORE the code is checked** (`take_two_factor_attempt`, service role only, one advisory lock per user): at most 5 per session AND 10 per user across all sessions in 15 minutes, else 429 `too_many_attempts` (`two_factor_failures`; a fresh sign-in is not a fresh budget, and parallel guesses cannot slip past a stale count). A wrong code keeps its attempt, success clears the user's, and a check that could not run (outage) refunds its attempt. The vendor's own limits sit underneath. The function must NOT call `requireSecondStep`. The session is not replaced, and a token refresh keeps its `session_id`, so it stays verified. Both tables are server-only (RLS on, no policies, no grants) and have FKs to `auth.sessions` with `on delete cascade`, so signing out clears them.
+  - **The rule.** A session is verified when `two_factor_sessions` has a row for its `session_id` (and the user's id). Only the `two-factor` Edge Function writes it: POST `{ code }` from a session whose `amr` has a first factor, `password` or an Apple `oauth` sign-in (`hasFirstFactor`; otherwise 403 `password_session_required`, a code kept for old clients: an otp-, magiclink- or recovery-created session can never be marked), it checks the code on a throwaway anon client (`verifyOtp`, then revokes that probe session), and marks the CALLER'S session. Wrong code: 403 `wrong_code`. **Attempts are reserved atomically BEFORE the code is checked** (`take_two_factor_attempt`, service role only, one advisory lock per user): at most 5 per session AND 10 per user across all sessions in 15 minutes, else 429 `too_many_attempts` (`two_factor_failures`; a fresh sign-in is not a fresh budget, and parallel guesses cannot slip past a stale count). A wrong code keeps its attempt, success clears the user's, and a check that could not run (outage) refunds its attempt. The vendor's own limits sit underneath. The function must NOT call `requireSecondStep`. The session is not replaced, and a token refresh keeps its `session_id`, so it stays verified. Both tables are server-only (RLS on, no policies, no grants) and have FKs to `auth.sessions` with `on delete cascade`, so signing out clears them.
   - **Enforcement.** `private.my_herd_id()` returns null when `two_factor` is on and `private.session_verified()` is false, so every herd policy (and `my_account_ids`) shows and accepts nothing to an unverified session. Own profile, subscription and consents stay reachable, so the gate can tell why. `public.my_second_step_done()` is the app's read of the same boolean. The client has no UPDATE on `two_factor`: only `set_two_factor(p_on)`, which itself needs a verified session (so a password alone cannot switch it off or on). Edge Functions run as the service role, so each user-facing one calls `requireSecondStep` (`_shared/lib.ts`, pure rule in `_shared/two-factor.ts`) right after `getAuthedUser`: 403 `two_factor_required`. Put it in any NEW user-facing function. `rls-check` has the `tf_*` cases (otp-only claims, another user's marked session, unmarked sessions).
   - **Known limit.** Whoever controls the mailbox can reset the password and then pass the code too: email-code two-step protects a stolen password, not a stolen mailbox.
   - **App.** `useFirstRun` also reads `profiles.two_factor` and, only when it is on, `my_second_step_done()`; `gateFor(state, TERMS_VERSION)` returns `verify` first when `state.secondStepDone` is not true (`lib/two-factor.ts`, `lib/first-run.ts`). Needs SMTP and a Magic Link template showing `{{ .Token }}` per project; both projects have them since 2026-10-06 (Resend; the dashboard settings are listed in `docs/ops/production.md`, "Settings outside the repo").
@@ -400,7 +444,9 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
 - **Dialogs (16f).** Never use React Native's `Alert`: ESLint refuses the import. `dialog.alert(title, message?, buttons?, options?)` (`components/ui/dialog.tsx`) has the same signature and semantics, so it works from hooks and mutation callbacks outside React. `<DialogHost />` sits once in the root layout and is itself a `Modal`, so it shows above Sheets. Several calls queue; a button closes the dialog first, then runs its `onPress`. Scrim tap and the back button press the `cancel` button (or just dismiss, or do nothing with `cancelable: false`). The queue logic is pure (`lib/dialog-queue.ts`, tested). `Button` has a `destructive` variant.
 - **Screen sizes (16g).** Phones fill the width and stay portrait (`app.json` `orientation: portrait`).
   Android 16 ignores that lock on windows 600dp and wider, so tablets rotate: every screen must work
-  in landscape. `constants/theme.ts` `Layout` holds the caps (`maxContent` 640, `maxWide` 1040,
+  in landscape. The iPad does the same by design (Phase 17): `ios.supportsTablet` with the four iPad
+  orientations in `UISupportedInterfaceOrientations~ipad`, the iPhone list portrait only, and no
+  `UIRequiresFullScreen`, so Split View and Slide Over are in play too. The same `Layout` caps serve it. `constants/theme.ts` `Layout` holds the caps (`maxContent` 640, `maxWide` 1040,
   `maxSheet` 560, `maxDialog` 420). Spread `Layout.column` into every ScrollView/list
   `contentContainerStyle` (or wrap fixed content in `<Column>`, `components/ui/column.tsx`), and
   `Layout.sheet` into a bottom sheet's panel. A one-off Modal sheet dims with a full-screen
@@ -437,6 +483,8 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   - Swipe right to accept, left to skip to the back; Undo reverses the last move.
   - The deck logic is pure (`deckReducer`/`topCard` in `lib/review.ts`); the gestures use Reanimated 4 and Gesture Handler (`GestureHandlerRootView` wraps the root layout).
   - Write shared values with `.set()` and read them with `.get()`, never `.value`: the React Compiler lint rejects `.value` writes.
+  - The `review` screen sets `gestureEnabled: false` (`_layout.tsx`). iOS's edge swipe-back would fight the deck's own
+    swipe; Back stays the header button, as on Android. Keep it if the screen's options are ever rewritten.
 - **Review window (16b).** Only the last two weeks go to review. A row sync inserts dated before its
   Item's `created_at` minus `REVIEW_WINDOW_DAYS` (14) gets `reviewed_at = now(), auto_reviewed = true`
   (`reviewCutoff`, `partitionAutoReview` in `_shared/review.ts`). Those rows go in their own upsert
@@ -465,12 +513,13 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   There is no `/item/public_token/exchange` afterwards — the token does not change. A successful sync
   is what returns the Item to `active`, which is why `plaid-sync-transactions` selects
   `status in ('active','login_required')` rather than just active.
-- **`plaid-webhook` is the only public function** (`verify_jwt = false` in `supabase/config.toml`):
-  Plaid calls it, not a user. Its auth is Plaid's ES256 JWT, checked by `verifyPlaidWebhook` in
-  `_shared/webhook.ts` before anything else runs. Never ship another `verify_jwt = false` function
-  without equivalent verification. It replies 200 at once and syncs in `EdgeRuntime.waitUntil`
-  (Plaid abandons a delivery after 10s and retries any non-200 for 24h). The sync itself is
-  `syncItem` in `_shared/sync.ts`, shared with `plaid-sync-transactions`.
+- **Public functions** (`verify_jwt = false` in `supabase/config.toml`) are called by a service, not a user, and
+  each checks its own proof first: `plaid-webhook` (Plaid's ES256 JWT, `verifyPlaidWebhook` in `_shared/webhook.ts`),
+  `plan-enforcer` (the cron secret), `revenuecat-webhook` (its Authorization value) and `apple-notifications`
+  (Apple's signed JWS, below). Never ship another `verify_jwt = false` function without equivalent verification.
+  `plaid-webhook` replies 200 at once and syncs in `EdgeRuntime.waitUntil` (Plaid abandons a delivery after
+  10s and retries any non-200 for 24h). The sync itself is `syncItem` in `_shared/sync.ts`, shared with
+  `plaid-sync-transactions`.
 - **Plaid troubleshooting log** (`plaid_events`, server-only). Plaid support asks for a `request_id`,
   Plaid's `item_id` and Link's `link_session_id`, and Free-plan function logs last about a day, so
   they are kept in a table: 90 days (pg_cron `plaid-events-prune`), deleted with the user. Every write
@@ -500,4 +549,46 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   unencrypted file. Android's keystore rejects values over ~2 KB, so a value is chunked behind a
   manifest; a missing chunk reads as signed out, and keystore errors never throw. Old AsyncStorage
   sessions migrate on first read. Never pass `storage: AsyncStorage` to `createClient` again.
-  See `docs/ops/security-review-2026-09-27.md`.
+  See `docs/ops/security-review-2026-09-27.md`. Since Phase 17 `supabase.ts` also passes
+  `keychainAccessible: WHEN_UNLOCKED_THIS_DEVICE_ONLY`, and `createSecureStorage(secure, legacy?, options?)` hands the
+  options to every read, write and delete, chunks included: on iOS the session never leaves the phone in a backup
+  and is unreadable while the phone is locked. Android ignores the option. Keep options on ALL calls, or a chunk
+  is stored under a weaker class than its manifest.
+- **Sign in with Apple** (Phase 17, iOS only; the button renders nothing on Android). `lib/apple-auth.ts`: Apple gets the
+  SHA-256 **hex** of a random nonce and Supabase gets the **raw** nonce (`signInWithIdToken({ provider: 'apple' })`):
+  Supabase hashes the raw one and compares it with the claim Apple embedded. Apple shares the person's name only on the first authorization, so
+  `saveAppleName` keeps it, and only before onboarding (an existing account that links Apple keeps its own name). A
+  "Hide My Email" address is a relay: confirmation and two-step mail reaches it only once the sender is registered
+  with Apple (`docs/ops/production.md`). Supabase links an Apple sign-in to an existing account by verified email, which
+  is why email confirmation must stay ON in production. `useAppleCredentialWatch()` signs out on a `REVOKED` credential
+  state, on launch and on every return to the foreground (`NOT_FOUND` and errors are ignored). The terms checkbox does
+  not gate Apple: the `accept-terms` screen asks Apple users instead. Never log an identity token or an authorization code.
+- **Deleting an Apple account** (Guideline 5.1.1(v)). `delete-account` takes one of two proofs (`parseProof` in
+  `_shared/account.ts`): `{ password }` or `{ apple: { identity_token, authorization_code } }`, and the app picks the kind
+  with `deleteProofKind` (`apple` on iOS when an Apple identity exists, else `password`). The Apple user to match is read
+  from the caller's own identity on the server, never from the request (`verifyAppleIdentity`: RS256 against Apple's keys,
+  issuer, audience `com.ouroborosstudios.tusky`, at most 10 minutes old). The authorization code is single-use and lives 5
+  minutes, so it is traded for a refresh token **before** the slow Plaid pass, and the token is revoked after the user is
+  gone. A refused or unreachable Apple never fails a deletion; a wrong proof is 403 `apple_unverified` with nothing touched.
+  Secrets `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`; without them it deletes but logs `apple: not configured`.
+  Accepted limit: a password proof (for example from Android) cannot revoke Apple's grant.
+- **`apple-notifications`** is Apple's server-to-server endpoint (public, `verify_jwt = false`). The body's `payload` must be
+  a JWS signed by Apple (`verifyAppleNotification`) or the answer is 401 before anything else runs. `consent-revoked` and
+  `account-delete` end that user's sessions (`user_for_apple_sub`, `end_user_sessions`, service_role only); the e-mail
+  events are logged by type. It never deletes data: an orphaned account's banks are archived by `plan-enforcer` when
+  its trial ends, which stops Plaid billing. The Apple user id is never logged.
+- **App lock and privacy shield** (Phase 17, iOS and Android). Opt-in per device and never synced: `tusky.appLock` in the
+  keystore (`lib/app-lock-store.ts`, read synchronously so the first frame is already locked). `AppLockProvider`
+  (`components/app-lock.tsx`) locks a signed-in user at cold start and after `LOCK_AFTER_MS` (60 s) away
+  (`shouldLockOnResume`). The lock is a full-screen `Modal`, so it covers sheets, dialogs and Plaid Link; **Sign out** is
+  its escape, and a signed-out app never locks. Turning the switch on or off needs one successful prompt, and on needs a
+  device passcode or biometrics. `lib/privacy-shield.ts`: iOS always blurs Tusky in the app switcher
+  (`enableAppSwitcherProtectionAsync`); Android, only while the lock is on, blanks Recents and blocks screenshots
+  (`preventScreenCaptureAsync('app-lock')`, FLAG_SECURE).
+- **Demo Items for App Review** (Phase 17). `plaid_items.is_demo` marks a seeded bank that has **no `plaid_tokens` row and
+  no Plaid Item**. `plaid-sync-transactions`, `plaid-webhook` and both queries in `_shared/enforce.ts` filter
+  `is_demo = false`, so Plaid is never asked about it; `claimItem` is deliberately untouched, and `disconnectItem` already
+  skips Plaid when there is no token row. `authenticated` has no INSERT or UPDATE on the column. `node scripts/demo-seed.mjs
+  <user-id> [--print]` builds the account (dev-only unless `--print`, one transaction, idempotent) and gives it a 90-day
+  `trial`, **not** a comp, because `revenuecat.ts` never overwrites a comped row and a reviewer must be able to buy.
+  Procedure and review notes: `docs/ops/app-review.md`.

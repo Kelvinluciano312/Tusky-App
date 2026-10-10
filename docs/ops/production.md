@@ -35,6 +35,13 @@ npx -y supabase@2.118.0 secrets list --project-ref awiwcgrisyzimzxgddxu
 
 `PLAID_CLIENT_ID`, `PLAID_SECRET` (production), `PLAID_ENV=production` and `JEV_API_KEY` (TypeSafe's Jev, which makes every AI decision since Phase 12d; without it the Jev passes are skipped silently and syncs are otherwise unaffected; `ANTHROPIC_API_KEY` is no longer read). Pedro or Kelvyn enter `PLAID_SECRET` in the dashboard themselves (Edge Functions → Secrets); it never goes through chat or a file in the repo. Supabase provides its own keys to functions automatically (`SUPABASE_SECRET_KEYS`, which `getAdminClient` reads).
 
+**Apple and iOS (Phase 17).** Four more secrets, all set with `secrets set --project-ref awiwcgrisyzimzxgddxu`, one command each, never printed or committed:
+- `APPLE_TEAM_ID` and `APPLE_KEY_ID`: the Team ID and the Key ID of the Sign in with Apple key (not secret, but set with the rest).
+- `APPLE_PRIVATE_KEY`: the full contents of that key's `AuthKey_XXXX.p8`. It is shown once by Apple; keep the file in the team password manager and nowhere in the repo. Without these three, `delete-account` still deletes the account but cannot revoke Apple's grant (it logs `apple: not configured`), which Guideline 5.1.1(v) requires, so treat them as required for the iOS launch.
+- `PLAID_IOS_REDIRECT_URI` = `https://studiosouroboros.com/tusky/plaid/oauth`. Without it an iOS link token carries no `redirect_uri`: banks without OAuth still link, OAuth banks (Chase and most large US banks) fail at the bank step. The Plaid dashboard must list the same URI under Allowed redirect URIs.
+
+PowerShell form for the key: `npx supabase secrets set "APPLE_PRIVATE_KEY=$(Get-Content C:\path\to\AuthKey_XXXX.p8 -Raw)" --project-ref awiwcgrisyzimzxgddxu`.
+
 **`label_pepper` (Vault, Phase 12c).** The HMAC key for `community_labels.contributor`, created once per project by SQL, never in the repo or chat: `select vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'label_pepper', 'HMAC pepper for community_labels.contributor (Phase 12c)');`. Without it, contributions are silently skipped. Never rotate it: every contributor would split into two, and withdrawal could no longer find their old rows.
 
 **Cron (Vault + function secret, Phase 14b).** The hourly `plan-enforcer` job reads two Vault secrets, `cron_secret` and `project_url`, and the function compares the header with its `CRON_SECRET`. Create both once per project, **before** the 14b migration is pushed; without them the cron call fails harmlessly and nothing is enforced. In Git Bash, so the value lives only in a shell variable and is never printed:
@@ -55,6 +62,13 @@ These are set per project, in dashboards. Dev and production both have them (202
 - **Auth → Emails → Magic link or OTP:** the body shows `{{ .Token }}` and no link. The subject carries no code (it would show on a lock screen).
 - **Auth → URL Configuration → Site URL:** `https://studiosouroboros.com/tusky/confirmed.html`. A confirmation link verifies at Supabase and then lands there. The default, `http://localhost:3000`, is a dead page and reads as spam. The page is in the Ouroboros-Inc repo (`public/tusky/confirmed.html`); it shows a "link didn't work" message when the address carries an error.
 - **Plaid dashboard: allowed Android package names are per Plaid team.** `com.ouroborosstudios.tusky` must be under Developers → API → Allowed Android package names on the team that owns the keys in use: Kelvyn's team for production, Pedro's individual account for dev's Sandbox keys. Without it `/link/token/create` answers 400 `INVALID_FIELD` and `plaid-create-link-token` returns 500. Big OAuth banks wait on Plaid's production approval.
+- **Sign in with Apple (Phase 17).** Three settings, none of which is in the repo:
+  - Supabase → Authentication → Sign In / Providers → **Apple**: enabled, **Client IDs** = `com.ouroborosstudios.tusky`. Native sign-in needs no secret here. Dev and production both.
+  - **Email → Confirm email must stay ON** (it is, see above). It is what stops someone pre-registering a victim's address and then having Apple's verified email link into their account. Turning it off re-opens that attack.
+  - Apple Developer → Identifiers → `com.ouroborosstudios.tusky` → Sign in with Apple → Configure → **Server-to-Server Notification Endpoint** = `https://awiwcgrisyzimzxgddxu.supabase.co/functions/v1/apple-notifications`. The function is public (`verify_jwt = false`) and refuses anything not signed by Apple. Production only; dev has no endpoint.
+- **Apple private email relay sender.** Apple Developer → Certificates, Identifiers & Profiles → Services → *Sign in with Apple for Email Communication*: register the domain `studiosouroboros.com` and the sender `noreply@studiosouroboros.com` (the Resend sender, SPF/DKIM already in Cloudflare). Without it, confirmation and two-step emails to a "Hide My Email" address (`@privaterelay.appleid.com`) bounce, so that person could never receive a two-step code. `docs/ops/app-review.md` refers to this.
+- **Demo account for App Review.** Created and seeded as `docs/ops/app-review.md` describes (migration and four function deploys first). Its password lives in the team password manager. It is the only account allowed an `is_demo` bank, and it is on a 90-day trial plan, so re-seed before each submission.
+- **Leaked-password protection** (finding 2 in `docs/ops/security-review-2026-09-27.md`) is a Supabase Pro setting. Turn it on in both projects if the plan allows it; if it does not, that review records it as accepted, mitigated by the 12-character minimum and mixed-class rule above. Not yet confirmed either way for production.
 - **Backups:** the Free plan has none. Optional: a periodic `db dump` to a folder outside the repo.
 
 ## The app
@@ -93,6 +107,11 @@ Restart Metro after editing `.env`.
 - Four accounts: Pedro (`tusk`, comp, one bank), and three on the signup trial (one with a bank, trial
   ends 2026-11-01; it will buy a plan, not be comped).
 - First real bank: Bread Savings, active, synced.
+- **Phase 17 (iOS) is on dev only.** Not yet on production: migrations `20261018130000_apple_identity.sql` and
+  `20261018140000_demo_items.sql`; the new function `apple-notifications`; redeploys of `two-factor`,
+  `plaid-create-link-token`, `delete-account`, `plaid-sync-transactions`, `plaid-webhook`, `plan-enforcer` and
+  `revenuecat-webhook`; the secrets above. The exact commands, in order, are in
+  `docs/superpowers/plans/2026-10-10-phase-17-ios-handoff.md` ("Production commands, all in order").
 
 ## Reading the Plaid log
 

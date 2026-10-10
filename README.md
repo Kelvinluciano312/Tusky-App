@@ -27,6 +27,7 @@ A personal finance app — connect your banks, see your net worth, track spendin
   - ✅ **12c** — opt-in crowd labels: a fix or an accepted guess quietly teaches the crowd pool (consent off by default, one-time prompt after a third fix); new transactions from ≥3 contributors at ≥70% agreement take the crowd's category
   - ✅ **12d** — Jev (TypeSafe AI) makes the structured decisions: the AI category pass, triage that puts likely fixes first in Review, a hint to split shared costs, and tie-breaks for recurring bills — [spec](docs/superpowers/specs/2026-09-27-phase-12d-jev-decisions-design.md)
 - ✅ **Phase 13** — preset budgets: a whole budget in one tap from your own income and spending (Match my spending, 50/30/20, 70/20/10) — [spec](docs/superpowers/specs/2026-09-26-phase-13-preset-budgets-design.md)
+- 🚧 **Phase 17** — Tusky on iPhone and native iPad: Sign in with Apple, Plaid OAuth banks via a universal link, an opt-in biometric app lock, app-switcher privacy, and a seeded demo account for App Review. Code is done on `kelvin`; the Apple, Plaid and production steps wait on a person — [plan](docs/superpowers/plans/2026-10-10-phase-17-ios.md), [handoff](docs/superpowers/plans/2026-10-10-phase-17-ios-handoff.md), [iOS builds](docs/ops/release.md)
 - 💭 **Next: monetization** — a free tier plus two subscriptions (Tusklet, Tusk) via Stripe — [notes](docs/product/monetization.md)
 
 ## Architecture

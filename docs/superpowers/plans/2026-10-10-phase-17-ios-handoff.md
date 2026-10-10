@@ -324,3 +324,237 @@ random password kept in the team password manager), copy its id, and run the out
 
 Order matters: the migration comes first, because the four functions (`plan-enforcer` and `revenuecat-webhook` through `enforce.ts`) filter on `is_demo` and fail without the column. Re-seed in the
 days before each submission (the data is dated to the day it was seeded), and after any review that deleted the account.
+
+## M8 — Docs and submission prep (docs done; the submission itself is a person's)
+
+### What the docs now say
+
+- **`CLAUDE.md`**: the Phase 17 sentence in the header; an iPhone/iPad dev section beside "Pedro's phone"; the gotchas (iOS prebuild
+  on Windows, Plaid iOS OAuth and `platform`, the Keychain outliving an uninstall, `expo-calendar`'s auto-applied plugin); and the
+  conventions (Sign in with Apple and the nonce, the two first-factor kinds, deletion proofs and revocation, `apple-notifications`,
+  App lock and the privacy shield, demo Items, public functions).
+- **`docs/ops/release.md`**: profiles including the iOS ones, the `appl_` key, "iOS builds (Phase 17)", TestFlight and submit.
+- **`docs/ops/production.md`**: the Apple secrets, the Apple provider and S2S settings, the relay sender, the demo account, and what is
+  on dev only.
+- **`docs/ops/app-review.md`**: the demo account procedure and the review-notes text. **`docs/ops/security-review-2026-09-27.md`**:
+  the "iOS launch" section.
+- **`README.md`**: Phase 17 in the status list.
+
+### Answers the plan asked to record
+
+- **Task 1.1 API checks:** see "Task 1.1" above (every API exists in the installed 57.0.x packages; `enableAppSwitcherProtectionAsync`
+  does exist, so no hand-rolled cover).
+- **Observed `amr` of an Apple session:** _not yet observed_. It needs a real iPhone signing in; see "Still unknown until a real iPhone
+  signs in" under M4. `FIRST_FACTOR_METHODS` accepts `password` and `oauth` (provider Apple, or none named) until it is.
+- **Which Task 5.4 path held:** `end_user_sessions` stayed in (`postgres` may delete from `auth.sessions`; rehearsed in a rolled-back
+  block). The app-side `useAppleCredentialWatch` remains as the second mechanism.
+
+### App Store Connect metadata (drafts; Kelvin edits and pastes)
+
+| Field | Value |
+| --- | --- |
+| Name / SKU / bundle id | Tusky / `tusky` / `com.ouroborosstudios.tusky` |
+| Subtitle (30 chars max) | Money, shared and clear |
+| Category | Finance (primary). No secondary needed. |
+| Privacy Policy URL | `https://studiosouroboros.com/tusky/privacy` (the app's `PRIVACY_URL`; the same page must be reachable without signing in) |
+| Support URL | `https://studiosouroboros.com/tusky/support.html` (P6; the page needs a real contact e-mail) |
+| Marketing URL | optional; leave empty |
+| Age rating | Answer **No** to every content question (no objectionable content, no unrestricted web access, no user-to-user public content: herds are private). Apple computes the final rating; expect 4+. |
+| Export compliance | Already answered by `ITSAppUsesNonExemptEncryption=false` in `app.json` (HTTPS only). Nothing to answer in the portal. |
+| Price | Free, with in-app subscriptions (below). |
+| Review contact / notes | Kelvin's phone and e-mail; the notes text is at the end of `docs/ops/app-review.md`. |
+
+**Description (draft).** Guideline 3.1.2 needs the Terms link in the description and the subscription facts shown plainly.
+
+```text
+Tusky brings your accounts together so you can see where your money is and where it goes.
+
+• Connect your banks securely with Plaid. Your bank login never touches Tusky.
+• See your net worth and how it changes over time.
+• Every transaction is sorted into categories, and Tusky learns from the fixes you make.
+• Set budgets by category, or start from a preset based on your own spending.
+• Spot recurring bills, subscriptions and paychecks, and get an upcoming-bills view.
+• Review new transactions as a swipeable deck: accept, skip or fix each one.
+• Share money with the people you live with: invite them to a herd, mark who paid, split a cost, and settle up.
+• Optional: an AI pass for transactions nothing else could place, and anonymous crowd labels. Both are off until you turn them on.
+• Lock Tusky with Face ID or your passcode, and hide balances in the app switcher.
+• Sign in with Apple, or with an e-mail and password. You can delete your account and all its data inside the app.
+
+Tusky is free to start, with a free trial. Tusklet and Tusk are auto-renewing subscriptions that unlock more of the app:
+
+• <PRICE LINES: copy each plan's title, length and price from App Store Connect, monthly and yearly>
+
+Payment is charged to your Apple Account at confirmation of purchase. A subscription renews automatically unless it is canceled at
+least 24 hours before the end of the current period. You can manage or cancel it any time in your Apple Account settings.
+
+Privacy Policy: https://studiosouroboros.com/tusky/privacy
+Terms of Use: https://studiosouroboros.com/tusky/terms
+```
+
+Prices come from `docs/product/monetization.md` only as sandbox figures (Tusklet $3.99 a month or $45 a year, Tusk $6.99 a month or $75 a
+year). The Tusk Herd prices are not recorded anywhere in the repo: read all six from App Store Connect, never from this file.
+
+**Keywords (100 chars max, draft):** `budget,net worth,spending,bills,finance,money,household,shared,expenses,tracker`
+
+**App Privacy.** Every row: linked to the user, not used for tracking, purpose App Functionality. This matches
+`NSPrivacyCollectedDataTypes` in `app.json`. Tracking: **No**. No analytics, no crash reporting, no advertising.
+
+| Data type | Why we hold it |
+| --- | --- |
+| Email Address | The account, and the codes and confirmations sent through Resend |
+| Name | The display name |
+| User ID | The Supabase user id, and RevenueCat's app user id |
+| Other Financial Info | Balances and transactions from Plaid. Merchant text goes to TypeSafe only when the person turns the AI switch on. |
+| Purchase History | Subscriptions, through RevenueCat |
+| Other User Content | Notes, rules and custom categories |
+
+### Subscriptions in App Store Connect and RevenueCat
+
+Steps are plan 14d-2 Task 10 Steps 1–2 and 5 (`docs/superpowers/plans/2026-09-29-phase-14d-launch-readiness.md`), summarised in
+`docs/ops/release.md` ("iOS subscriptions"). The six products go in **one subscription group**, each attached to its package on the
+`default` offering of RevenueCat's App Store app. The `appl_` public key goes in `apps/mobile/.env` for dev
+(`EXPO_PUBLIC_REVENUECAT_IOS_KEY`) and in the EAS `production` environment as `EXPO_PUBLIC_PROD_REVENUECAT_IOS_KEY`.
+Apple wants each subscription to have its own review screenshot of the paywall; take it from the demo account.
+
+### Screenshots (demo account only, never a real person's data)
+
+| Screen | iPhone 6.9" (1320×2868) | iPad 13" (2064×2752, portrait; landscape optional) |
+| --- | --- | --- |
+| Home (net worth, accounts, upcoming) | yes | yes |
+| Transactions | yes | yes |
+| Review deck | yes | yes |
+| Budgets | yes | yes |
+| Reports | yes | yes |
+| Paywall | yes | yes |
+
+Take them on a Mac with `npx eas-cli build --platform ios --profile development-simulator` (the iPhone 16 Pro Max and iPad Pro 13"
+simulators), signed in as the seeded demo user (re-seed the same day so the dates look current), or on the devices themselves.
+
+### Release build, TestFlight, submit
+
+Exact commands: `docs/ops/release.md` -> "Store build and TestFlight". In short: check `env:list --environment production`, build with
+`--profile production`, submit, wait for processing, then walk the matrix below on that build.
+Do not skip the `__DEV__` re-check on the production build: sign-in must not offer "Switch to Real data", and the bank screen must
+show no sandbox buttons.
+
+### Verification matrix
+
+"Checked" means checked here, in code, tests or on the dev project. "Device" means it can only be proven on hardware and has **not**
+been done. Nothing in the Device column was run, and none of those cells is a pass.
+
+Automated, run on 2026-10-10 at the end of M8: `npm run typecheck`, `npx expo lint`, `npm test` (app), and
+`npx -y deno test --allow-env supabase/functions/_shared/` (352 passed, 0 failed) all exit 0. `node scripts/rls-check.mjs` passed
+after both migrations were pushed to dev.
+
+| Area | What is checked | iPhone | iPad | Android |
+| --- | --- | --- | --- | --- |
+| E-mail sign-up, confirm mail, sign-in | No code path changed | Device | Device | Unchanged (no edits to the flow) |
+| Sign in with Apple (new, returning, linked e-mail, Hide My Email) | Helpers and nonce flow in unit tests; Apple provider settings written down | Device (needs P2, P8, dev build) | Device | Button renders nothing |
+| Accept terms, onboarding name prefill, Home | `nameSuggestion` tested | Device | Device | Unchanged |
+| Two-step, password user and Apple user | `hasFirstFactor` tested; `two-factor` deployed to dev; real `amr` unobserved | Device | Device | Unchanged |
+| Link a bank: First Platypus and Chase OAuth | `linkPlatformFields` tested; function and secret on dev; +native-intent wired | Device (needs AASA live, P7) | Device | Device (First Platypus) |
+| Sync, feed, review deck, budgets, reports, settle, herd invite | Review `gestureEnabled:false`; no data-path change | Device | Device | Unchanged |
+| Paywall: prices, Close, buy, restore, Manage | `pickRevenueCatKey`, `canManage`, `manageFallbackUrl` tested; iOS never sends Play `productChange` | Device (needs the six products and key) | Device | Unchanged |
+| Delete account: password user; Apple user (revocation logged) | `parseProof` and `deleteAccount` tested for both proofs, a null grant and a throwing revoke; function on dev | Device (needs the dev Apple secrets) | Device | Password path unchanged |
+| App lock: biometric, passcode fallback, 60 s, sign-out escape | `shouldLockOnResume` and the keychain options tested | Device | Device (landscape, Split View) | Device (biometric + FLAG_SECURE) |
+| App switcher hides balances | `enableAppSwitcherProtectionAsync(1)` called once on iOS | Device | Device | Device (Recents blank while locked) |
+| Keyboard never covers a field | Only `join-herd.tsx` needed the iOS prop; the rest already sit in sheets | Device | Device | Unchanged |
+| Dark and light mode, Dynamic Type at the largest size, iPhone SE | No layout was changed | Device | Device | Unchanged |
+| Demo account: data visible, refresh clean, no Plaid calls | On dev: seeded, read through RLS as that user, sync answered an empty result, both disconnect modes ran with no Plaid call | Device (sign in with the app once) | Device | Device |
+| `__DEV__` features absent from a production build | `__DEV__`-guarded, as before | Production build | Production build | Production build |
+
+### Production commands, all in order
+
+All of these are Pedro's, each only on his go-ahead; the CLI stays linked to dev (`ifibrsgqdibcomzxencf`), so every line names
+`--project-ref awiwcgrisyzimzxgddxu`. Nothing here has been run. Work top to bottom; the order is the dependency order.
+
+**0. Before anything.** `npx supabase migration list --project-ref awiwcgrisyzimzxgddxu`. Expect exactly two pending migrations,
+`20261018130000_apple_identity.sql` and `20261018140000_demo_items.sql`. If others are pending, stop and ask before pushing.
+
+**1. Schema (first: four functions below filter on `is_demo`, and fail without the column).**
+
+```sh
+npx supabase db push --project-ref awiwcgrisyzimzxgddxu
+```
+
+**2. Secrets.** Values are the Team ID and Key ID from the Apple Developer portal (P1, P3) and the `.p8` file. Never paste the key
+into a chat, a ticket or a commit. In PowerShell:
+
+```powershell
+npx supabase secrets set PLAID_IOS_REDIRECT_URI=https://studiosouroboros.com/tusky/plaid/oauth --project-ref awiwcgrisyzimzxgddxu
+npx supabase secrets set APPLE_TEAM_ID=<Team ID> APPLE_KEY_ID=<Key ID> --project-ref awiwcgrisyzimzxgddxu
+npx supabase secrets set "APPLE_PRIVATE_KEY=$(Get-Content C:\path\to\AuthKey_XXXX.p8 -Raw)" --project-ref awiwcgrisyzimzxgddxu
+```
+
+**3. Functions.** One changed (`two-factor`, `plaid-create-link-token`, `delete-account`, `plaid-sync-transactions`, `plaid-webhook`,
+`plan-enforcer`, `revenuecat-webhook`) or is new (`apple-notifications`). `apple-notifications` reads `verify_jwt = false` from
+`supabase/config.toml`, so deploy it from the repo root.
+
+```sh
+npx supabase functions deploy two-factor --use-api --project-ref awiwcgrisyzimzxgddxu
+npx supabase functions deploy plaid-create-link-token --use-api --project-ref awiwcgrisyzimzxgddxu
+npx supabase functions deploy delete-account --use-api --project-ref awiwcgrisyzimzxgddxu
+npx supabase functions deploy apple-notifications --use-api --project-ref awiwcgrisyzimzxgddxu
+npx supabase functions deploy plaid-sync-transactions --use-api --project-ref awiwcgrisyzimzxgddxu
+npx supabase functions deploy plaid-webhook --use-api --project-ref awiwcgrisyzimzxgddxu
+npx supabase functions deploy plan-enforcer --use-api --project-ref awiwcgrisyzimzxgddxu
+npx supabase functions deploy revenuecat-webhook --use-api --project-ref awiwcgrisyzimzxgddxu
+```
+
+Check that the new public function rejects an unsigned call (expect `401`):
+
+```sh
+curl -i -X POST https://awiwcgrisyzimzxgddxu.supabase.co/functions/v1/apple-notifications -H "Content-Type: application/json" -d '{"payload":"x"}'
+```
+
+**4. Supabase dashboard of `awiwcgrisyzimzxgddxu`.**
+- Authentication -> Providers -> Apple: enable it; **Client IDs** = `com.ouroborosstudios.tusky`; no secret for native sign-in.
+- Authentication -> Providers -> Email: **Confirm email** stays ON (it is what stops someone pre-registering a victim's e-mail to hijack
+  an Apple link). Look at it; do not assume.
+- Authentication -> Policies: turn on leaked-password protection if the plan allows it (a Pro setting); otherwise record it as accepted
+  in `docs/ops/security-review-2026-09-27.md`.
+
+**5. Apple Developer portal.**
+- Identifiers -> `com.ouroborosstudios.tusky` -> Sign in with Apple -> Configure -> **Server-to-Server Notification Endpoint** =
+  `https://awiwcgrisyzimzxgddxu.supabase.co/functions/v1/apple-notifications`.
+- Services -> *Sign in with Apple for Email Communication*: domain `studiosouroboros.com`, sender `noreply@studiosouroboros.com` (P4).
+  Without it, mail to `@privaterelay.appleid.com` bounces.
+
+**6. Site and Plaid.**
+- Ouroboros-Inc repo: `public/.well-known/apple-app-site-association`, `public/tusky/plaid/oauth/index.html` (M3 above) and
+  `public/tusky/support.html` (P6).
+- Plaid dashboard, **Production**: add `https://studiosouroboros.com/tusky/plaid/oauth` under Allowed redirect URIs (P7). Big OAuth
+  banks still wait on Plaid's production access (`docs/ops/production.md`).
+
+**7. The demo account.** Dashboard -> Authentication -> Users -> Add user `appreview@studiosouroboros.com` (Auto Confirm User, a long
+random password kept in the team password manager, two-step off). Copy its user id, then run the printed SQL in the SQL editor:
+
+```sh
+node scripts/demo-seed.mjs <user-id> --print
+```
+
+Re-seed in the days before each submission and after any review that deleted the account.
+
+**8. EAS, then the build.**
+
+```sh
+cd apps/mobile
+npx eas-cli env:set --environment production --name EXPO_PUBLIC_PROD_REVENUECAT_IOS_KEY --value <appl_ key> --visibility plaintext
+npx eas-cli env:list --environment production
+```
+
+### Still open, and who owns it
+
+| Item | Owner |
+| --- | --- |
+| M0 P1–P9 (Apple account type and IDs, key, relay, devices, site files, Plaid URI, Supabase provider, App Store Connect) | Kelvin / Pedro, per the table in the plan |
+| `submit.production.ios` (`ascAppId`, `appleTeamId`) in `apps/mobile/eas.json` | Kelvin supplies; add the two values then |
+| iOS prebuild check on the Mac (Task 1.4) | Kelvin |
+| First EAS iOS dev build and every Device cell above | Kelvin |
+| Real `amr`, and the other three M4 unknowns | Kelvin, on the first Apple sign-in |
+| Dev Apple secrets (Task 5.5) | Kelvin |
+| `npx expo install --fix` for seven older patch mismatches, then a retest | Kelvin, before the first iOS build |
+| Rebuild the Android dev client (new native modules) | Kelvin |
+| Everything under "Production commands, all in order" | Pedro, on his go-ahead |
+| App Store Connect: metadata, screenshots, six subscriptions, review notes, submit | Kelvin / Pedro |
+| Push `kelvin` and open the single PR `kelvin -> master` (never merge) | Kelvin's go-ahead |
