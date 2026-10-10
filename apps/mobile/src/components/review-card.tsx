@@ -1,7 +1,8 @@
 import { Image } from 'expo-image';
 import { ChevronDown, Pencil } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 
 import { CategoryPicker } from '@/components/category-picker';
 import { CategorySheet, type SheetTarget } from '@/components/category-sheet';
@@ -11,6 +12,7 @@ import { RenameSheet } from '@/components/rename-sheet';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { CategoryIcon } from '@/components/ui/category-icon';
+import { QuestionBanner } from '@/components/questions';
 import { WhoPaid } from '@/components/who-paid';
 import { Radius, Spacing } from '@/constants/theme';
 import { useCategoryChoice } from '@/hooks/use-category-choice';
@@ -61,7 +63,7 @@ export function ReviewCard({ id }: { id: string }) {
   const merchantKey = t.merchant_key || null;
   const rule = merchantKey ? rules.get(merchantKey) : undefined;
   const accent = category?.color ?? colors.brand;
-  const failed = (err: Error) => Alert.alert('Could not save', err.message);
+  const failed = (err: Error) => dialog.alert('Could not save', err.message);
 
   return (
     <View
@@ -115,6 +117,7 @@ export function ReviewCard({ id }: { id: string }) {
       </View>
 
       <View style={{ padding: Spacing.md, gap: Spacing.xs }}>
+        <QuestionBanner transactionId={t.id} />
         {/* The fix a review needs most often, so it is the biggest control. */}
         <Pressable
           onPress={() => setPicking(true)}
@@ -149,6 +152,11 @@ export function ReviewCard({ id }: { id: string }) {
         {guessHint(t.category_source) ? (
           <AppText variant="caption" tone="dim" style={{ textAlign: 'center' }}>
             Tusky guessed this {guessHint(t.category_source)}
+          </AppText>
+        ) : null}
+        {t.review_priority === 2 ? (
+          <AppText variant="caption" tone="brand" style={{ textAlign: 'center' }}>
+            Worth a second look
           </AppText>
         ) : null}
         {rule?.category_id ? (

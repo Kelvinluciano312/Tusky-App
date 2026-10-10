@@ -1,6 +1,6 @@
 import { assertEquals } from 'jsr:@std/assert';
 
-import { carryForward, type ExistingRow } from './review.ts';
+import { autoReviewIds, carryForward, type ExistingRow, partitionAutoReview, REVIEW_WINDOW_DAYS, reviewCutoff } from './review.ts';
 
 const row = (id: string, over: Partial<ExistingRow> = {}): ExistingRow => ({
   plaid_transaction_id: id,
@@ -109,4 +109,54 @@ Deno.test('carryForward: a fixed pending row hands the posted row which source i
     new Map([['p1', row('p1', { category_id: 'cat-mine', category_is_manual: true, corrected_from: 'plaid' })]]),
   );
   assertEquals(existingFor.get('posted1')?.corrected_from, 'plaid');
+});
+
+Deno.test('reviewCutoff: 14 days before the day the Item was linked, in UTC', () => {
+  assertEquals(REVIEW_WINDOW_DAYS, 14);
+  assertEquals(reviewCutoff('2026-10-15T12:00:00Z'), '2026-10-01');
+  assertEquals(reviewCutoff(new Date('2026-10-15T23:59:59Z')), '2026-10-01');
+  assertEquals(reviewCutoff('2026-10-15T00:00:00Z'), '2026-10-01');
+});
+
+Deno.test('reviewCutoff: crosses month and year boundaries and leap days', () => {
+  assertEquals(reviewCutoff('2027-01-05T08:00:00Z'), '2026-12-22');
+  assertEquals(reviewCutoff('2028-03-10T08:00:00Z'), '2028-02-25');
+  assertEquals(reviewCutoff('2026-10-15T12:00:00+02:00'), '2026-10-01');
+});
+
+Deno.test('reviewCutoff: refuses a date it cannot read', () => {
+  let threw = false;
+  try {
+    reviewCutoff('not a date');
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true);
+});
+
+Deno.test('autoReviewIds: only new, posted rows dated before the cutoff', () => {
+  const rows = [
+    { plaid_transaction_id: 'old-new', date: '2026-09-01', pending: false },
+    { plaid_transaction_id: 'on-cutoff', date: '2026-10-01', pending: false },
+    { plaid_transaction_id: 'recent', date: '2026-10-10', pending: false },
+    { plaid_transaction_id: 'old-existing', date: '2026-09-01', pending: false },
+    { plaid_transaction_id: 'old-posted-from-pending', date: '2026-09-02', pending: false },
+    { plaid_transaction_id: 'old-pending', date: '2026-09-03', pending: true },
+  ];
+  const existingFor = new Map<string, ExistingRow | null>([
+    ['old-new', null],
+    ['on-cutoff', null],
+    ['recent', null],
+    ['old-existing', row('old-existing')],
+    ['old-posted-from-pending', row('p')],
+    ['old-pending', null],
+  ]);
+  assertEquals(autoReviewIds(rows, existingFor, '2026-10-01'), ['old-new']);
+
+  const { auto, rest } = partitionAutoReview(rows, existingFor, '2026-10-01');
+  assertEquals(auto.map((r) => r.plaid_transaction_id), ['old-new']);
+  assertEquals(
+    rest.map((r) => r.plaid_transaction_id),
+    ['on-cutoff', 'recent', 'old-existing', 'old-posted-from-pending', 'old-pending'],
+  );
 });

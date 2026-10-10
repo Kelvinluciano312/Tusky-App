@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { Animated, Easing, KeyboardAvoidingView, Modal, Pressable, StyleSheet, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type SheetProps = {
@@ -82,6 +82,8 @@ export function Sheet({ visible, onClose, avoidKeyboard, style, children }: Shee
         <Animated.View
           style={[
             {
+              // Capped and centred on a tablet; the dim behind stays full screen.
+              ...Layout.sheet,
               backgroundColor: colors.surface,
               borderTopLeftRadius: Radius.xl,
               borderTopRightRadius: Radius.xl,

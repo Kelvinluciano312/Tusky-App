@@ -1,8 +1,9 @@
 # Phase 6 — Connections & control (design)
 
 Status: approved 2026-09-23; **built 2026-09-24** (plan: `docs/superpowers/plans/2026-09-24-phase-6-connections-control.md`,
-handoff: `docs/superpowers/plans/2026-09-24-phase-6-handoff.md`). Only the final step, the Plaid key switch, remains, and it
-waits on Pedro's go-ahead.
+handoff: `docs/superpowers/plans/2026-09-24-phase-6-handoff.md`). **Complete.** The final step, the Plaid key switch, was
+superseded on 2026-09-28: dev keeps its Sandbox keys, and production keys live only in the separate production
+project (`docs/ops/production.md`).
 
 Phase 6 gives users control over their connected banks:
 
@@ -293,7 +294,8 @@ All text goes through `AppText`, all money through `Amount`, and all colours and
 
 - **Reconnecting a kept bank.**
   - Reconnecting a bank whose history was kept creates a new connection. Its first 90 days overlap
-    the kept history and show twice until the old one is deleted.
+    the kept history and show twice until the old one is deleted. Fixed in Phase 14b: the reconnect
+    merge (`_shared/merge.ts`).
   - The duplicate guard ignores archived Items on purpose.
 - **Net worth steps on the disconnect day.** Kept history still counts on earlier days, so the line
   jumps on that day.

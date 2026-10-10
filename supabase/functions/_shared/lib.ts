@@ -1,6 +1,8 @@
 import { createClient, type SupabaseClient, type User } from 'npm:@supabase/supabase-js@2';
 import { Configuration, PlaidApi, PlaidEnvironments } from 'npm:plaid@30';
 
+import { claimsOfRequest, secondStepRequired, sessionIdOfClaims } from './two-factor.ts';
+
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -47,6 +49,37 @@ export async function getAuthedUser(req: Request, admin: SupabaseClient): Promis
   return data.user;
 }
 
+/**
+ * Two-step sign-in (16e). The database already gives an unverified session no
+ * herd (private.my_herd_id); functions run as the service role, so they ask the
+ * same question here: with profiles.two_factor on, the caller's session must
+ * have a row in two_factor_sessions (written only by the `two-factor` function).
+ * Call it right after getAuthedUser: it returns the response to send (403
+ * two_factor_required) or null when the caller may go on. The token was
+ * validated by getAuthedUser, so its claims can be trusted. Fails closed.
+ * The `two-factor` function itself must NOT call this: it is how a session
+ * becomes verified.
+ */
+export async function requireSecondStep(
+  admin: SupabaseClient,
+  req: Request,
+  userId: string,
+): Promise<Response | null> {
+  const { data, error } = await admin.from('profiles').select('two_factor').eq('user_id', userId).maybeSingle();
+  if (error) return jsonResponse({ error: 'two_factor_check_failed' }, 500);
+  if (data?.two_factor !== true) return null;
+  const sessionId = sessionIdOfClaims(claimsOfRequest(req));
+  let verified = false;
+  if (sessionId) {
+    const { data: row, error: rowError } = await admin
+      .from('two_factor_sessions').select('session_id').eq('session_id', sessionId).eq('user_id', userId).maybeSingle();
+    if (rowError) return jsonResponse({ error: 'two_factor_check_failed' }, 500);
+    verified = !!row;
+  }
+  if (secondStepRequired(true, verified)) return jsonResponse({ error: 'two_factor_required' }, 403);
+  return null;
+}
+
 /** Where Plaid delivers webhooks. Derived, so there is no secret to keep in sync. */
 export function getWebhookUrl(): string {
   return `${Deno.env.get('SUPABASE_URL')}/functions/v1/plaid-webhook`;
@@ -65,4 +98,26 @@ export function getPlaidClient(): PlaidApi {
       },
     }),
   );
+}
+
+/**
+ * What to log for a caught error. A Plaid SDK (axios) error carries its
+ * request: the headers hold our Plaid secret and the body may hold a bank's
+ * access token, so only Plaid's code, message and request_id are kept (the id
+ * is what Plaid support asks for). Anything else is logged whole, stack
+ * included.
+ */
+export function loggable(err: unknown): unknown {
+  if (!(err as { isAxiosError?: boolean } | null)?.isAxiosError) return err;
+  const requestId = (err as { response?: { data?: { request_id?: unknown } } }).response?.data?.request_id;
+  const text = describeError(err);
+  return typeof requestId === 'string' && requestId ? `${text} [request_id ${requestId}]` : text;
+}
+
+/** Plaid SDK errors carry the useful detail on response.data. */
+export function describeError(err: unknown): string {
+  const data = (err as { response?: { data?: { error_code?: string; error_message?: string } } })
+    ?.response?.data;
+  if (data?.error_code) return `${data.error_code}: ${data.error_message ?? ''}`.trim();
+  return (err as Error)?.message ?? 'unknown error';
 }

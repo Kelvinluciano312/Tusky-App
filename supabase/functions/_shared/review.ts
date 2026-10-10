@@ -63,3 +63,55 @@ export function carryForward(
   }
   return { existingFor, notes, payers };
 }
+
+/**
+ * Only the last two weeks go to review (Phase 16b). A row sync inserts whose
+ * date is older than this many days before its Item was linked is marked
+ * reviewed (`auto_reviewed`), so the queue starts with recent transactions
+ * instead of the bank's whole history.
+ */
+export const REVIEW_WINDOW_DAYS = 14;
+
+/**
+ * The first date (YYYY-MM-DD, UTC) that still goes to review: a row dated
+ * before it is outside the window. The SQL backfill in the 16b migration
+ * computes the same day.
+ */
+export function reviewCutoff(itemCreatedAt: string | Date): string {
+  const created = new Date(itemCreatedAt);
+  if (Number.isNaN(created.getTime())) throw new Error(`invalid item created_at: ${String(itemCreatedAt)}`);
+  const day = Date.UTC(created.getUTCFullYear(), created.getUTCMonth(), created.getUTCDate());
+  return new Date(day - REVIEW_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * Which of the rows a sync just wrote to mark reviewed: truly new rows (no row
+ * of their own and no pending predecessor, whose review state is the user's),
+ * posted, and dated before the cutoff. YYYY-MM-DD strings compare as dates.
+ */
+export function autoReviewIds(
+  rows: { plaid_transaction_id: string; date: string; pending: boolean }[],
+  existingFor: Map<string, ExistingRow | null>,
+  cutoff: string,
+): string[] {
+  return rows
+    .filter((r) => !r.pending && r.date < cutoff && existingFor.get(r.plaid_transaction_id) === null)
+    .map((r) => r.plaid_transaction_id);
+}
+
+/**
+ * The rows split into those to insert already reviewed and the rest. Two upserts
+ * keep supabase-js's union-of-keys rule intact: only `auto` carries the review
+ * columns, so no other row gets them nulled.
+ */
+export function partitionAutoReview<R extends { plaid_transaction_id: string; date: string; pending: boolean }>(
+  rows: R[],
+  existingFor: Map<string, ExistingRow | null>,
+  cutoff: string,
+): { auto: R[]; rest: R[] } {
+  const ids = new Set(autoReviewIds(rows, existingFor, cutoff));
+  return {
+    auto: rows.filter((r) => ids.has(r.plaid_transaction_id)),
+    rest: rows.filter((r) => !ids.has(r.plaid_transaction_id)),
+  };
+}

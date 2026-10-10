@@ -49,6 +49,6 @@ With 9d, milestones 9a–9d are built. Phase 9's remaining work is Track P (the 
 
 - **Not exercised end to end:**
   - the review card's "Who paid" (the same component as the transaction screen);
-  - carrying a payer from a pending to a posted row (unit-tested only: Sandbox rarely posts pending rows on demand).
+  - carrying a payer from a pending to a posted row. Sandbox rarely posts pending rows on demand, so on 2026-09-28 the database half was proved instead by `scripts/payer-carry-check.sql`, which replays sync's statements on dev and rolls them back. A hand-picked payer, Joint and a split all carry; a payer already picked on the posted row is kept; a leaver is refused.
 - **No undo for a hand-picked payer.** There is no "back to the account's owner" button; picking the owner's chip sets it by hand to the same person.
 - **Next**, from the spec's "Later" list: spending by person in Reports, a payer filter on the feed, and splits or settle-up. Track P is still waiting on Pedro: add him to the Ouroboros org, and he enters the prod Plaid secret.

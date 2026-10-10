@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
 import { HandCoins } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Amount } from '@/components/ui/amount';
@@ -11,7 +12,7 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Sheet } from '@/components/ui/sheet';
 import { TextField } from '@/components/ui/text-field';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { transferLabel, useSettleUp } from '@/hooks/use-settle-up';
 import { useTheme } from '@/hooks/use-theme';
 import { useDeleteSettlement, useRecordSettlement } from '@/lib/queries';
@@ -49,12 +50,12 @@ export default function SettleScreen() {
   }
 
   const confirmUndo = (id: string, label: string) =>
-    Alert.alert('Undo this payment?', `${label}. The balance goes back to what it was before it.`, [
+    dialog.alert('Undo this payment?', `${label}. The balance goes back to what it was before it.`, [
       { text: 'Keep', style: 'cancel' },
       {
         text: 'Undo',
         style: 'destructive',
-        onPress: () => undo.mutate(id, { onError: (err) => Alert.alert('Could not undo', err.message) }),
+        onPress: () => undo.mutate(id, { onError: (err) => dialog.alert('Could not undo', err.message) }),
       },
     ]);
 
@@ -63,7 +64,7 @@ export default function SettleScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
       <Card style={{ alignItems: 'center', gap: Spacing.xs, paddingVertical: Spacing.lg }}>
         {!s.ready ? (
           <ActivityIndicator color={colors.textDim} />
@@ -73,7 +74,7 @@ export default function SettleScreen() {
             <AppText variant="caption" tone="dim" style={{ textAlign: 'center' }}>
               {s.lines.length > 0 || s.settlements.length > 0
                 ? 'Everything shared has been paid back.'
-                : 'Mark a purchase Joint or split it, and who owes whom shows up here.'}
+                : 'Split a purchase, and who owes whom shows up here. Tagging who spent something never makes a debt.'}
             </AppText>
           </>
         ) : (
@@ -200,7 +201,7 @@ export default function SettleScreen() {
               { from_user: paying.from, to_user: paying.to, amount, note },
               {
                 onSuccess: () => setPaying(null),
-                onError: (err) => Alert.alert('Could not record it', err.message),
+                onError: (err) => dialog.alert('Could not record it', err.message),
               },
             )
           }

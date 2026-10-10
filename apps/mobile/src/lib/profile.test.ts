@@ -3,17 +3,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { firstName, NAME_MAX, validatePersonName } from './profile.ts';
+import { NAME_MAX, validatePersonName } from './profile.ts';
 
 test('validatePersonName trims, and refuses blank or too long', () => {
   assert.equal(validatePersonName('  Pedro Leão '), 'Pedro Leão');
   assert.equal(validatePersonName('   '), null);
   assert.equal(validatePersonName('x'.repeat(NAME_MAX)), 'x'.repeat(NAME_MAX));
   assert.equal(validatePersonName('x'.repeat(NAME_MAX + 1)), null);
-});
-
-test('firstName greets by the first word', () => {
-  assert.equal(firstName('Pedro Leão'), 'Pedro');
-  assert.equal(firstName('  Kelvyn  '), 'Kelvyn');
-  assert.equal(firstName('ph.leao2099'), 'ph.leao2099');
 });

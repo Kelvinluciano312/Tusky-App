@@ -1,4 +1,4 @@
-import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, getPlaidClient, jsonResponse } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, getPlaidClient, jsonResponse, loggable, requireSecondStep } from '../_shared/lib.ts';
 import { type ItemResult, loadSyncContext, type SyncContext, syncItem } from '../_shared/sync.ts';
 
 Deno.serve(async (req) => {
@@ -7,6 +7,8 @@ Deno.serve(async (req) => {
   const admin = getAdminClient();
   const user = await getAuthedUser(req, admin);
   if (!user) return jsonResponse({ error: 'Unauthorized' }, 401);
+  const blocked = await requireSecondStep(admin, req, user.id);
+  if (blocked) return blocked;
 
   let herdId: string;
   let ctx: SyncContext;
@@ -14,7 +16,7 @@ Deno.serve(async (req) => {
     ({ herd_id: herdId } = await getCallerHerd(admin, user.id));
     ctx = await loadSyncContext(admin, getPlaidClient());
   } catch (err) {
-    console.error(err);
+    console.error(loggable(err));
     return jsonResponse({ error: 'Could not load categories' }, 500);
   }
 

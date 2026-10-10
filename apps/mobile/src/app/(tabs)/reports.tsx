@@ -10,7 +10,7 @@ import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { CategoryIcon } from '@/components/ui/category-icon';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { initials, isShared } from '@/lib/herd';
 import { currentMonthStart, monthsEndingAt } from '@/lib/month';
@@ -77,7 +77,7 @@ export default function ReportsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
-      <ScrollView contentContainerStyle={{ padding: Spacing.md, gap: Spacing.lg }}>
+      <ScrollView contentContainerStyle={{ ...Layout.column, padding: Spacing.md, gap: Spacing.lg }}>
         <AppText variant="display">Reports</AppText>
 
         {error ? (
@@ -216,7 +216,7 @@ export default function ReportsScreen() {
                     By person
                   </AppText>
                   <AppText variant="caption" tone="dim">
-                    Whose expense it was, as set on each transaction.
+                    Who spent it, as tagged on each transaction. A split counts for each person in it.
                   </AppText>
                 </View>
                 {people.map((person) => (

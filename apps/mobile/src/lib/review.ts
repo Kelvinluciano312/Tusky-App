@@ -76,3 +76,34 @@ export function topCard(deck: Deck): string | null {
   if (top === undefined) return null;
   return deck.queue.every((id) => deck.skipped.includes(id)) ? null : top;
 }
+
+/** "Annie asked about 2 of them" (15d): who is waiting on me, under the review count. */
+export function askedLine(questions: { asked_by: string }[], name: (id: string) => string): string {
+  const askers = [...new Set(questions.map((q) => q.asked_by))].map(name);
+  const who =
+    askers.length <= 2 ? askers.join(' and ') : `${askers.slice(0, -1).join(', ')} and ${askers[askers.length - 1]}`;
+  const n = questions.length;
+  return `${who} asked about ${n === 1 ? 'one' : n} of them`;
+}
+
+/**
+ * The deck's order (12d): Jev's "likely needs a fix" first, then "worth a
+ * glance", then everything else, keeping the queue's oldest-first order within
+ * each. Unjudged rows count as routine, so with Jev off the order is exactly
+ * the old one.
+ *
+ * Since 15d, rows a herd mate asked me about come before all of that, oldest
+ * question first, whether or not they made the queue's batch.
+ */
+export function orderQueue(
+  rows: { id: string; review_priority: number | null }[],
+  askedOfMe: string[] = [],
+): string[] {
+  const asked = [...new Set(askedOfMe)];
+  const rest = rows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => (b.row.review_priority ?? 0) - (a.row.review_priority ?? 0) || a.index - b.index)
+    .map(({ row }) => row.id)
+    .filter((id) => !asked.includes(id));
+  return [...asked, ...rest];
+}

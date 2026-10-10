@@ -1,30 +1,38 @@
 /**
- * The AI fallback (Phase 12b). Everything here is pure except askClaude, which
- * is injected, so every branch is testable without a network or a key.
+ * The AI fallback (Phase 12b), answered by Jev since Phase 12d. Everything here
+ * is pure except the JevAsk that jevCategorizer is given, so every branch is
+ * testable without a network or a key.
  *
  * This runs only where every other source was unsure. Its answers are cached
- * globally and keyed by merchant and amount band: the model only ever sees
- * merchant-level text and the built-in category list, so one answer is right
- * for every herd, and a merchant one subscriber pays to resolve is then free
- * for everyone.
+ * globally and keyed by merchant and amount band: Jev only ever sees
+ * merchant-level text and the built-in categories, so one answer is right for
+ * every herd, and a merchant one subscriber pays to resolve is then free for
+ * everyone.
  */
-import Anthropic from 'npm:@anthropic-ai/sdk@0.128.0';
-import { z } from 'npm:zod@4.6.5';
-import { zodOutputFormat } from 'npm:@anthropic-ai/sdk@0.128.0/helpers/zod';
 import { amountBand } from './crowd.ts';
+import {
+  askJev,
+  JEV_CONCURRENCY,
+  JEV_PASS_BUDGET_MS,
+  type JevAsk,
+  type JevQuestion,
+  type JevResponse,
+  mapLimit,
+  readChoice,
+} from './jev.ts';
 
-/** Classification needs no reasoning and Haiku 4.5 rejects `effort`. */
-const MODEL = 'claude-haiku-4-5';
-/** Uncached rows per sync. Cache hits are free and do not count. */
+/** Uncached merchants asked about per sync. Cache hits are free and do not count. */
 export const AI_MAX_PER_SYNC = 50;
-/**
- * How long one sync may spend on the model, and how hard it retries. The SDK
- * defaults (10 minutes, 2 retries) can hold a sync open for half an hour before
- * its cursor advances, so every page would be pulled again next time.
- */
-export const AI_CLIENT = { timeout: 20_000, maxRetries: 1 };
 /** Rows per `in (...)` when writing answers back. Matches set-merchant-rule. */
 export const AI_UPDATE_CHUNK = 200;
+/**
+ * The confidence an answer needs before we write it: TypeSafe's own
+ * classification cookbook uses 0.9. Every row stores the confidence it came
+ * with, so scripts/cat-quality.mjs can show whether this should move.
+ */
+export const JEV_CONFIDENCE = 0.9;
+/** The built-in "nothing fits" group. Jev choosing it is a decline. */
+export const FALLBACK_SLUG = 'uncategorized';
 
 export type AiRow = {
   id: string;
@@ -41,18 +49,19 @@ export type AiRow = {
   is_private: boolean;
 };
 
-export type AiCategory = { id: string; slug: string; name: string; parent_name: string | null };
-export type AiAnswer = { key: string; slug: string };
-export type AskFn = (rows: AiRow[], categories: AiCategory[]) => Promise<AiAnswer[]>;
-
+/** A built-in category. `parent_slug` is null for one of the groups. */
+export type AiCategory = { id: string; slug: string; name: string; parent_slug: string | null };
+export type AiLevel = 'child' | 'group';
+/** What one answer writes. Null confidence and level mark a 12b-era (Haiku) cache row. */
+export type AiVerdict = { category_id: string; confidence: number | null; level: AiLevel | null };
+/** One merchant's answer. A null slug is an explicit decline. */
+export type AiAnswer = { key: string; slug: string | null; confidence?: number; level?: AiLevel };
 /**
- * Whether this herd may use the AI fallback. True for everyone today; AI is
- * meant to be a subscriber feature, and this is the one place that check will
- * go. Server-side on purpose — a tier limit is never enforced in the client.
+ * Answers for the rows asked about. A key missing from the result was not
+ * answered at all (its call failed). Unlike a null slug, it is not remembered
+ * as declined, so the next sync asks again.
  */
-export function aiAllowed(_herdId: string): boolean {
-  return true;
-}
+export type AskFn = (rows: AiRow[], categories: AiCategory[]) => Promise<AiAnswer[]>;
 
 /**
  * What one answer covers: a merchant, a direction and an amount band. A row
@@ -65,23 +74,23 @@ export function cacheKeyFor(row: AiRow): string {
 }
 
 /**
- * Split the rows into what the cache already answers and what the model must
- * be asked. One row per distinct key: asking twice about one merchant is
- * money spent on an answer we already have in flight.
+ * Split the rows into what the cache already answers and what Jev must be
+ * asked. One row per distinct key: asking twice about one merchant is money
+ * spent on an answer we already have in flight.
  */
 export function buildAskList(
   rows: AiRow[],
-  /** key → category, or null for a merchant the model declined once already. */
-  cached: Map<string, string | null>,
-): { ask: AiRow[]; resolved: Map<string, string> } {
-  const resolved = new Map<string, string>();
+  /** key → verdict, or null for a merchant Jev declined once already. */
+  cached: Map<string, AiVerdict | null>,
+): { ask: AiRow[]; resolved: Map<string, AiVerdict> } {
+  const resolved = new Map<string, AiVerdict>();
   const ask: AiRow[] = [];
   const seen = new Set<string>();
   for (const row of rows) {
     const key = cacheKeyFor(row);
     if (cached.has(key)) {
-      // A null answer is an answer: this merchant has been asked about and the
-      // model declined it. Asking again every sync is money for nothing.
+      // A null answer is an answer: this merchant has been asked about and
+      // declined. Asking again every sync is money for nothing.
       const hit = cached.get(key);
       if (hit) resolved.set(row.id, hit);
       continue;
@@ -94,46 +103,51 @@ export function buildAskList(
 }
 
 /**
- * Turn the model's answers into row updates and cache entries. Anything we did
- * not offer, did not ask about, or already answered is dropped — the row then
+ * Turn the answers into row updates and cache entries. Anything we did not
+ * offer, did not ask about, or already answered is dropped, and the row then
  * keeps the category it already had. Private rows take their answer but never
  * reach the global cache: which merchants someone keeps private is not a fact
  * other herds get to learn.
  *
- * `unanswered` is the keys we asked about and got nothing usable for. They are
- * cached as a null answer so the same unanswerable merchant is not sent again
- * on every later sync — and, like every cache entry, only when a shared row
- * carries the key.
+ * `unanswered` is the keys we asked about and got no usable category for. They
+ * are cached as a null answer so the same unplaceable merchant is not sent
+ * again on every later sync — and, like every cache entry, only when a shared
+ * row carries the key. Pass only keys Jev actually answered as `askedKeys`: a
+ * key whose call failed must not be remembered as declined.
  */
 export function applyAnswers(
   rows: AiRow[],
   answers: AiAnswer[],
   categories: AiCategory[],
-  /** The keys actually sent. Defaults to every key in the batch. */
+  /** The keys actually answered. Defaults to every key in the batch. */
   askedKeys?: string[],
 ): {
-  updates: { id: string; category_id: string }[];
-  cacheable: { key: string; category_id: string }[];
+  updates: ({ id: string } & AiVerdict)[];
+  cacheable: ({ key: string } & AiVerdict)[];
   unanswered: string[];
 } {
   const idBySlug = new Map(categories.map((c) => [c.slug, c.id]));
   const asked = new Set(askedKeys ?? rows.map(cacheKeyFor));
 
-  const byKey = new Map<string, string>();
+  const byKey = new Map<string, AiVerdict>();
   for (const answer of answers) {
     if (byKey.has(answer.key) || !asked.has(answer.key)) continue;
-    const categoryId = idBySlug.get(answer.slug);
+    const categoryId = answer.slug ? idBySlug.get(answer.slug) : undefined;
     if (!categoryId) continue;
-    byKey.set(answer.key, categoryId);
+    byKey.set(answer.key, {
+      category_id: categoryId,
+      confidence: answer.confidence ?? null,
+      level: answer.level ?? null,
+    });
   }
 
-  const updates: { id: string; category_id: string }[] = [];
-  const cacheable = new Map<string, string>();
+  const updates: ({ id: string } & AiVerdict)[] = [];
+  const cacheable = new Map<string, AiVerdict>();
   for (const row of rows) {
-    const categoryId = byKey.get(cacheKeyFor(row));
-    if (!categoryId) continue;
-    updates.push({ id: row.id, category_id: categoryId });
-    if (!row.is_private) cacheable.set(cacheKeyFor(row), categoryId);
+    const verdict = byKey.get(cacheKeyFor(row));
+    if (!verdict) continue;
+    updates.push({ id: row.id, ...verdict });
+    if (!row.is_private) cacheable.set(cacheKeyFor(row), verdict);
   }
   // A key only reaches the cache — with an answer or without one — if a shared
   // row carries it.
@@ -142,70 +156,133 @@ export function applyAnswers(
 
   return {
     updates,
-    cacheable: [...cacheable].map(([key, category_id]) => ({ key, category_id })),
+    cacheable: [...cacheable].map(([key, verdict]) => ({ key, ...verdict })),
     unanswered,
   };
 }
 
 /**
- * Group the row updates by the category they land in and chunk each group, so
- * answering a warm cache over hundreds of rows is a handful of statements
- * rather than one round trip per row. Same shape as set-merchant-rule's plan.
+ * Group the row updates by what they write and chunk each group, so answering
+ * a warm cache over hundreds of rows is a handful of statements rather than one
+ * round trip per row. Same shape as set-merchant-rule's plan.
  */
 export function groupUpdates(
-  updates: { id: string; category_id: string }[],
+  updates: ({ id: string } & AiVerdict)[],
   chunk = AI_UPDATE_CHUNK,
-): { category_id: string; ids: string[] }[] {
-  const byCategory = new Map<string, string[]>();
-  for (const u of updates) {
-    const ids = byCategory.get(u.category_id) ?? [];
-    ids.push(u.id);
-    byCategory.set(u.category_id, ids);
+): { verdict: AiVerdict; ids: string[] }[] {
+  const groups = new Map<string, { verdict: AiVerdict; ids: string[] }>();
+  for (const { id, ...verdict } of updates) {
+    const key = JSON.stringify([verdict.category_id, verdict.confidence, verdict.level]);
+    const group = groups.get(key) ?? { verdict, ids: [] };
+    group.ids.push(id);
+    groups.set(key, group);
   }
-  const out: { category_id: string; ids: string[] }[] = [];
-  for (const [category_id, ids] of byCategory) {
-    for (let i = 0; i < ids.length; i += chunk) out.push({ category_id, ids: ids.slice(i, i + chunk) });
+  const out: { verdict: AiVerdict; ids: string[] }[] = [];
+  for (const { verdict, ids } of groups.values()) {
+    for (let i = 0; i < ids.length; i += chunk) out.push({ verdict, ids: ids.slice(i, i + chunk) });
   }
   return out;
 }
 
-const ReplySchema = z.object({
-  answers: z.array(z.object({
-    key: z.string().describe('the exact key given for the transaction'),
-    slug: z.string().describe('the slug of the best category, from the list'),
-  })),
-});
+/**
+ * The speculative fan-out (12d): the group question and one child question per
+ * group, all in one request. Jev evaluates every question in parallel, so the
+ * child questions we will not read cost a few tokens and no time, and they save
+ * a second round trip. Question ids are ours and never reach the model.
+ */
+export function categoryQuestions(categories: AiCategory[]): Record<string, JevQuestion> {
+  const groups = categories.filter((c) => c.parent_slug === null);
+  const childrenOf = (slug: string) => categories.filter((c) => c.parent_slug === slug);
 
-/** Whether a key is configured at all. Without one the pass is skipped silently. */
-export function hasAnthropicKey(): boolean {
-  return Boolean(Deno.env.get('ANTHROPIC_API_KEY'));
+  const groupCriteria: Record<string, string> = {};
+  for (const g of groups) {
+    if (g.slug === FALLBACK_SLUG) continue;
+    const kids = childrenOf(g.slug).map((c) => c.name);
+    groupCriteria[g.slug] = kids.length > 0 ? `${g.name} (${kids.join(', ')})` : g.name;
+  }
+  // TypeSafe's advice: offer a way out when the list may not cover every input.
+  groupCriteria[FALLBACK_SLUG] = 'None of these clearly fits';
+
+  const questions: Record<string, JevQuestion> = {
+    group: {
+      type: 'choice',
+      instructions: 'Which group does this bank transaction belong to?',
+      criteria: groupCriteria,
+    },
+  };
+  for (const g of groups) {
+    const kids = childrenOf(g.slug);
+    // One option is not a choice, and confidence is undefined over one option.
+    if (kids.length < 2) continue;
+    questions[`child__${g.slug}`] = {
+      type: 'choice',
+      instructions: `Within ${g.name}, which category best fits this bank transaction?`,
+      criteria: Object.fromEntries(kids.map((c) => [c.slug, c.name])),
+    };
+  }
+  return questions;
+}
+
+/** What Jev sees about one merchant: the same merchant-level fields 12b sent. */
+export function categoryState(row: AiRow) {
+  return {
+    merchant: row.merchant_name ?? '(unknown)',
+    description: row.name,
+    amount: Math.abs(row.amount).toFixed(2),
+    direction: row.amount > 0 ? 'money in' : 'money out',
+    bank_guess: [row.pfc_detailed, row.pfc_primary].filter(Boolean).join(' / ') || 'none',
+  };
 }
 
 /**
- * The one impure function. A failure throws; the caller swallows it, because a
- * missed category is never worth failing a sync over.
+ * Read the fan-out and return the most specific level Jev is sure enough of.
+ * That is the child when both the group and the child clear JEV_CONFIDENCE
+ * (the child question assumed the group, so a doubtful group makes its child
+ * meaningless), else the group when it clears alone, else a decline (null).
+ * Throws on a reply it cannot read: that is a failed call, not a decline, and
+ * must never be remembered as one.
  */
-export const askClaude: AskFn = async (rows, categories) => {
-  const client = new Anthropic(AI_CLIENT);
-  const list = categories
-    .map((c) => `${c.slug} — ${c.parent_name ? `${c.parent_name} / ` : ''}${c.name}`)
-    .join('\n');
-  const items = rows
-    .map((r) => {
-      const plaid = [r.pfc_detailed, r.pfc_primary].filter(Boolean).join(' / ') || 'none';
-      const direction = r.amount > 0 ? 'money in' : 'money out';
-      return `key: ${cacheKeyFor(r)}\n  merchant: ${r.merchant_name ?? '(unknown)'}\n  description: ${r.name}\n  amount: ${Math.abs(r.amount).toFixed(2)} (${direction})\n  bank's guess: ${plaid}`;
-    })
-    .join('\n\n');
+export function pickCategorization(
+  response: JevResponse,
+  categories: AiCategory[],
+): { slug: string; confidence: number; level: AiLevel } | null {
+  const group = readChoice(response.answers.group);
+  if (!group) throw new Error('jev: unreadable group answer');
+  if (group.choice === FALLBACK_SLUG) return null;
+  if (!categories.some((c) => c.slug === group.choice && c.parent_slug === null)) {
+    throw new Error(`jev: answered a group we did not offer: ${group.choice}`);
+  }
+  if (group.confidence < JEV_CONFIDENCE) return null;
 
-  const response = await client.messages.parse({
-    model: MODEL,
-    max_tokens: 4096,
-    system:
-      'You categorize bank transactions. Reply with one answer per transaction, using the exact key given and a slug from the category list. ' +
-      'Choose the most specific category that clearly fits. If none clearly fits, omit that transaction rather than guessing.',
-    messages: [{ role: 'user', content: `Categories:\n${list}\n\nTransactions:\n\n${items}` }],
-    output_config: { format: zodOutputFormat(ReplySchema) },
-  });
-  return response.parsed_output?.answers ?? [];
-};
+  const child = readChoice(response.answers[`child__${group.choice}`]);
+  const inGroup = child !== null &&
+    categories.some((c) => c.slug === child.choice && c.parent_slug === group.choice);
+  if (child && inGroup && child.confidence >= JEV_CONFIDENCE) {
+    return { slug: child.choice, confidence: child.confidence, level: 'child' };
+  }
+  return { slug: group.choice, confidence: group.confidence, level: 'group' };
+}
+
+/**
+ * The AskFn sync uses: one fan-out request per merchant, at most
+ * JEV_CONCURRENCY at once and JEV_PASS_BUDGET_MS in all. A merchant whose call
+ * fails is left out of the answers, not declined, so the next sync asks again.
+ * It throws only when every call failed, so the pass logs why.
+ */
+export function jevCategorizer(ask: JevAsk = askJev): AskFn {
+  return async (rows, categories) => {
+    if (rows.length === 0) return [];
+    const questions = categoryQuestions(categories);
+    const deadline = Date.now() + JEV_PASS_BUDGET_MS;
+    const settled = await mapLimit(rows, JEV_CONCURRENCY, async (row): Promise<AiAnswer> => {
+      const pick = pickCategorization(await ask(categoryState(row), questions, { deadline }), categories);
+      return pick ? { key: cacheKeyFor(row), ...pick } : { key: cacheKeyFor(row), slug: null };
+    }, deadline);
+
+    const answers = settled.flatMap((s) => (s.status === 'fulfilled' ? [s.value] : []));
+    if (answers.length === 0) {
+      throw (settled.find((s) => s.status === 'rejected') as PromiseRejectedResult).reason;
+    }
+    return answers;
+  };
+}

@@ -1,18 +1,20 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CategoryPicker } from '@/components/category-picker';
 import { CategorySheet, type SheetTarget } from '@/components/category-sheet';
 import { DetailLine as Line } from '@/components/detail-line';
 import { NoteSheet } from '@/components/note-sheet';
+import { AskButton, QuestionBanner } from '@/components/questions';
 import { RenameSheet } from '@/components/rename-sheet';
 import { WhoPaid } from '@/components/who-paid';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useCategoryChoice } from '@/hooks/use-category-choice';
 import { useTheme } from '@/hooks/use-theme';
 import { setBy } from '@/lib/category-source';
@@ -73,7 +75,7 @@ export default function TransactionScreen() {
   const merchantKey = t.merchant_key || null;
   const rule = merchantKey ? rules.get(merchantKey) : undefined;
   const category = t.category_id ? byId.get(t.category_id) : undefined;
-  const failed = (err: Error) => Alert.alert('Could not save', err.message);
+  const failed = (err: Error) => dialog.alert('Could not save', err.message);
 
   const choose = (next: Category) => {
     setPicking(false);
@@ -84,7 +86,8 @@ export default function TransactionScreen() {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Stack.Title>{name}</Stack.Title>
       <ScrollView
-        contentContainerStyle={{ padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
+        contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
+        <QuestionBanner transactionId={t.id} />
         <Card style={{ alignItems: 'center', gap: Spacing.xs }}>
           <Amount value={t.amount} size={32} signColor />
           <AppText tone="dim">
@@ -115,6 +118,7 @@ export default function TransactionScreen() {
           <Line label="Set by" value={setBy(t.category_source)} dim />
           <Line label="Memo" value={t.notes ?? 'Add a memo'} dim={!t.notes} onPress={() => setNoting(true)} />
           <WhoPaid transaction={t} />
+          <AskButton transactionId={t.id} />
           <Line
             label="Review"
             value={t.reviewed_at ? `Reviewed ${shortDate(t.reviewed_at)} · tap to undo` : 'Not reviewed · tap to mark reviewed'}

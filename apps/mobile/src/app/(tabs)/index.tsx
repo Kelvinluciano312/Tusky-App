@@ -1,29 +1,35 @@
 import { router } from 'expo-router';
 import { ChevronRight, HandCoins, Landmark, ListChecks } from 'lucide-react-native';
 import { useMemo } from 'react';
-import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AccountRow } from '@/components/account-row';
 import { Sparkline } from '@/components/charts/sparkline';
+import { PlanBanner } from '@/components/plan-banner';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { transferLabel, useSettleUp } from '@/hooks/use-settle-up';
 import { useTheme } from '@/hooks/use-theme';
 import { UpcomingCard } from '@/components/upcoming-card';
 import { GROUP_LABEL, groupAccounts, netWorth } from '@/lib/accounts';
-import { firstName } from '@/lib/profile';
+import { payerLabel } from '@/lib/herd';
+import { twoColumns } from '@/lib/layout';
 import {
   useAccounts,
   useCategories,
+  useHerd,
+  useMyQuestions,
   useNetWorthHistory,
+  usePlan,
   useProfile,
   useRecurringStreams,
   useReviewCount,
 } from '@/lib/queries';
+import { askedLine } from '@/lib/review';
 import { todayLocal } from '@/lib/recurring';
 import { useSession } from '@/lib/session';
 
@@ -44,7 +50,10 @@ export default function HomeScreen() {
   const settle = useSettleUp();
   const { data: accounts = [], isRefetching, refetch } = useAccounts();
   const { data: profile } = useProfile(session?.user.id);
-  const greetName = profile ? firstName(profile.display_name) : '';
+  // PlanBanner reads the same ['plan'] query; refetched here so a pull shows what the daily check did.
+  const { refetch: refetchPlan } = usePlan(session?.user.id);
+  // The whole name as entered: "Pedro Henrique" greets as both words, not just the first.
+  const greetName = profile?.display_name.trim() ?? '';
 
   const visibleAccounts = accounts.filter((a) => !a.hidden);
   const counted = visibleAccounts.filter((a) => a.in_totals).length;
@@ -65,34 +74,29 @@ export default function HomeScreen() {
   const { data: history = [], refetch: refetchHistory } = useNetWorthHistory(from, to);
   const { data: streams = [], refetch: refetchStreams } = useRecurringStreams();
   const { data: toReview = 0, refetch: refetchReview } = useReviewCount();
+  const { data: asked = [] } = useMyQuestions(session?.user.id);
+  const { data: herd } = useHerd();
+  const herdName = (id: string) => (herd ? payerLabel(id, herd.members) : 'Someone');
   const { data: categories = [] } = useCategories();
   const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const today = todayLocal();
   const trend = history.map((point) => point.net_worth);
   const change = trend.length >= 2 ? trend[trend.length - 1] - trend[0] : 0;
 
-  return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefetching}
-          onRefresh={() => {
-            refetch();
-            refetchHistory();
-            refetchStreams();
-            refetchReview();
-          }}
-          tintColor={colors.textDim}
-        />
-      }>
+  const { width } = useWindowDimensions();
+  const wide = twoColumns(width);
+
+  // Phase 16g: on a wide window the money you track sits beside the account list.
+  const summary = (
+    <>
       <View>
         <AppText tone="dim" variant="caption">
           {greeting()},
         </AppText>
         <AppText variant="display">{greetName}</AppText>
       </View>
+
+      <PlanBanner userId={session?.user.id} />
 
       {/* Net worth hero — the ledger voice, oversized */}
       <Card style={{ gap: Spacing.xs }}>
@@ -132,8 +136,8 @@ export default function HomeScreen() {
               <AppText variant="title">
                 {toReview} to review
               </AppText>
-              <AppText variant="caption" tone="dim">
-                New transactions since your last look
+              <AppText variant="caption" tone={asked.length > 0 ? 'brand' : 'dim'}>
+                {asked.length > 0 ? askedLine(asked, herdName) : 'New transactions since your last look'}
               </AppText>
             </View>
             <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
@@ -162,7 +166,10 @@ export default function HomeScreen() {
       ) : null}
 
       <UpcomingCard streams={streams} categoriesById={categoriesById} today={today} />
-
+    </>
+  );
+  const accountsCard = (
+    <>
       {hasAccounts ? (
         /* By kind of money (Phase 10): each group with its subtotal, which, like
            the headline, leaves out accounts not counted in totals. */
@@ -199,6 +206,37 @@ export default function HomeScreen() {
             style={{ alignSelf: 'stretch', marginTop: Spacing.sm }}
           />
         </Card>
+      )}
+    </>
+  );
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      contentContainerStyle={{ ...(wide ? Layout.wide : Layout.column), padding: Spacing.md, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}
+      refreshControl={
+        <RefreshControl
+          refreshing={isRefetching}
+          onRefresh={() => {
+            refetch();
+            refetchHistory();
+            refetchStreams();
+            refetchReview();
+            refetchPlan();
+          }}
+          tintColor={colors.textDim}
+        />
+      }>
+      {wide ? (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.lg }}>
+          <View style={{ flex: 1, gap: Spacing.lg }}>{summary}</View>
+          <View style={{ flex: 1, gap: Spacing.lg }}>{accountsCard}</View>
+        </View>
+      ) : (
+        <>
+          {summary}
+          {accountsCard}
+        </>
       )}
     </ScrollView>
   );

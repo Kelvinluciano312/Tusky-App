@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Modal, Pressable, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { validateDisplayName } from '@/lib/merchants';
 
@@ -35,10 +35,13 @@ export function RenameSheet({ visible, current, original, renamed, isSaving, onS
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       {/* Padding on Android too: a Modal is its own window, which the activity's
           resize-for-keyboard never reaches, so the keyboard would cover the sheet. */}
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={onClose} />
+      <KeyboardAvoidingView
+        style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}
+        behavior="padding">
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View
           style={{
+            ...Layout.sheet,
             backgroundColor: colors.surface,
             borderTopLeftRadius: Radius.xl,
             borderTopRightRadius: Radius.xl,

@@ -1,6 +1,6 @@
 # Monetization — direction, not a commitment
 
-Status: idea recorded 2026-09-22. Nothing here is built, and no price is fixed.
+Status: idea recorded 2026-09-22. **Decided 2026-09-28 in `docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md`**, which overrides this file where they differ: Free is a 30-day Tusk trial (1 bank, since Phase 16a) and then read-only; a Tusk Herd plan exists; billing goes through the stores via RevenueCat, not Stripe; idle-bank removal is dropped.
 
 Tusky will stay usable for free and charge for the parts that cost us money or clearly save the user
 money. Three tiers:
@@ -57,7 +57,10 @@ From [Plaid's billing docs](https://plaid.com/docs/account/billing/): *"an Item 
 subscription fee as long as a valid `access_token` exists for the Item."* An "Item" is one bank login.
 
 - **Syncing is free.** `/transactions/sync` and webhooks cost nothing per call, so refreshing often
-  costs nothing. The one exception is `/transactions/refresh`, billed per request — we don't use it.
+  costs nothing. Our US Pay As You Go dashboard currently lists **Transactions at $0.30 per Item
+  per month** and **Transactions Refresh at $0.12 per successful call** (not used by Tusky). These
+  are the rates shown on 2026-10-02; confirm them in the Plaid dashboard before launch or if pricing
+  changes.
 - **Only `/item/remove` stops the meter.** A bank that is disconnected, broken, or ignored keeps
   billing us monthly until the Item is deleted at Plaid.
 - **Investments and Liabilities are per-Item monthly too**, so they pay for themselves only in a paid
@@ -84,6 +87,16 @@ transactions costs cents — far less than a single bank connection for a month.
 Model choice is deliberately **not decided**. Haiku 4.5 for bulk work with Sonnet 5 for anything
 user-facing and open-ended is the obvious starting point. Pedro also raised "Jev from Typesafe AI",
 which is unevaluated — pending a link.
+
+### Decisions vs sentences (Phase 12d)
+
+Since Phase 12d, Jev (TypeSafe AI) makes every AI decision: categories, review priority, split hints
+and recurring tiebreaks. It costs $0.042 per million input tokens, and output is free. A
+categorization call is roughly 1.5k input tokens, so $10 covers about 150,000 of them. For costing
+purposes, the decisions are free. That changes what a credit meters: credits are for Claude-written
+text (the future money assistant), not for decisions. Decisions stay a subscriber feature behind
+`aiAllowed()` because they are a reason to subscribe, not because they cost us much. Re-evaluate once
+dev data shows Jev's quality (`scripts/cat-quality.mjs`).
 
 ## How the tiers work
 
@@ -154,6 +167,6 @@ Nothing needs changing now. When the time comes:
 - How many days of inactivity before we remove a free Item, and how we warn.
 - Free-tier history window: 90 days or 30?
 - Does Tusklet include any AI allowance, or is AI a Tusk and credits-only feature?
-- What is Jev from Typesafe AI, and how does it compare to Haiku on cost and quality?
+- Jev vs Haiku: decided in Phase 12d. Jev makes decisions and Haiku writes text (see *Decisions vs sentences*). Quality is measured on dev with `scripts/cat-quality.mjs`.
 - What Plaid actually charges us at production volume — the public page defers to sales, so the
   per-Item price is still unknown. That number decides the free-tier bank limit.

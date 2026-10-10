@@ -1,12 +1,12 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
-import { Spacing, Type } from '@/constants/theme';
+import { Layout, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { backendLabel } from '@/lib/environment';
 import { backend, isSupabaseConfigured, realConfigured, supabase, switchBackend } from '@/lib/supabase';
@@ -33,9 +33,10 @@ export default function SignInScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      behavior="padding">
       <ScrollView
         contentContainerStyle={{
+          ...Layout.column,
           flexGrow: 1,
           justifyContent: 'center',
           padding: Spacing.lg,
@@ -69,7 +70,7 @@ export default function SignInScreen() {
             label="Password"
             value={password}
             onChangeText={setPassword}
-            secureTextEntry
+            password
             autoComplete="current-password"
             placeholder="Your password"
           />

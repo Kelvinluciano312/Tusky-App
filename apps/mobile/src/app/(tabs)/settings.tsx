@@ -1,46 +1,36 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { ChevronRight, Landmark, Sparkles, Store, Tags, UserRound, Users, UsersRound } from 'lucide-react-native';
+import { ChevronRight, CreditCard, Landmark, ShieldCheck, Store, Tags, UserRound, Users } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NameSheet } from '@/components/name-sheet';
+import { PlanBanner } from '@/components/plan-banner';
 import { Chips } from '@/components/ui/chips';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { bankUsage, PLAN_NAMES } from '@/lib/paywall';
 import { useConnectBank } from '@/lib/plaid';
-import {
-  type PlaidItem,
-  useCrowdConsent,
-  useHerd,
-  usePlaidItems,
-  useProfile,
-  useSetAiCategorize,
-  useSetCrowdConsent,
-  useSetDisplayName,
-} from '@/lib/queries';
+import { type PlaidItem, useHerd, usePlaidItems, usePlan, useProfile, useSetDisplayName } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { type Backend, backendLabel } from '@/lib/environment';
-import { backend, realConfigured, supabase, switchBackend } from '@/lib/supabase';
+import { backend, realConfigured, switchBackend } from '@/lib/supabase';
 
 export default function SettingsScreen() {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
   const { session } = useSession();
-  const queryClient = useQueryClient();
   const { data: profile } = useProfile(session?.user.id);
-  const setAiCategorize = useSetAiCategorize();
-  const { data: crowdOn } = useCrowdConsent(session?.user.id);
-  const setCrowd = useSetCrowdConsent();
   const { data: herd } = useHerd();
   const setName = useSetDisplayName();
   const [naming, setNaming] = useState(false);
   const { data: items = [] } = usePlaidItems();
-  const { connectBank, isConnecting, error } = useConnectBank();
+  const { connectBank, isConnecting, error, planLimited } = useConnectBank();
+  const { data: plan } = usePlan(session?.user.id);
 
   const live = items.filter((item) => item.status !== 'archived');
   const archived = items.filter((item) => item.status === 'archived');
@@ -103,7 +93,7 @@ export default function SettingsScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}>
       <AppText variant="display">Settings</AppText>
 
       <Card style={{ gap: Spacing.sm }}>
@@ -149,7 +139,27 @@ export default function SettingsScreen() {
           </View>
           <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
         </Pressable>
+        <Pressable
+          onPress={() => router.push('/plan')}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: Spacing.sm,
+            paddingVertical: Spacing.xs,
+            backgroundColor: pressed ? colors.elevated : 'transparent',
+          })}>
+          <CreditCard size={20} color={colors.brand} strokeWidth={1.75} />
+          <View style={{ flex: 1 }}>
+            <AppText variant="label">{plan ? PLAN_NAMES[plan.plan] : ' '}</AppText>
+            <AppText variant="caption" tone="dim">
+              {plan ? `Your plan · ${bankUsage(plan.banks_used, plan.max_banks)}` : ' '}
+            </AppText>
+          </View>
+          <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
+        </Pressable>
       </Card>
+
+      <PlanBanner userId={session?.user.id} />
 
       <Card style={{ gap: Spacing.sm }}>
         <AppText variant="section" tone="dim">
@@ -179,6 +189,7 @@ export default function SettingsScreen() {
             {error}
           </AppText>
         )}
+        {planLimited ? <Button title="See plans" onPress={() => router.push('/paywall')} /> : null}
 
         <Button
           title={live.length === 0 ? 'Connect a bank' : 'Connect another bank'}
@@ -222,85 +233,28 @@ export default function SettingsScreen() {
           </AppText>
           <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
         </Pressable>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: Spacing.sm,
-            paddingVertical: Spacing.xs,
-          }}>
-          <Sparkles size={20} color={colors.brand} strokeWidth={1.75} />
-          <View style={{ flex: 1 }}>
-            <AppText variant="label">Let AI sort the leftovers</AppText>
-            <AppText variant="caption" tone="dim">
-              Only for transactions nothing else could place. It sees the merchant, the amount,
-              the description your bank sent and your bank&apos;s guess &mdash; never your balances,
-              your accounts or who you are.
-            </AppText>
-          </View>
-          <Switch
-            accessibilityLabel="Let AI sort the leftovers"
-            trackColor={{ false: colors.elevated, true: colors.brand }}
-            value={profile?.ai_categorize ?? false}
-            disabled={!session?.user.id || setAiCategorize.isPending}
-            onValueChange={(enabled) => {
-              if (session?.user.id) {
-                setAiCategorize.mutate(
-                  { userId: session.user.id, enabled },
-                  {
-                    onError: () =>
-                      Alert.alert('Could not change that', 'Check your connection and try again.'),
-                  },
-                );
-              }
-            }}
-          />
-        </View>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: Spacing.sm,
-            paddingVertical: Spacing.xs,
-          }}>
-          <UsersRound size={20} color={colors.brand} strokeWidth={1.75} />
-          <View style={{ flex: 1 }}>
-            <AppText variant="label">Share my fixes, anonymously</AppText>
-            <AppText variant="caption" tone="dim">
-              When you fix a category, the merchant and your choice join a pool that helps
-              every Tusky user. Never your name, your accounts or exact amounts. A category comes
-              from the pool only once three people agree. Turning this off deletes what you
-              shared.
-            </AppText>
-          </View>
-          <Switch
-            accessibilityLabel="Share my fixes, anonymously"
-            trackColor={{ false: colors.elevated, true: colors.brand }}
-            value={crowdOn ?? false}
-            disabled={!session?.user.id || setCrowd.isPending}
-            onValueChange={(granted) =>
-              setCrowd.mutate(granted, {
-                onError: () => Alert.alert('Could not change that', 'Check your connection and try again.'),
-              })
-            }
-          />
-        </View>
       </Card>
 
-      <Card style={{ gap: Spacing.sm }}>
-        <AppText variant="section" tone="dim">
-          Account
-        </AppText>
-        <AppText tone="dim">{session?.user.email}</AppText>
-        <Button
-          title="Sign out"
-          variant="secondary"
-          onPress={async () => {
-            await supabase.auth.signOut();
-            // The next person to sign in on this device must never see this one's cached data.
-            queryClient.clear();
-          }}
-        />
+      {/* Phase 15f: sign-in, privacy, legal and account deletion live one level down. */}
+      <Card>
+        <Pressable
+          onPress={() => router.push('/account')}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: Spacing.sm,
+            paddingVertical: Spacing.xs,
+            backgroundColor: pressed ? colors.elevated : 'transparent',
+          })}>
+          <ShieldCheck size={20} color={colors.brand} strokeWidth={1.75} />
+          <View style={{ flex: 1 }}>
+            <AppText variant="label">Account &amp; privacy</AppText>
+            <AppText variant="caption" tone="dim">
+              {session?.user.email}
+            </AppText>
+          </View>
+          <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
+        </Pressable>
       </Card>
 
       {__DEV__ && realConfigured ? (
@@ -318,7 +272,7 @@ export default function SettingsScreen() {
             ]}
             selected={backend}
             onSelect={(next) =>
-              Alert.alert(
+              dialog.alert(
                 next === 'real' ? 'Switch to real data?' : 'Switch to Sandbox?',
                 next === 'real'
                   ? 'Tusky restarts on the production project, where banks are real. You sign in there separately.'
@@ -348,7 +302,7 @@ export default function SettingsScreen() {
               { userId: profile.user_id, displayName },
               {
                 onSuccess: () => setNaming(false),
-                onError: (err) => Alert.alert('Could not save', err.message),
+                onError: (err) => dialog.alert('Could not save', err.message),
               },
             )
           }

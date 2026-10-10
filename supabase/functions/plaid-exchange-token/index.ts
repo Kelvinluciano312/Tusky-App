@@ -1,6 +1,8 @@
 import { syncAccounts } from '../_shared/accounts.ts';
 import { isDuplicateLink, type LinkedAccount } from '../_shared/connections.ts';
-import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, getPlaidClient, jsonResponse } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, getPlaidClient, jsonResponse, loggable, requireSecondStep } from '../_shared/lib.ts';
+import { plaidErrorFields, recordPlaidEvent } from '../_shared/plaid-log.ts';
+import { canAddBank, loadPlan, overLimit, pastLimit, planLimitBody } from '../_shared/plans.ts';
 
 type ExchangeBody = {
   public_token: string;
@@ -8,6 +10,8 @@ type ExchangeBody = {
   institution_name?: string;
   /** Link's metadata.accounts, name and mask only — for the duplicate check. */
   accounts?: LinkedAccount[];
+  /** Link's metadata.linkSessionId: Plaid support asks for it. */
+  link_session_id?: string;
 };
 
 Deno.serve(async (req) => {
@@ -20,6 +24,8 @@ Deno.serve(async (req) => {
   if (!user) {
     return jsonResponse({ error: 'Unauthorized' }, 401);
   }
+  const blocked = await requireSecondStep(admin, req, user.id);
+  if (blocked) return blocked;
 
   let body: ExchangeBody;
   try {
@@ -32,6 +38,9 @@ Deno.serve(async (req) => {
   }
 
   const plaid = getPlaidClient();
+  // What we know of the Item once Plaid has made it: a failure after the
+  // exchange still leaves a billed Item, so its ids go in the failure row.
+  let exchanged: { plaid_item_id: string; request_id?: string; item_id?: string } | null = null;
 
   try {
     // 0. Refuse a duplicate BEFORE the exchange, as Plaid advises: no access
@@ -41,6 +50,13 @@ Deno.serve(async (req) => {
     //    joint bank would be billed twice. The 409 never says whose it is.
     //    Without an institution_id there is nothing to compare.
     const { herd_id: herdId } = await getCallerHerd(admin, user.id);
+
+    // The plan check that counts (Phase 14): the Item, and Plaid's bill, is
+    // created below. Before the exchange, so a refused bank never gets a token.
+    // A failed read throws into the catch below: 500, never an unchecked bank.
+    const plan = await loadPlan(admin, user.id);
+    if (!canAddBank(plan)) return jsonResponse(planLimitBody(plan), 402);
+
     if (body.institution_id) {
       const { data: existing, error: existingError } = await admin
         .from('accounts')
@@ -60,6 +76,7 @@ Deno.serve(async (req) => {
     const { data: exchange } = await plaid.itemPublicTokenExchange({
       public_token: body.public_token,
     });
+    exchanged = { plaid_item_id: exchange.item_id, request_id: exchange.request_id };
 
     // 2. Record the item
     // Upsert, not insert: a reconnect can legitimately return an item_id we
@@ -80,6 +97,7 @@ Deno.serve(async (req) => {
       .select('id')
       .single();
     if (itemError) throw itemError;
+    exchanged.item_id = item.id;
 
     // 3. Store the access token (service-role-only table)
     // Same reasoning: re-linking an existing Item replaces its token.
@@ -88,13 +106,55 @@ Deno.serve(async (req) => {
       .upsert({ item_id: item.id, access_token: exchange.access_token }, { onConflict: 'item_id' });
     if (tokenError) throw tokenError;
 
+    // 3b. Two links at once can both pass the check above. Count again now the
+    //     Item exists. If the plan is over, only the banks past the limit in link
+    //     order go, so both racing calls agree on the one to remove: at Plaid
+    //     (the only thing that stops the bill), then here.
+    const after = await loadPlan(admin, user.id);
+    let extra = false;
+    if (overLimit(after)) {
+      const scoped = admin.from('plaid_items').select('id, created_at').neq('status', 'archived');
+      const { data: live, error: liveError } = await (after.scope === 'herd'
+        ? scoped.eq('herd_id', herdId)
+        : scoped.eq('user_id', user.id));
+      if (liveError) throw liveError;
+      extra = pastLimit(live ?? [], item.id, after.max_banks);
+    }
+    if (extra) {
+      await plaid.itemRemove({ access_token: exchange.access_token });
+      await admin.from('plaid_items').delete().eq('id', item.id);
+      console.log(`over plan limit after link, removed: user ${user.id}, item ${item.id}`);
+      return jsonResponse(planLimitBody(after), 402);
+    }
+
     // 4. Pull accounts for the new item. Shared with syncItem, which runs the
     //    same refresh on every sync so balances stop being frozen at link time.
     await syncAccounts(admin, plaid, exchange.access_token, user.id, item.id);
 
+    await recordPlaidEvent(admin, {
+      event: 'exchange_ok',
+      user_id: user.id,
+      item_id: item.id,
+      plaid_item_id: exchange.item_id,
+      request_id: exchange.request_id,
+      link_session_id: body.link_session_id,
+      institution_id: body.institution_id,
+    });
+
     return jsonResponse({ item_id: item.id });
   } catch (err) {
-    console.error('exchange-token failed', err);
+    console.error('exchange-token failed', loggable(err));
+    const fields = plaidErrorFields(err);
+    await recordPlaidEvent(admin, {
+      event: 'exchange_failed',
+      user_id: user.id,
+      link_session_id: body.link_session_id,
+      institution_id: body.institution_id,
+      item_id: exchanged?.item_id,
+      plaid_item_id: exchanged?.plaid_item_id,
+      ...fields,
+      request_id: fields.request_id ?? exchanged?.request_id,
+    });
     return jsonResponse({ error: 'Failed to connect bank' }, 500);
   }
 });

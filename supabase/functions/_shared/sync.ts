@@ -4,22 +4,37 @@ import type { PlaidApi } from 'npm:plaid@30';
 import { buildSnapshotRows, syncAccounts } from './accounts.ts';
 import {
   AI_MAX_PER_SYNC,
+  AI_UPDATE_CHUNK,
   type AiAnswer,
+  type AiCategory,
+  type AiLevel,
   type AiRow,
-  aiAllowed,
+  type AiVerdict,
   applyAnswers,
-  askClaude,
   type AskFn,
   buildAskList,
   cacheKeyFor,
   groupUpdates,
-  hasAnthropicKey,
+  jevCategorizer,
 } from './ai.ts';
 import { type CategoryMap, pickCategory, resolveCategory, toSignedAmount } from './categorize.ts';
 import { communityAnswers, communityCategory, crowdMerchants, type Tally } from './crowd.ts';
+import { applyCustom, askCustom, type CatRow, type CustomRow, type CustomVerdict, planCustom } from './custom-ai.ts';
+import { askJev, hasJevKey, JEV_CONCURRENCY, JEV_PASS_BUDGET_MS, type JevAsk, mapLimit } from './jev.ts';
 import { type Label, LEARN, learnedCategory, usableLabels } from './learn.ts';
-import { ignoredCategoryIds, normalizeMerchant, refreshRecurring } from './recurring.ts';
-import { type CarriedPayer, carryForward, type ExistingRow } from './review.ts';
+import { describeError, loggable } from './lib.ts';
+import { mergeReconnected } from './merge.ts';
+import { plaidErrorFields, recordPlaidEvent } from './plaid-log.ts';
+import { aiAllowed, loadPlan } from './plans.ts';
+import {
+  ignoredCategoryIds,
+  jevRecurringDecide,
+  normalizeMerchant,
+  type RecurringDecide,
+  refreshRecurring,
+} from './recurring.ts';
+import { type CarriedPayer, carryForward, type ExistingRow, partitionAutoReview, reviewCutoff } from './review.ts';
+import { groupTriage, readTriage, TRIAGE_PER_SYNC, triageQuestions, type TriageRow, triageState } from './triage.ts';
 
 const PAGE_SIZE = 500;
 const FIRST_SYNC_DAYS = 90;
@@ -49,14 +64,6 @@ export type SyncContext = {
   /** Built-in categories recurring detection ignores (transfers, except card payments); syncItem adds the owner's custom transfers. */
   transferCategoryIds: string[];
 };
-
-/** Plaid SDK errors carry the useful detail on response.data. */
-export function describeError(err: unknown): string {
-  const data = (err as { response?: { data?: { error_code?: string; error_message?: string } } })
-    ?.response?.data;
-  if (data?.error_code) return `${data.error_code}: ${data.error_message ?? ''}`.trim();
-  return (err as Error)?.message ?? 'unknown error';
-}
 
 /** Marker so an already-recorded failure isn't recorded twice by the catch. */
 const HANDLED = '__handled__';
@@ -90,6 +97,30 @@ export async function loadCategoryMaps(
     throw new Error(`uncategorized category missing: ${fallbackError?.message ?? 'no row'}`);
   }
   return { categoryMap, detailedMap, fallbackId: fallback.id };
+}
+
+/** Ids per `.in()` call (reads, deletes, 16b updates): the ids ride in the request URL. */
+const ID_CHUNK = 100;
+
+/**
+ * The rows already stored for these Plaid transaction ids, by id. Throws on a
+ * failed chunk: a silent miss would make every row look new, and the upsert
+ * would then write `category_is_manual: false` over hand-picked categories.
+ */
+export async function loadExistingRows(
+  admin: SupabaseClient,
+  ids: string[],
+): Promise<Map<string, ExistingRow>> {
+  const byId = new Map<string, ExistingRow>();
+  for (let i = 0; i < ids.length; i += ID_CHUNK) {
+    const { data, error } = await admin
+      .from('transactions')
+      .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split, corrected_from, category_source')
+      .in('plaid_transaction_id', ids.slice(i, i + ID_CHUNK));
+    if (error) throw error;
+    for (const r of (data ?? []) as ExistingRow[]) byId.set(r.plaid_transaction_id, r);
+  }
+  return byId;
 }
 
 /** Merchant keys per labels query: keeps the PostgREST URL short. */
@@ -196,7 +227,7 @@ export async function loadSyncContext(admin: SupabaseClient, plaid: PlaidApi): P
 export async function claimItem(
   admin: SupabaseClient,
   itemId: string,
-): Promise<{ id: string; sync_cursor: string | null } | null> {
+): Promise<{ id: string; sync_cursor: string | null; created_at: string } | null> {
   const staleBefore = new Date(Date.now() - STALE_CLAIM_MS).toISOString();
   const { data } = await admin
     .from('plaid_items')
@@ -204,28 +235,45 @@ export async function claimItem(
     .eq('id', itemId)
     .in('status', ['active', 'login_required'])
     .or(`sync_locked_at.is.null,sync_locked_at.lt.${staleBefore}`)
-    .select('id, sync_cursor')
+    .select('id, sync_cursor, created_at')
     .maybeSingle();
   return data;
 }
 
 /**
- * The AI fallback (12b), run after the upsert over the rows every other source
- * was unsure about. Never throws: a missed category is not worth failing a sync
+ * Whether Jev may decide anything for this Item (12d). It needs a key, a plan
+ * that includes AI (14a: the connector's plan), and the connector's own switch:
+ * one switch covers every surface, off by default. Checked once per sync.
+ * Never throws: unsure means no.
+ */
+export async function jevEnabled(
+  admin: SupabaseClient,
+  item: { user_id: string; herd_id: string },
+): Promise<boolean> {
+  try {
+    if (!hasJevKey()) return false;
+    if (!aiAllowed(await loadPlan(admin, item.user_id))) return false;
+    const { data, error } = await admin
+      .from('profiles').select('ai_categorize').eq('user_id', item.user_id).maybeSingle();
+    if (error) return false;
+    return data?.ai_categorize === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The AI fallback (12b; answered by Jev since 12d), run after the upsert over
+ * the rows every other source was unsure about. The caller has already checked
+ * jevEnabled. Never throws: a missed category is not worth failing a sync
  * over, and the next sync retries. `ask` is injected for tests.
  */
 export async function runAiPass(
   admin: SupabaseClient,
   item: { id: string; user_id: string; herd_id: string },
-  ask: AskFn = askClaude,
+  ask: AskFn = jevCategorizer(),
 ): Promise<number> {
   try {
-    if (!hasAnthropicKey() || !aiAllowed(item.herd_id)) return 0;
-
-    const { data: profile } = await admin
-      .from('profiles').select('ai_categorize').eq('user_id', item.user_id).maybeSingle();
-    if (!profile?.ai_categorize) return 0;
-
     // Only this Item's rows, and only the ones nothing else could settle.
     const { data: rowData, error: rowError } = await admin
       .from('transactions')
@@ -249,52 +297,72 @@ export async function runAiPass(
 
     const keys = [...new Set(rows.map(cacheKeyFor))];
     const { data: cacheRows } = await admin
-      .from('ai_category_cache').select('cache_key, category_id').in('cache_key', keys);
-    const cached = new Map(
-      (cacheRows ?? []).map((c) => [c.cache_key as string, c.category_id as string | null]),
+      .from('ai_category_cache').select('cache_key, category_id, confidence, level').in('cache_key', keys);
+    const cached = new Map<string, AiVerdict | null>(
+      (cacheRows ?? []).map((c) => [
+        c.cache_key as string,
+        c.category_id
+          ? {
+            category_id: c.category_id as string,
+            confidence: c.confidence === null || c.confidence === undefined ? null : Number(c.confidence),
+            level: (c.level as AiLevel | null) ?? null,
+          }
+          : null,
+      ]),
     );
 
+    // Every built-in, groups included: since 12d a sure group is an answer too.
     const { data: categoryRows } = await admin
-      .from('categories')
-      .select('id, slug, name, parent_id')
-      .is('herd_id', null)
-      .not('parent_id', 'is', null);
-    const { data: groupRows } = await admin
-      .from('categories').select('id, name').is('herd_id', null).is('parent_id', null);
-    const groupName = new Map((groupRows ?? []).map((g) => [g.id as string, g.name as string]));
-    const categories = (categoryRows ?? [])
-      .filter((c) => c.slug)
-      .map((c) => ({
-        id: c.id as string,
-        slug: c.slug as string,
-        name: c.name as string,
-        parent_name: groupName.get(c.parent_id as string) ?? null,
-      }));
+      .from('categories').select('id, slug, name, parent_id').is('herd_id', null);
+    const slugById = new Map((categoryRows ?? []).map((c) => [c.id as string, c.slug as string | null]));
+    const categories: AiCategory[] = (categoryRows ?? []).flatMap((c): AiCategory[] => {
+      if (!c.slug) return [];
+      const base = { id: c.id as string, slug: c.slug as string, name: c.name as string };
+      if (c.parent_id === null) return [{ ...base, parent_slug: null }];
+      const parent = slugById.get(c.parent_id as string);
+      // A child whose group has no slug cannot be placed in the fan-out.
+      return parent ? [{ ...base, parent_slug: parent }] : [];
+    });
 
     const { ask: toAsk, resolved } = buildAskList(rows, cached);
     const sent = toAsk.slice(0, AI_MAX_PER_SYNC);
     let answers: AiAnswer[] = [];
     if (sent.length > 0) answers = await ask(sent, categories);
-    const { updates, cacheable, unanswered } = applyAnswers(rows, answers, categories, sent.map(cacheKeyFor));
+    // Only the keys Jev actually answered, with a category or an explicit
+    // decline. A key whose call failed is neither written nor remembered, so
+    // the next sync asks again.
+    const sentKeys = new Set(sent.map(cacheKeyFor));
+    const answered = [...new Set(answers.map((a) => a.key))].filter((k) => sentKeys.has(k));
+    const { updates, cacheable, unanswered } = applyAnswers(rows, answers, categories, answered);
 
     // Cache hits update rows too, and cost nothing.
-    for (const [id, category_id] of resolved) updates.push({ id, category_id });
+    for (const [id, verdict] of resolved) updates.push({ id, ...verdict });
 
     // Grouped and chunked: a warm cache can answer hundreds of rows at once, and
     // one statement per row would add seconds to every sync.
     for (const group of groupUpdates(updates)) {
       const { error } = await admin
         .from('transactions')
-        .update({ category_id: group.category_id, category_source: 'ai' })
+        .update({
+          category_id: group.verdict.category_id,
+          category_source: 'ai',
+          ai_confidence: group.verdict.confidence,
+          ai_level: group.verdict.level,
+        })
         .in('id', group.ids)
         // Re-checked at write time: a row set by hand meanwhile stays put.
         .eq('category_is_manual', false);
       if (error) throw error;
     }
     const entries = [
-      ...cacheable.map((c) => ({ cache_key: c.key, category_id: c.category_id as string | null })),
+      ...cacheable.map((c) => ({
+        cache_key: c.key,
+        category_id: c.category_id as string | null,
+        confidence: c.confidence,
+        level: c.level,
+      })),
       // Asked and declined: remembered so no later sync pays to ask again.
-      ...unanswered.map((key) => ({ cache_key: key, category_id: null })),
+      ...unanswered.map((key) => ({ cache_key: key, category_id: null, confidence: null, level: null })),
     ];
     if (entries.length > 0) {
       await admin.from('ai_category_cache').upsert(entries, { onConflict: 'cache_key' });
@@ -302,6 +370,176 @@ export async function runAiPass(
     return updates.length;
   } catch (err) {
     console.warn(`ai pass skipped for item ${item.id}: ${describeError(err)}`);
+    return 0;
+  }
+}
+
+/**
+ * The herd's own categories (15h): after runAiPass, unreviewed rows sitting in
+ * a built-in group that the herd has custom children under get one more
+ * question, between those and keeping what they have. Cached per herd
+ * (ai_custom_cache), never globally. Never throws.
+ */
+export async function runCustomPass(
+  admin: SupabaseClient,
+  item: { id: string; herd_id: string },
+  ask: JevAsk = askJev,
+): Promise<number> {
+  try {
+    const { data: catData, error: catError } = await admin
+      .from('categories')
+      .select('id, name, parent_id, herd_id')
+      .or(`herd_id.is.null,herd_id.eq.${item.herd_id}`);
+    if (catError) throw catError;
+    const categories = (catData ?? []) as CatRow[];
+    if (!categories.some((c) => c.herd_id === item.herd_id && c.parent_id !== null)) return 0;
+
+    const { data: rowData, error: rowError } = await admin
+      .from('transactions')
+      .select('id, merchant_key, name, merchant_name, amount, pfc_primary, pfc_detailed, category_id, accounts!inner(is_private)')
+      .eq('item_id', item.id)
+      .eq('category_is_manual', false)
+      .in('category_source', ['ai', 'plaid', 'fallback'])
+      .is('reviewed_at', null)
+      .not('category_id', 'is', null);
+    if (rowError) throw rowError;
+    const rows: CustomRow[] = (rowData ?? []).map((r) => ({
+      id: r.id,
+      merchant_key: r.merchant_key ?? '',
+      name: r.name,
+      merchant_name: r.merchant_name,
+      amount: Number(r.amount),
+      pfc_primary: r.pfc_primary,
+      pfc_detailed: r.pfc_detailed,
+      is_private: (r.accounts as unknown as { is_private: boolean }).is_private,
+      category_id: r.category_id as string,
+    }));
+    const plans = planCustom(rows, categories, item.herd_id);
+    if (plans.length === 0) return 0;
+
+    const keys = [...new Set(plans.map((p) => p.key))];
+    const cached = new Map<string, CustomVerdict>();
+    for (let i = 0; i < keys.length; i += AI_UPDATE_CHUNK) {
+      const { data } = await admin
+        .from('ai_custom_cache')
+        .select('cache_key, category_id, confidence')
+        .eq('herd_id', item.herd_id)
+        .in('cache_key', keys.slice(i, i + AI_UPDATE_CHUNK));
+      for (const c of data ?? []) {
+        cached.set(c.cache_key as string, {
+          category_id: (c.category_id as string | null) ?? null,
+          confidence: c.confidence === null ? null : Number(c.confidence),
+        });
+      }
+    }
+
+    const fresh = await askCustom(plans.filter((p) => !cached.has(p.key)), ask);
+    const { updates, cacheable } = applyCustom(plans, cached, fresh);
+
+    for (const group of groupUpdates(updates.map((u) => ({ id: u.id, category_id: u.category_id, confidence: u.confidence, level: 'child' as const })))) {
+      const { error } = await admin
+        .from('transactions')
+        .update({
+          category_id: group.verdict.category_id,
+          category_source: 'ai',
+          ai_confidence: group.verdict.confidence,
+          ai_level: 'child',
+        })
+        .in('id', group.ids)
+        // Re-checked at write time: a row set by hand or reviewed meanwhile stays put.
+        .eq('category_is_manual', false)
+        .is('reviewed_at', null);
+      if (error) throw error;
+    }
+    if (cacheable.length > 0) {
+      await admin.from('ai_custom_cache').upsert(
+        cacheable.map((c) => ({ herd_id: item.herd_id, cache_key: c.key, category_id: c.category_id, confidence: c.confidence })),
+        { onConflict: 'herd_id,cache_key' },
+      );
+    }
+    return updates.length;
+  } catch (err) {
+    console.warn(`custom ai pass skipped for item ${item.id}: ${describeError(err)}`);
+    return 0;
+  }
+}
+
+/**
+ * Triage (12d): a review priority for each unreviewed posted row and, in a
+ * shared herd, a split hint. Runs after runAiPass so it sees the final
+ * categories. Only rows no triage has reached, newest first, TRIAGE_PER_SYNC
+ * at a time. A row whose call failed stays unjudged and is retried next sync.
+ * The caller has already checked jevEnabled. Never throws.
+ */
+export async function runTriagePass(
+  admin: SupabaseClient,
+  item: { id: string; user_id: string; herd_id: string },
+  ask: JevAsk = askJev,
+): Promise<number> {
+  try {
+    const { data: rowData, error: rowError } = await admin
+      .from('transactions')
+      .select('id, name, merchant_name, amount, category_id, category_source, split, accounts!inner(is_private)')
+      .eq('item_id', item.id)
+      .eq('pending', false)
+      .is('reviewed_at', null)
+      .is('review_priority', null)
+      .order('date', { ascending: false })
+      .limit(TRIAGE_PER_SYNC);
+    if (rowError) throw rowError;
+    if (!rowData || rowData.length === 0) return 0;
+
+    const { data: memberRows, error: memberError } = await admin
+      .from('herd_members').select('user_id').eq('herd_id', item.herd_id);
+    if (memberError) throw memberError;
+    const herdSize = (memberRows ?? []).length;
+    // isShared's rule (apps/mobile/src/lib/herd.ts): a herd of one has nobody to share with.
+    const shared = herdSize > 1;
+
+    const categoryIds = [...new Set(rowData.map((r) => r.category_id as string | null).filter(Boolean))];
+    let nameOf = new Map<string, string>();
+    if (categoryIds.length > 0) {
+      const { data: categoryRows, error: categoryError } = await admin
+        .from('categories').select('id, name').in('id', categoryIds);
+      if (categoryError) throw categoryError;
+      nameOf = new Map((categoryRows ?? []).map((c) => [c.id as string, c.name as string]));
+    }
+
+    const rows: TriageRow[] = rowData.map((r) => ({
+      id: r.id,
+      name: r.name,
+      merchant_name: r.merchant_name,
+      amount: Number(r.amount),
+      category_name: r.category_id ? nameOf.get(r.category_id) ?? null : null,
+      category_source: r.category_source,
+      is_private: (r.accounts as unknown as { is_private: boolean }).is_private,
+      split: r.split,
+    }));
+
+    const deadline = Date.now() + JEV_PASS_BUDGET_MS;
+    const settled = await mapLimit(rows, JEV_CONCURRENCY, async (row) =>
+      readTriage(row, await ask(triageState(row, herdSize), triageQuestions(row, shared), { deadline }), shared), deadline);
+    const results = settled.flatMap((s) => (s.status === 'fulfilled' && s.value ? [s.value] : []));
+    if (results.length === 0) {
+      const failed = settled.find((s) => s.status === 'rejected') as PromiseRejectedResult | undefined;
+      if (failed) throw failed.reason;
+      return 0;
+    }
+
+    let written = 0;
+    for (const group of groupTriage(results)) {
+      const { error } = await admin
+        .from('transactions')
+        .update({ review_priority: group.review_priority, split_suggested: group.split_suggested })
+        .in('id', group.ids)
+        // Re-checked at write time: a row reviewed meanwhile needs no priority.
+        .is('reviewed_at', null);
+      if (error) throw error;
+      written += group.ids.length;
+    }
+    return written;
+  } catch (err) {
+    console.warn(`triage pass skipped for item ${item.id}: ${describeError(err)}`);
     return 0;
   }
 }
@@ -348,8 +586,11 @@ export async function syncItem(
       console.warn(`account refresh failed for item ${item.id}: ${describeError(err)}`);
     }
 
-    const { data: accountRows } = await admin
+    // A failed read must stop the sync: an empty map would filter out every row
+    // while the cursor still advanced, and those transactions would be lost.
+    const { data: accountRows, error: accountError } = await admin
       .from('accounts').select('id, plaid_account_id, is_private').eq('item_id', item.id);
+    if (accountError) throw accountError;
     const accountByPlaidId = new Map<string, string>(
       (accountRows ?? []).map((a) => [a.plaid_account_id, a.id]),
     );
@@ -400,6 +641,7 @@ export async function syncItem(
         }
         if (code === 'ITEM_LOGIN_REQUIRED') {
           await admin.from('plaid_items').update({ status: 'login_required' }).eq('id', item.id);
+          await recordPlaidEvent(admin, { event: 'login_required', user_id: item.user_id, item_id: item.id, ...plaidErrorFields(err) });
           result = { ...base, status: 'login_required' };
           throw new Error(HANDLED);
         }
@@ -435,13 +677,9 @@ export async function syncItem(
       const ids = [...new Set(upserts.flatMap((t) =>
         t.pending_transaction_id ? [t.transaction_id, t.pending_transaction_id] : [t.transaction_id]
       ))];
-      const { data: existingRows } = await admin
-        .from('transactions')
-        .select('plaid_transaction_id, category_id, category_is_manual, notes, paid_by, paid_by_is_manual, split, corrected_from, category_source')
-        .in('plaid_transaction_id', ids);
       const { existingFor, notes: carriedNotes, payers: carriedPayers } = carryForward(
         upserts,
-        new Map(((existingRows ?? []) as ExistingRow[]).map((r) => [r.plaid_transaction_id, r])),
+        await loadExistingRows(admin, ids),
       );
 
       const rows = upserts
@@ -501,9 +739,25 @@ export async function syncItem(
           };
         });
 
-      if (rows.length > 0) {
+      // Only the last two weeks go to review (16b): rows this sync inserts that
+      // are older than the Item's link date minus 14 days are inserted already
+      // reviewed, so a failure can never leave them in the queue (a retry finds
+      // them existing). Two upserts keep the union-of-keys rule: only the first
+      // carries the review columns. Only rows nobody has touched qualify: no row
+      // of their own, no pending predecessor. Dated, not "first sync": Plaid
+      // delivers history in stages.
+      const { auto, rest } = partitionAutoReview(rows, existingFor, reviewCutoff(claimed.created_at));
+      if (auto.length > 0) {
+        const reviewedAt = new Date().toISOString();
+        const { error } = await admin.from('transactions').upsert(
+          auto.map((r) => ({ ...r, reviewed_at: reviewedAt, auto_reviewed: true })),
+          { onConflict: 'plaid_transaction_id' },
+        );
+        if (error) throw error;
+      }
+      if (rest.length > 0) {
         const { error } = await admin
-          .from('transactions').upsert(rows, { onConflict: 'plaid_transaction_id' });
+          .from('transactions').upsert(rest, { onConflict: 'plaid_transaction_id' });
         if (error) throw error;
       }
       // One small update per carried memo, and never over a memo already there.
@@ -537,10 +791,13 @@ export async function syncItem(
     }
 
     if (removed.length > 0) {
-      const { error } = await admin
-        .from('transactions').delete()
-        .in('plaid_transaction_id', removed.map((r) => r.transaction_id));
-      if (error) throw error;
+      const removedIds = removed.map((r) => r.transaction_id);
+      for (let i = 0; i < removedIds.length; i += ID_CHUNK) {
+        const { error } = await admin
+          .from('transactions').delete()
+          .in('plaid_transaction_id', removedIds.slice(i, i + ID_CHUNK));
+        if (error) throw error;
+      }
     }
 
     // Cursor last: a crash before here means the next run re-applies the same
@@ -556,12 +813,31 @@ export async function syncItem(
 
     result = { ...base, added: added.length, modified: modified.length, removed: removed.length };
 
-    // 12b, over what nothing else could settle. After the cursor and after
-    // `result` is latched, for the same two reasons the snapshot below is: it
-    // calls a third party, and a slow or dead model must not cost a full
-    // re-pagination next sync or turn a good sync into an error. Never throws.
-    const aiSet = await runAiPass(admin, item);
-    if (aiSet > 0) console.log(`item ${item.id}: AI categorized ${aiSet}`);
+    // 14b: a reconnected bank takes over its kept history. After the cursor and
+    // `result`, like the snapshot: a failed merge must not fail a good sync, and
+    // it runs again next sync, since Plaid delivers history in stages.
+    try {
+      const replaced = await mergeReconnected(admin, item);
+      if (replaced > 0) console.log(`item ${item.id}: merged ${replaced} kept rows into the reconnected bank`);
+    } catch (err) {
+      console.warn(`reconnect merge failed for item ${item.id}: ${describeError(err)}`);
+    }
+
+    // 12b/12d: Jev's decisions. After the cursor and after `result` is latched,
+    // for the same two reasons the snapshot below is: it calls a third party,
+    // and a slow or dead vendor must not cost a full re-pagination next sync or
+    // turn a good sync into an error. The gate is read once. Never throws.
+    const jevOn = await jevEnabled(admin, item);
+    if (jevOn) {
+      const aiSet = await runAiPass(admin, item);
+      if (aiSet > 0) console.log(`item ${item.id}: AI categorized ${aiSet}`);
+      // Then the herd's own categories (15h), over what the global pass settled.
+      const customSet = await runCustomPass(admin, item);
+      if (customSet > 0) console.log(`item ${item.id}: AI placed ${customSet} in custom categories`);
+      // After the categories settle, so triage judges the final ones.
+      const triaged = await runTriagePass(admin, item);
+      if (triaged > 0) console.log(`item ${item.id}: triaged ${triaged}`);
+    }
 
     // Last, and after `result` is latched: a failed chart row must not turn a
     // good sync into `status: 'error'`, nor cost a full re-pagination by landing
@@ -609,14 +885,28 @@ export async function syncItem(
         .eq('herd_id', item.herd_id)
         .eq('kind', 'transfer');
       if (ownError) throw ownError;
-      await refreshRecurring(admin, item, [...transferCategoryIds, ...ignoredCategoryIds(ownTransfers ?? [])]);
+      // 12d: Jev breaks ties on near misses only when this sync's gate is open.
+      let decide: RecurringDecide | undefined;
+      if (jevOn) {
+        const { data: names, error: namesError } = await admin
+          .from('categories').select('id, name').or(`herd_id.is.null,herd_id.eq.${item.herd_id}`);
+        if (namesError) throw namesError;
+        decide = jevRecurringDecide(askJev, new Map((names ?? []).map((c) => [c.id as string, c.name as string])));
+      }
+      await refreshRecurring(
+        admin,
+        item,
+        [...transferCategoryIds, ...ignoredCategoryIds(ownTransfers ?? [])],
+        decide,
+      );
     } catch (err) {
       console.warn(`recurring refresh failed for item ${item.id}: ${describeError(err)}`);
     }
   } catch (err) {
     if ((err as Error).message !== HANDLED) {
       const message = describeError(err);
-      console.error(`sync failed for item ${item.id}: ${message}`, err);
+      console.error(`sync failed for item ${item.id}: ${message}`, loggable(err));
+      await recordPlaidEvent(admin, { event: 'sync_failed', user_id: item.user_id, item_id: item.id, ...plaidErrorFields(err) });
       result = { ...base, status: 'error', message };
     }
   } finally {

@@ -1,8 +1,11 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import type { FirstRunState } from '@/lib/first-run';
 import { readFunctionError } from '@/lib/functions';
 import type { MerchantRule, MerchantRules } from '@/lib/merchants';
+import { herdPayer, type PlanDetail, type PlanLimits } from '@/lib/paywall';
 import type { PresetLine } from '@/lib/presets';
+import { orderQueue } from '@/lib/review';
 import type { SharedLine } from '@/lib/settle';
 import { supabase } from '@/lib/supabase';
 
@@ -231,7 +234,7 @@ export type Transaction = {
   /** The user's memo (Phase 8); null when none. */
   notes: string | null;
   /**
-   * Whose expense it was (9d; since 11b the account's owner is who paid). Null =
+   * Who spent it (9d; since 15d a tag only, never a debt). Null =
    * Joint, shared equally. Follows the account's owner until set by hand.
    */
   paid_by: string | null;
@@ -240,13 +243,17 @@ export type Transaction = {
   split: Record<string, number> | null;
   /** When it left the review queue (Phase 8); null = waiting. Pending rows are never queued. */
   reviewed_at: string | null;
+  /** Jev's review triage (12d): 0 routine, 1 worth a glance, 2 likely needs a fix. Null = not judged. */
+  review_priority: number | null;
+  /** Jev thinks this looks shared (12d, shared herds only). A hint: never a split. */
+  split_suggested: boolean | null;
 };
 
 const PAGE_SIZE = 50;
 type PageCursor = { date: string; id: string } | null;
 
 const TRANSACTION_COLUMNS =
-  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, category_source, notes, paid_by, paid_by_is_manual, split, reviewed_at';
+  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, category_source, notes, paid_by, paid_by_is_manual, split, reviewed_at, review_priority, split_suggested';
 
 /**
  * Keyset pagination on (date, id), NOT offset. Sync inserts rows while the user
@@ -783,10 +790,10 @@ export function useReviewCount() {
 const REVIEW_BATCH = 200;
 
 /**
- * The queue's ids, oldest first, snapshotted once per visit. Deliberately NOT
- * under ['transactions']: marking a card reviewed invalidates that key, and a
- * live queue would drop the card being swiped. Cards read their row through
- * useTransaction, which does stay live.
+ * The queue's ids, most likely fixes first (12d), else oldest first, snapshotted
+ * once per visit. Deliberately NOT under ['transactions']: marking a card
+ * reviewed invalidates that key, and a live queue would drop the card being
+ * swiped. Cards read their row through useTransaction, which does stay live.
  */
 export function useReviewQueue() {
   return useQuery({
@@ -796,7 +803,7 @@ export function useReviewQueue() {
     queryFn: async (): Promise<string[]> => {
       const { data, error } = await supabase
         .from('transactions')
-        .select('id, accounts!inner(hidden)')
+        .select('id, review_priority, accounts!inner(hidden)')
         .is('reviewed_at', null)
         .eq('pending', false)
         .eq('accounts.hidden', false)
@@ -804,8 +811,103 @@ export function useReviewQueue() {
         .order('id', { ascending: true })
         .limit(REVIEW_BATCH);
       if (error) throw error;
-      return data.map((r) => r.id);
+      // Rows a herd mate asked me about come first (15d), even outside the batch.
+      const { data: auth } = await supabase.auth.getSession();
+      const me = auth.session?.user.id;
+      const asked = me
+        ? await supabase
+            .from('transaction_questions')
+            .select('transaction_id')
+            .eq('asked_to', me)
+            .is('resolved_at', null)
+            .order('created_at', { ascending: true })
+        : { data: [], error: null };
+      if (asked.error) throw asked.error;
+      return orderQueue(
+        data,
+        (asked.data ?? []).map((q) => q.transaction_id as string),
+      );
     },
+  });
+}
+
+// Questions (Phase 15d): one herd mate asks another what a transaction was.
+// Under ['transactions'], so every edit that might answer one refreshes them
+// (the database resolves a question when its addressee tags, splits, writes
+// the memo or reviews the row).
+
+export type Question = {
+  id: string;
+  transaction_id: string;
+  asked_by: string;
+  asked_to: string;
+  body: string | null;
+  created_at: string;
+};
+
+/** Open questions on one transaction. */
+export function useTransactionQuestions(transactionId: string | undefined) {
+  return useQuery({
+    queryKey: ['transactions', 'questions', 'on', transactionId],
+    enabled: !!transactionId,
+    queryFn: async (): Promise<Question[]> => {
+      const { data, error } = await supabase
+        .from('transaction_questions')
+        .select('id, transaction_id, asked_by, asked_to, body, created_at')
+        .eq('transaction_id', transactionId!)
+        .is('resolved_at', null)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data as Question[];
+    },
+  });
+}
+
+/** Open questions waiting on me, oldest first. */
+export function useMyQuestions(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['transactions', 'questions', 'mine', userId],
+    enabled: !!userId,
+    queryFn: async (): Promise<Question[]> => {
+      const { data, error } = await supabase
+        .from('transaction_questions')
+        .select('id, transaction_id, asked_by, asked_to, body, created_at')
+        .eq('asked_to', userId!)
+        .is('resolved_at', null)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data as Question[];
+    },
+  });
+}
+
+export function useAskQuestion() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ transactionId, askedTo, body }: { transactionId: string; askedTo: string; body: string | null }) => {
+      const { error } = await supabase
+        .from('transaction_questions')
+        .insert({ transaction_id: transactionId, asked_to: askedTo, body });
+      if (error) throw error;
+    },
+    // Asking requeues the row server-side, so the feed's check mark and the count move too.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+  });
+}
+
+/** Close a question without answering it, or take back one I asked. */
+export function useDismissQuestion() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, asker }: { id: string; asker: boolean }) => {
+      const { error } = asker
+        ? await supabase.from('transaction_questions').delete().eq('id', id)
+        : await supabase.from('transaction_questions').update({ resolved_at: new Date().toISOString() }).eq('id', id);
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['transactions', 'questions'] }),
   });
 }
 
@@ -820,8 +922,12 @@ export function useMarkReviewed() {
         .eq('id', transactionId);
       if (error) throw error;
     },
-    // Only the count shows review state; refetching the feed per swipe is waste.
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['transactions', 'review-count'] }),
+    // Only the count (and a question it may have answered, 15d) shows review
+    // state; refetching the feed per swipe is waste.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'review-count'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'questions'] });
+    },
   });
 }
 
@@ -868,7 +974,7 @@ export function useSetTransactionNotes() {
 }
 
 
-export type Profile = { user_id: string; display_name: string; ai_categorize: boolean };
+export type Profile = { user_id: string; display_name: string; ai_categorize: boolean; two_factor: boolean };
 
 /** The signed-in user's profile (Phase 9a). Created at signup by a trigger, so it always exists. */
 export function useProfile(userId: string | undefined) {
@@ -878,11 +984,61 @@ export function useProfile(userId: string | undefined) {
     queryFn: async (): Promise<Profile> => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('user_id, display_name, ai_categorize')
+        .select('user_id, display_name, ai_categorize, two_factor')
         .eq('user_id', userId!)
         .single();
       if (error) throw error;
       return data;
+    },
+  });
+}
+
+/** The signed-in user's plan (Phase 14): my_plan() plus their own row (window, status, store, plan, expiry). */
+export function usePlan(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['plan'],
+    enabled: !!userId,
+    queryFn: async (): Promise<PlanDetail> => {
+      const [plan, sub] = await Promise.all([
+        supabase.rpc('my_plan').single(),
+        supabase.from('subscriptions').select('over_limit_since, status, store, plan, expires_at').eq('user_id', userId!).maybeSingle(),
+      ]);
+      if (plan.error) throw plan.error;
+      if (sub.error) throw sub.error;
+      return {
+        ...(plan.data as Omit<PlanDetail, 'over_limit_since' | 'status' | 'store' | 'own_plan' | 'own_expires_at'>),
+        over_limit_since: sub.data?.over_limit_since ?? null,
+        status: sub.data?.status ?? null,
+        store: sub.data?.store ?? null,
+        own_plan: sub.data?.plan ?? null,
+        own_expires_at: sub.data?.expires_at ?? null,
+      };
+    },
+  });
+}
+
+/** Every plan's limits (Phase 14c): the paywall's lines come from here, not from the app. */
+export function usePlanLimits() {
+  return useQuery({
+    queryKey: ['plans'],
+    queryFn: async (): Promise<PlanLimits[]> => {
+      const { data, error } = await supabase.from('plans').select('id, max_banks, history_days, scope').order('rank');
+      if (error) throw error;
+      return data as PlanLimits[];
+    },
+  });
+}
+
+/** Who pays for the herd's Tusk Herd. RLS shows me only herd mates' Tusk Herd rows. */
+export function useHerdPayer(userId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['plan', 'payer'],
+    enabled: !!userId && enabled,
+    queryFn: async (): Promise<string | null> => {
+      const { data, error } = await supabase
+        .from('subscriptions').select('user_id, status, expires_at').eq('plan', 'tusk_herd');
+      if (error) throw error;
+      return herdPayer(data ?? [], userId!, new Date());
     },
   });
 }
@@ -917,6 +1073,26 @@ export function useSetAiCategorize() {
 }
 
 /**
+ * Two-step sign-in (16e): switch it on or off. `set_two_factor` refuses unless
+ * the session already proved a fresh emailed code, so the caller verifies the
+ * code first (`confirmLoginCode`). Both the profile and the gate read the flag.
+ */
+export function useSetTwoFactor() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (on: boolean) => {
+      const { error } = await supabase.rpc('set_two_factor', { p_on: on });
+      if (error) throw error;
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['profile'] });
+      void queryClient.invalidateQueries({ queryKey: ['first-run'] });
+    },
+  });
+}
+
+/**
  * Crowd labels (12c): whether this user shares their category choices, with
  * no name attached, to the pool every Tusky user benefits from. Written only
  * through `set_consent`, which deletes what they shared when they withdraw.
@@ -936,6 +1112,72 @@ export function useCrowdConsent(userId: string | undefined) {
       if (error) throw error;
       return !!data;
     },
+  });
+}
+
+/**
+ * The first-run gate (Phase 15c): which terms version this user accepted, and
+ * whether they finished the first-run steps.
+ */
+export function useFirstRun(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['first-run', userId],
+    enabled: !!userId,
+    queryFn: async (): Promise<FirstRunState> => {
+      const [profile, terms] = await Promise.all([
+        supabase.from('profiles').select('onboarded_at, two_factor').eq('user_id', userId!).single(),
+        supabase
+          .from('consents')
+          .select('version')
+          .eq('user_id', userId!)
+          .eq('kind', 'terms')
+          .is('withdrawn_at', null)
+          .maybeSingle(),
+      ]);
+      if (profile.error) throw profile.error;
+      if (terms.error) throw terms.error;
+      const twoFactor = profile.data.two_factor === true;
+      // Has the server verified this session? Asked only when two-step is on.
+      let secondStepDone: boolean | null = null;
+      if (twoFactor) {
+        const { data, error } = await supabase.rpc('my_second_step_done');
+        if (error) throw error;
+        secondStepDone = data === true;
+      }
+      return {
+        termsVersion: terms.data?.version ?? null,
+        onboarded: profile.data.onboarded_at !== null,
+        twoFactor,
+        secondStepDone,
+      };
+    },
+  });
+}
+
+export function useAcceptTerms() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (version: string) => {
+      const { error } = await supabase.rpc('accept_terms', { p_version: version });
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['first-run'] }),
+  });
+}
+
+export function useFinishOnboarding() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ onboarded_at: new Date().toISOString() })
+        .eq('user_id', userId);
+      if (error) throw error;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['first-run'] }),
   });
 }
 
@@ -1290,6 +1532,27 @@ export function useSetAccountPrivate() {
     },
     onSettled: () => {
       for (const queryKey of HIDDEN_DEPENDENT_KEYS) queryClient.invalidateQueries({ queryKey });
+    },
+  });
+}
+
+/**
+ * Delete my account (Phase 14d). The server removes every bank at Plaid first;
+ * if one fails, nothing is deleted and trying again finishes the job.
+ */
+export function useDeleteAccount() {
+  return useMutation({
+    // The server checks the password before it touches anything (Phase 16d).
+    mutationFn: async (password: string) => {
+      const { error } = await supabase.functions.invoke('delete-account', { body: { password } });
+      if (!error) return;
+      const { message } = await readFunctionError(error);
+      if (message === 'wrong_password') throw new Error('That password is not right. Nothing was deleted.');
+      if (message === 'plaid_failed') {
+        throw new Error('A bank could not be disconnected at Plaid, so nothing was deleted. Try again in a few minutes.');
+      }
+      if (message === 'busy') throw new Error('A bank is syncing right now. Try again in a minute.');
+      throw new Error('Your account could not be deleted. Try again in a moment.');
     },
   });
 }

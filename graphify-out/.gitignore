@@ -1,0 +1,5 @@
+# machine-local: interpreter path, scan root, extraction cache, run log
+.graphify_python
+.graphify_root
+cache/
+cost.json

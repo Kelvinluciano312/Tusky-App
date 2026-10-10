@@ -1,4 +1,4 @@
-import { Alert } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 
 import { useCrowdPrompt } from '@/hooks/use-crowd-prompt';
 import { type Category, type Transaction, useSetMerchantRule, useSetTransactionCategory } from '@/lib/queries';
@@ -24,7 +24,7 @@ export function useCategoryChoice() {
       once();
       return;
     }
-    Alert.alert(
+    dialog.alert(
       `Always categorize ${name} as ${next.name}?`,
       "Applies to past and future ones you haven't set by hand.",
       [
@@ -34,7 +34,7 @@ export function useCategoryChoice() {
           onPress: () => {
             setRule.mutate(
               { merchantKey, categoryId: next.id },
-              { onError: (err) => Alert.alert('Could not save', err.message) },
+              { onError: (err) => dialog.alert('Could not save', err.message) },
             );
             // The rule skips rows set by hand, and this one may be one.
             if (t.category_is_manual) once();

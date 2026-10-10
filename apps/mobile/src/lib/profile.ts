@@ -9,8 +9,3 @@ export function validatePersonName(raw: string): string | null {
   const name = raw.trim();
   return name.length >= 1 && name.length <= NAME_MAX ? name : null;
 }
-
-/** What Home greets you by: the first word of your name. */
-export function firstName(displayName: string): string {
-  return displayName.trim().split(/\s+/)[0] || displayName;
-}

@@ -1,7 +1,8 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { Users } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, ScrollView, Switch, View } from 'react-native';
+import { ScrollView, Switch, View } from 'react-native';
+import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AccountRow } from '@/components/account-row';
@@ -9,7 +10,7 @@ import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { normalizeCode } from '@/lib/herd';
 import { useAccounts, useInvitePreview, useJoinHerd } from '@/lib/queries';
@@ -60,20 +61,20 @@ export default function JoinInviteScreen() {
           router.replace('/herd');
           const n = hidden_account_ids.length;
           if (n > 0) {
-            Alert.alert(
+            dialog.alert(
               'Some accounts were already here',
               `${n} of your accounts ${n === 1 ? 'is' : 'are'} already in ${preview.herd_name} through someone else's connection, so yours ${n === 1 ? 'is' : 'are'} hidden to avoid counting ${n === 1 ? 'it' : 'them'} twice. You can disconnect your copy of that bank in Settings.`,
             );
           }
         },
-        onError: (err) => Alert.alert('Could not join', err.message),
+        onError: (err) => dialog.alert('Could not join', err.message),
       },
     );
 
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
+      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.lg }}>
       <View style={{ gap: Spacing.xs }}>
         <AppText variant="display">{preview.herd_name}</AppText>
         <AppText tone="dim">

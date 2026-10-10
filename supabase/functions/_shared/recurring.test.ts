@@ -1,6 +1,19 @@
 import { assertEquals } from 'jsr:@std/assert';
 
-import { type DetectInput, detectStreams, ignoredCategoryIds, normalizeMerchant, staleStreamIds } from './recurring.ts';
+import type { JevAsk } from './jev.ts';
+import {
+  type DetectInput,
+  detectCandidates,
+  detectStreams,
+  ignoredCategoryIds,
+  jevRecurringDecide,
+  normalizeMerchant,
+  RECURRING_ASK_MAX,
+  recurringState,
+  settleNearMisses,
+  staleStreamIds,
+  streamKey,
+} from './recurring.ts';
 
 const TRANSFER = 'cat-transfer';
 
@@ -196,4 +209,114 @@ Deno.test('ignoredCategoryIds is every transfer except card payments', () => {
 Deno.test('ignoredCategoryIds includes a custom transfer category', () => {
   // Custom rows have no slug; sync now passes the owner's transfer children in.
   assertEquals(ignoredCategoryIds([{ id: 'u-venmo', kind: 'transfer', slug: null }]), ['u-venmo']);
+});
+
+// --- 12d: near misses and Jev's tiebreak ---------------------------------------
+
+const pay = (date: string, amount: number, account_id = 'acc-1'): DetectInput => ({
+  account_id,
+  date,
+  amount,
+  name: 'CITY POWER',
+  merchant_name: 'City Power',
+  category_id: 'c-utilities',
+});
+const DATES = ['2026-06-01', '2026-07-01', '2026-08-01', '2026-09-01'];
+// Median 55; 80 strays 25, past monthly's 35% (19.25) but within twice it (38.5).
+const VARIABLE = [-50, -80, -45, -60].map((a, i) => pay(DATES[i], a));
+// 200 strays 145: past twice the tolerance too.
+const WILD = [-50, -200, -45, -60].map((a, i) => pay(DATES[i], a));
+const STEADY = DATES.map((d) => pay(d, -15.99));
+const OPTS = { transferCategoryIds: [] };
+
+Deno.test('a regular bill whose amount swings past the tolerance is a near miss, not a stream', () => {
+  const { streams, nearMisses } = detectCandidates(VARIABLE, OPTS);
+  assertEquals(streams, []);
+  assertEquals(nearMisses.length, 1);
+  assertEquals(nearMisses[0].merchant_key, 'city power');
+  // What was stored before 12d is unchanged.
+  assertEquals(detectStreams(VARIABLE, OPTS), []);
+});
+
+Deno.test('a swing past twice the tolerance is neither', () => {
+  assertEquals(detectCandidates(WILD, OPTS), { streams: [], nearMisses: [] });
+});
+
+Deno.test('a steady subscription is sure, never a near miss', () => {
+  const { streams, nearMisses } = detectCandidates(STEADY, OPTS);
+  assertEquals(streams.length, 1);
+  assertEquals(nearMisses, []);
+  assertEquals(detectStreams(STEADY, OPTS), streams);
+});
+
+Deno.test('without Jev, near misses are dropped exactly as before 12d', async () => {
+  const { streams, nearMisses } = detectCandidates([...STEADY.map((p) => ({ ...p, account_id: 'acc-2' })), ...VARIABLE], OPTS);
+  assertEquals(await settleNearMisses(streams, nearMisses), { streams, keep: [] });
+});
+
+Deno.test('a near miss Jev calls recurring joins the streams', async () => {
+  const { nearMisses } = detectCandidates(VARIABLE, OPTS);
+  const out = await settleNearMisses([], nearMisses, (c) => Promise.resolve(new Map([[streamKey(c[0]), true]])));
+  assertEquals(out, { streams: nearMisses, keep: [] });
+});
+
+Deno.test('a near miss Jev rejects is left out, and may be deleted', async () => {
+  const { nearMisses } = detectCandidates(VARIABLE, OPTS);
+  const out = await settleNearMisses([], nearMisses, (c) => Promise.resolve(new Map([[streamKey(c[0]), false]])));
+  assertEquals(out, { streams: [], keep: [] });
+});
+
+Deno.test('a near miss Jev could not judge is kept, never deleted', async () => {
+  const { nearMisses } = detectCandidates(VARIABLE, OPTS);
+  // Tipped in on Monday, the call fails on Tuesday: the stream must survive Tuesday.
+  assertEquals(await settleNearMisses([], nearMisses, () => Promise.reject(new Error('jev: HTTP 503'))), {
+    streams: [],
+    keep: nearMisses,
+  });
+  assertEquals(await settleNearMisses([], nearMisses, () => Promise.resolve(new Map())), {
+    streams: [],
+    keep: nearMisses,
+  });
+});
+
+Deno.test('near misses past the cap are not asked about, and are kept', async () => {
+  const many = Array.from({ length: RECURRING_ASK_MAX + 1 }, (_, i) =>
+    VARIABLE.map((p) => ({ ...p, account_id: `acc-${String(i).padStart(2, '0')}` }))).flat();
+  const { nearMisses } = detectCandidates(many, OPTS);
+  let asked = 0;
+  const out = await settleNearMisses([], nearMisses, (c) => {
+    asked = c.length;
+    return Promise.resolve(new Map(c.map((s) => [streamKey(s), true])));
+  });
+  assertEquals(asked, RECURRING_ASK_MAX);
+  assertEquals(out.streams.length, RECURRING_ASK_MAX);
+  assertEquals(out.keep.length, 1);
+});
+
+Deno.test('jevRecurringDecide: a yes at 0.5 or more tips it in, and a failed call has no verdict', async () => {
+  const { nearMisses } = detectCandidates(
+    [...VARIABLE, ...VARIABLE.map((p) => ({ ...p, account_id: 'acc-2' })), ...VARIABLE.map((p) => ({ ...p, account_id: 'acc-3' }))],
+    OPTS,
+  );
+  const byAccount: Record<string, number | 'fail'> = { 'acc-1': 0.5, 'acc-2': 0.2, 'acc-3': 'fail' };
+  let i = 0;
+  const ask: JevAsk = () => {
+    const answer = byAccount[nearMisses[i++].account_id];
+    return answer === 'fail'
+      ? Promise.reject(new Error('jev: HTTP 503'))
+      : Promise.resolve({ model: 'jev-1.13.0', answers: { is_recurring: { type: 'noul', noul: answer } } });
+  };
+  const verdicts = await jevRecurringDecide(ask, new Map())(nearMisses);
+  assertEquals(verdicts.get(streamKey(nearMisses[0])), true);
+  assertEquals(verdicts.get(streamKey(nearMisses[1])), false);
+  assertEquals(verdicts.has(streamKey(nearMisses[2])), false);
+});
+
+Deno.test('recurringState names the category and never an account', () => {
+  const { nearMisses } = detectCandidates(VARIABLE, OPTS);
+  const state = recurringState(nearMisses[0], 'Utilities');
+  assertEquals(state.category, 'Utilities');
+  assertEquals(state.cadence, 'monthly');
+  assertEquals(state.occurrences, 4);
+  assertEquals(JSON.stringify(state).includes('acc-1'), false);
 });

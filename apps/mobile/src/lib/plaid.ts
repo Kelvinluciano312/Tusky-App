@@ -3,11 +3,13 @@ import { useState } from 'react';
 import { createPlaidLinkSession } from 'react-native-plaid-link-sdk';
 
 import { readFunctionError } from '@/lib/functions';
+import { linkExitBody } from '@/lib/link-log';
+import { planLimitMessage } from '@/lib/plans';
 import { HIDDEN_DEPENDENT_KEYS } from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
 
 /** Everything a bank's arrival, departure or sync can change on screen. */
-const BANK_DEPENDENT_KEYS = [['plaid_items'], ...HIDDEN_DEPENDENT_KEYS];
+const BANK_DEPENDENT_KEYS = [['plaid_items'], ['plan'], ...HIDDEN_DEPENDENT_KEYS];
 
 function invalidateBankData(queryClient: ReturnType<typeof useQueryClient>) {
   return Promise.all(BANK_DEPENDENT_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
@@ -25,14 +27,23 @@ export function useConnectBank() {
   const queryClient = useQueryClient();
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [planLimited, setPlanLimited] = useState(false);
 
   const connectBank = async (itemId?: string) => {
     setError(null);
+    setPlanLimited(false);
     setIsConnecting(true);
     try {
       const { data, error: fnError } = await supabase.functions.invoke('plaid-create-link-token', {
         body: itemId ? { item_id: itemId } : {},
       });
+      if (fnError) {
+        const { status, message, body } = await readFunctionError(fnError);
+        if (status === 402 && message === 'plan_limit') {
+          setPlanLimited(true);
+          throw new Error(planLimitMessage(body?.plan, body?.max_banks));
+        }
+      }
       if (fnError || !data?.link_token) {
         throw new Error('Could not start the bank connection. Try again in a moment.');
       }
@@ -51,14 +62,20 @@ export function useConnectBank() {
                   institution_name: institution?.name,
                   // Name and mask only: the server's duplicate check compares them.
                   accounts: success.metadata.accounts.map(({ name, mask }) => ({ name, mask })),
+                  // Plaid support asks for it; the server keeps it with the new Item.
+                  link_session_id: success.metadata.linkSessionId,
                 },
               });
               if (exchangeError) {
-                const { status, message } = await readFunctionError(exchangeError);
+                const { status, message, body } = await readFunctionError(exchangeError);
                 if (status === 409 && message === 'duplicate') {
                   throw new Error(
                     `${institution?.name ?? 'This bank'} is already connected in your herd. If it stopped syncing, whoever connected it can use Reconnect in Settings.`,
                   );
+                }
+                if (status === 402 && message === 'plan_limit') {
+                  setPlanLimited(true);
+                  throw new Error(planLimitMessage(body?.plan, body?.max_banks));
                 }
                 throw new Error('The bank responded, but saving the connection failed.');
               }
@@ -75,6 +92,10 @@ export function useConnectBank() {
           }
         },
         onExit: (exit) => {
+          // Fire and forget: a lost log line must never touch the Link flow.
+          void supabase.functions
+            .invoke('plaid-link-event', { body: linkExitBody(exit, itemId) })
+            .catch(() => {});
           if (exit.error?.errorMessage) {
             setError(exit.error.errorMessage);
           }
@@ -89,7 +110,7 @@ export function useConnectBank() {
     }
   };
 
-  return { connectBank, isConnecting, error };
+  return { connectBank, isConnecting, error, planLimited };
 }
 
 /**
