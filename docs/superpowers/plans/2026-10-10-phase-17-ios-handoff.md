@@ -278,3 +278,49 @@ Notes for whoever runs the first iOS build:
 9. iPad landscape and Split View: the lock screen is centred and readable.
 10. Open Plaid Link, go to a bank's OAuth page for longer than a minute, and return: the lock covers Link, and unlocking returns
     to it. If Link is hidden behind the lock and cannot be reached afterwards, record it here as a bug.
+
+## M7 — Demo account for App Review (code done; dev deployed and rehearsed)
+
+Full procedure, caveats and the review-notes text: **`docs/ops/app-review.md`**. This section is what changed and what a person must run.
+
+- **Migration `20261018140000_demo_items.sql`** (the plan said `…120000`; the timestamp was moved so it sorts after the Apple
+  identity migration already pushed). Adds `plaid_items.is_demo boolean not null default false`. `authenticated` has no `UPDATE` or
+  `INSERT` grant on the column (checked with `has_column_privilege`), so no user can flag a bank as a demo.
+- **Skipped where Plaid would be called:** `plaid-sync-transactions`, `plaid-webhook` and both queries in `_shared/enforce.ts` now
+  filter `is_demo = false`. `claimItem` is deliberately untouched: disconnect must still claim a demo Item. Disconnect and account
+  deletion need no change, because `disconnectItem` skips Plaid when an Item has no `plaid_tokens` row, which a demo Item never has.
+- **`scripts/demo-seed.mjs <user-id> [--print]`.** One `do` block (all or nothing), idempotent (wipes the user's demo bank and the
+  herd's budgets, then rebuilds), dev-only unless `--print`. It refuses a user whose herd has other members or who has a real
+  bank. It reads `TERMS_VERSION` from `constants/legal.ts`, and writes no `plaid_tokens` row, ever (the summary fails the run if
+  one exists).
+- **Deviation from the plan: the demo plan is a 90-day `trial`, not a comped `tusk`.** `revenuecat.ts` never overwrites a `comp`
+  row (`current.store === 'comp'` returns null), so a reviewer who bought a plan would see nothing change, and Apple checks that
+  purchases work. A trial row is replaced by a real entitlement; 90 days outlasts a review, and re-seeding renews it.
+- **Rehearsed on dev** with a throwaway user (`appreview-dev@example.com`, created by SQL, never on production):
+  - the summary read 3 accounts, 186 transactions (2 pending, 8 in the review queue), 4 streams, 4 budgets, `demo_tokens: 0`;
+  - read as that user (role `authenticated` and its claims), RLS showed exactly those rows, and `plaid_tokens` was denied;
+  - monthly income about 3,300 against 2,900 to 3,100 of spending; snapshot floors held (checking 1,800, card owed at least 150);
+  - Netflix shows a price rise (13.99 to 15.49) on the recurring screen;
+  - `plaid-sync-transactions` as that user answered `{"results":[]}`;
+  - "Keep history" archived the bank and "Delete everything" removed it, both with `{"ok":true}` and no Plaid call;
+  - re-seeding after each of those rebuilt the bank, and bad input (unknown user, a herd with others) failed cleanly.
+  - Not done: signing in with the app on an emulator (none was running). Do it once on the dev build; the checklist is in
+    `app-review.md`.
+
+### Production commands (Pedro, each only on his go-ahead; the CLI stays linked to dev)
+
+```sh
+npx supabase db push --project-ref awiwcgrisyzimzxgddxu
+npx supabase functions deploy plaid-sync-transactions --use-api --project-ref awiwcgrisyzimzxgddxu
+npx supabase functions deploy plaid-webhook --use-api --project-ref awiwcgrisyzimzxgddxu
+npx supabase functions deploy plan-enforcer --use-api --project-ref awiwcgrisyzimzxgddxu
+npx supabase functions deploy revenuecat-webhook --use-api --project-ref awiwcgrisyzimzxgddxu
+```
+
+Then in the production dashboard: Authentication -> Users -> Add user `appreview@studiosouroboros.com` (Auto Confirm User, a long
+random password kept in the team password manager), copy its id, and run the output of
+`node scripts/demo-seed.mjs <user-id> --print` in the SQL editor. Last, sign in once on a production build and walk the checks in
+`docs/ops/app-review.md`. Two-step stays off for this account.
+
+Order matters: the migration comes first, because the four functions (`plan-enforcer` and `revenuecat-webhook` through `enforce.ts`) filter on `is_demo` and fail without the column. Re-seed in the
+days before each submission (the data is dated to the day it was seeded), and after any review that deleted the account.
