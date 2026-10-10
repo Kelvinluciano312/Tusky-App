@@ -21,6 +21,7 @@ export default function JoinScreen() {
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
       keyboardShouldPersistTaps="handled"
+      automaticallyAdjustKeyboardInsets
       contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
       <AppText tone="dim">Enter the code from your invite. It looks like ABCD-1234.</AppText>
       <TextField
