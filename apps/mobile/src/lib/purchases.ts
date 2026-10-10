@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Platform } from 'react-native';
 import Purchases, { PURCHASES_ERROR_CODE, STORE_REPLACEMENT_MODE, type PurchasesPackage } from 'react-native-purchases';
 
-import { type PaidPlan, type Period, productChange } from '@/lib/paywall';
+import { pickRevenueCatKey } from '@/lib/environment';
+import { manageFallbackUrl, type PaidPlan, type Period, productChange } from '@/lib/paywall';
 import { ensurePurchaser } from '@/lib/purchaser';
 import { backend, supabase } from '@/lib/supabase';
 
@@ -11,9 +13,18 @@ import { backend, supabase } from '@/lib/supabase';
  * to re-read RevenueCat, then refetches the plan. The app never grants access.
  */
 
-// `||` not `??`: unset EXPO_PUBLIC_ vars arrive as empty strings.
-const apiKey =
-  backend === 'real' ? process.env.EXPO_PUBLIC_PROD_REVENUECAT_KEY || '' : process.env.EXPO_PUBLIC_REVENUECAT_KEY || '';
+// `||` not `??`: unset EXPO_PUBLIC_ vars arrive as empty strings. The Test Store key
+// works on both platforms, so dev may set it in both slots.
+const apiKey = pickRevenueCatKey({
+  backend,
+  platform: Platform.OS,
+  keys: {
+    android: process.env.EXPO_PUBLIC_REVENUECAT_KEY || '',
+    ios: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY || '',
+    prodAndroid: process.env.EXPO_PUBLIC_PROD_REVENUECAT_KEY || '',
+    prodIos: process.env.EXPO_PUBLIC_PROD_REVENUECAT_IOS_KEY || '',
+  },
+});
 
 /** Without a key for this backend there is nothing to buy: the paywall says so. */
 export const purchasesEnabled = apiKey !== '';
@@ -104,8 +115,10 @@ export function useBuy() {
       period: Period;
     }): Promise<{ outcome: 'bought' | 'deferred' | 'cancelled'; confirmed: boolean }> => {
       await readyToBuy();
-      // Play replaces a running plan; Test Store keys (test_…) have no Play subscription to replace.
-      const change = apiKey.startsWith('test_')
+      // Play replaces a running plan; Test Store keys (test_…) have no Play subscription to replace, and
+      // the App Store switches plans inside a subscription group itself, so Play's replacement params
+      // must never reach StoreKit.
+      const change = apiKey.startsWith('test_') || Platform.OS === 'ios'
         ? null
         : productChange((await Purchases.getCustomerInfo()).activeSubscriptions, plan, period);
       try {
@@ -143,5 +156,5 @@ export function useRestore() {
 /** Cancelling and changing payment happen in the store. */
 export async function manageSubscriptionsUrl(): Promise<string> {
   const info = await Purchases.getCustomerInfo().catch(() => null);
-  return info?.managementURL || 'https://play.google.com/store/account/subscriptions?package=com.ouroborosstudios.tusky';
+  return info?.managementURL || manageFallbackUrl(Platform.OS);
 }

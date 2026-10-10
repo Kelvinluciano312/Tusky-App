@@ -86,6 +86,17 @@ export function ownPaidPlan(p: PlanDetail, now: Date): string | null {
   return p.own_plan;
 }
 
+/** Cancelling and changing payment happen in a store, so only a store subscription has anything to manage. */
+export function canManage(p: PlanDetail, now: Date): boolean {
+  return !!ownPaidPlan(p, now) && (p.store === 'play' || p.store === 'app_store');
+}
+
+export function manageFallbackUrl(platform: string): string {
+  return platform === 'ios'
+    ? 'https://apps.apple.com/account/subscriptions'
+    : 'https://play.google.com/store/account/subscriptions?package=com.ouroborosstudios.tusky';
+}
+
 export function bankUsage(used: number, max: number): string {
   if (max === 0) return 'No banks on this plan';
   return `${used} of ${max} ${max === 1 ? 'bank' : 'banks'}`;

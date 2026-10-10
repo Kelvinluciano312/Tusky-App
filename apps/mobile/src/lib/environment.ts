@@ -28,3 +28,17 @@ export function pickBackend({
 export function backendLabel(backend: Backend): string {
   return backend === 'real' ? 'Real data' : 'Plaid Sandbox';
 }
+
+/**
+ * RevenueCat's public key for this launch: one per store and per backend. Empty
+ * means purchases are off, and the paywall says plans are coming soon.
+ */
+export function pickRevenueCatKey(i: {
+  backend: Backend;
+  platform: string;
+  keys: { android: string; ios: string; prodAndroid: string; prodIos: string };
+}): string {
+  if (i.platform !== 'ios' && i.platform !== 'android') return '';
+  if (i.backend === 'real') return i.platform === 'ios' ? i.keys.prodIos : i.keys.prodAndroid;
+  return i.platform === 'ios' ? i.keys.ios : i.keys.android;
+}

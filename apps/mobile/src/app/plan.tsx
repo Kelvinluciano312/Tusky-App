@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Linking, ScrollView } from 'react-native';
+import { Linking, Platform, ScrollView } from 'react-native';
 import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { bankUsage, ownPaidPlan, PLAN_NAMES, planSummary } from '@/lib/paywall';
+import { bankUsage, canManage, ownPaidPlan, PLAN_NAMES, planSummary, storeName } from '@/lib/paywall';
 import { manageSubscriptionsUrl, purchasesEnabled, useRestore } from '@/lib/purchases';
 import { useHerd, useHerdPayer, usePlan } from '@/lib/queries';
 import { useSession } from '@/lib/session';
@@ -68,7 +68,7 @@ export default function PlanScreen() {
       {paysForHerd ? (
         <Button title="Invite someone to your herd" variant="secondary" onPress={() => router.push('/herd')} />
       ) : null}
-      {own && plan.store === 'play' ? (
+      {canManage(plan, new Date()) ? (
         <Button
           title="Manage subscription"
           variant="secondary"
@@ -86,7 +86,7 @@ export default function PlanScreen() {
         />
       ) : null}
       <AppText variant="caption" tone="dim">
-        Cancel or change payment in the Play Store. Everything you have tracked stays in Tusky whatever your plan.
+        Cancel or change payment in the {storeName(Platform.OS === 'ios' ? 'app_store' : 'play')}. Everything you have tracked stays in Tusky whatever your plan.
       </AppText>
     </ScrollView>
   );

@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { backendLabel, pickBackend } from './environment.ts';
+import { backendLabel, pickBackend, pickRevenueCatKey } from './environment.ts';
 
 test('dev builds use the stored choice, defaulting to sandbox', () => {
   assert.equal(pickBackend({ stored: null, isDev: true, realConfigured: true }), 'sandbox');
@@ -25,4 +25,13 @@ test('without a production project configured, everything is sandbox', () => {
 test('backendLabel names each backend', () => {
   assert.equal(backendLabel('real'), 'Real data');
   assert.equal(backendLabel('sandbox'), 'Plaid Sandbox');
+});
+
+test('the RevenueCat key follows backend and platform, and an empty key means no purchases', () => {
+  const keys = { android: 'goog_dev', ios: 'appl_dev', prodAndroid: '', prodIos: 'appl_prod' };
+  assert.equal(pickRevenueCatKey({ backend: 'sandbox', platform: 'android', keys }), 'goog_dev');
+  assert.equal(pickRevenueCatKey({ backend: 'sandbox', platform: 'ios', keys }), 'appl_dev');
+  assert.equal(pickRevenueCatKey({ backend: 'real', platform: 'android', keys }), '');
+  assert.equal(pickRevenueCatKey({ backend: 'real', platform: 'ios', keys }), 'appl_prod');
+  assert.equal(pickRevenueCatKey({ backend: 'sandbox', platform: 'web', keys }), '');
 });
