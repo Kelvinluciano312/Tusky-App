@@ -79,6 +79,8 @@ Never lose access to the Expo account: that key is what Play trusts.
 Everything here runs from Windows through EAS. A Mac is only needed to run the iOS Simulator and take
 screenshots, and for the one-time prebuild check below. Bundle id `com.ouroborosstudios.tusky`; the
 iPhone stays portrait, the iPad rotates (`supportsTablet`). Android is unaffected by anything in this section.
+Running the app in the Simulator on a Mac (local `expo run:ios`, no EAS) and its gotchas are in `CLAUDE.md`
+("On the Mac (iOS Simulator)").
 
 **Before the first build** (a person, once; the steps and who owns each are `P1`–`P9` in
 `docs/superpowers/plans/2026-10-10-phase-17-ios.md`):

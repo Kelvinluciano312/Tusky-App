@@ -74,6 +74,16 @@ in EAS's cloud.
   `expo-crypto`, `expo-local-authentication` and `expo-screen-capture` were added in Phase 17).
 - Store builds, TestFlight and App Review: `docs/ops/release.md` ("iOS builds") and `docs/ops/app-review.md`.
 
+**On the Mac (iOS Simulator).** A Mac can build and run the app locally, with no EAS and no paid Apple account:
+- Keep the repo at `~/dev/Tusky-App`, never on the Desktop or Documents (iCloud syncs those; see the gotcha below).
+- `apps/mobile/.env` must exist before Metro starts (`cp .env.example .env`, then the dev Supabase URL and anon key).
+  Without it Sign in stays disabled, and `__DEV__` logs `[tusky] Supabase is not configured`.
+- Kill any old Metro first (`lsof -ti :8081 | xargs kill`), then:
+  `cd apps/mobile && npm install && npx expo prebuild -p ios --clean && npx expo run:ios --device "iPhone 18 Pro"`.
+- Toolchain: macOS ships Ruby 2.6, which cannot install CocoaPods. Use rbenv with Ruby 3.3.x (built against a local
+  libyaml: `RUBY_CONFIGURE_OPTS=--with-libyaml-dir=…`), put `~/.rbenv/versions/<v>/bin` on `PATH` in `~/.zshrc`, then
+  `gem install cocoapods`. Watchman (Homebrew) is optional.
+
 ## Hard-won gotchas
 
 - **Expo Go cannot run this app** (native Plaid SDK). Dev builds only.
@@ -99,6 +109,19 @@ in EAS's cloud.
   `READ_CALENDAR` and `WRITE_CALENDAR` out of the Android manifest (verified with a real prebuild). iOS gets honest
   calendar and reminders purpose strings in `ios.infoPlist` instead, because App Store validation (ITMS-90683) wants them
   while "Add to calendar" never reads the calendar. `expo-local-authentication` is on the same auto list.
+- **iOS 27 / Xcode 27 needs the scene lifecycle.** `app.json` sets `ios.enableSceneSupport: true` under
+  `expo-build-properties` (needs Expo >= 57.0.23). Without it the app dies at launch with SIGTRAP in
+  `_UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`. Remove the option when SDK 58 makes it the default.
+- **A constant blue "Refreshing..." bar, and a field that drops keystrokes, is Metro reloading for files that are not
+  code.** Metro's HMR server announces an update for every file-watcher event, and iCloud/Finder touching `.DS_Store`,
+  `*.icloud`, `.expo/cache` or `ios/build` is enough. `metro.config.js` blocks that noise (one regex, so every pattern
+  must be flag-less and match both path separators). If the bar returns with no code change, add the file it touches to
+  that list, and check that the repo is not inside an iCloud-synced folder. Also keep `QueryClient`'s 30 s `staleTime`
+  (`_layout.tsx`): at 0, every refocus refetched every query.
+- **On iOS, `inactive` is not "left the app".** Face ID, the Passwords bar and Control Center all pass the app through
+  `inactive`. React Query's focusManager and supabase-js's auto-refresh therefore go through `createFocusTracker`
+  (`lib/app-focus.ts`), which reports only a true leave (`background`) and return. App lock and Apple's credential
+  watch deliberately keep treating `inactive` as away.
 - **The iOS Keychain outlives an uninstall.** Delete and reinstall Tusky and the session, and the App lock preference,
   are still there (`tusky.appLock` is deliberately not wiped, so reinstalling cannot lift the lock). Android clears its
   keystore with the app. A first-run marker in AsyncStorage would change this; not built.
