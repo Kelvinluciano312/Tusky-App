@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import { AppState, DevSettings } from 'react-native';
 import 'react-native-url-polyfill/auto';
 
+import { createFocusTracker } from '@/lib/app-focus';
 import { type Backend, pickBackend } from '@/lib/environment';
 import { createSecureStorage } from '@/lib/secure-storage';
 
@@ -75,11 +76,11 @@ export const supabase = createClient(
   },
 );
 
-// Refresh auth tokens only while the app is foregrounded.
+// Refresh auth tokens only while the app is foregrounded. iOS passes through
+// 'inactive' for system overlays without leaving, so only the background stops it.
+const trackFocus = createFocusTracker(AppState.currentState);
 AppState.addEventListener('change', (state) => {
-  if (state === 'active') {
-    supabase.auth.startAutoRefresh();
-  } else {
-    supabase.auth.stopAutoRefresh();
-  }
+  const focused = trackFocus(state);
+  if (focused === true) supabase.auth.startAutoRefresh();
+  else if (focused === false) supabase.auth.stopAutoRefresh();
 });

@@ -16,6 +16,7 @@ import { RealDataBanner } from '@/components/real-data-banner';
 import { DialogHost } from '@/components/ui/dialog';
 import { Palette } from '@/constants/theme';
 import { TERMS_VERSION } from '@/constants/legal';
+import { createFocusTracker } from '@/lib/app-focus';
 import { useAppleCredentialWatch } from '@/lib/apple-auth';
 import { gateFor } from '@/lib/first-run';
 import { identifyPurchaser } from '@/lib/purchases';
@@ -25,13 +26,21 @@ import { onTwoFactorRequired } from '@/lib/two-factor';
 
 SplashScreen.preventAutoHideAsync();
 
-const queryClient = new QueryClient();
+// Screens remounting or the app refocusing within 30 s reuse what they have instead of refetching
+// everything. Mutations still invalidate explicitly (invalidateQueries ignores staleTime).
+const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000 } } });
 
 // React Native has no window focus, so tell React Query when the app returns to
 // the foreground. Plaid webhooks change the database while the app is in the
-// background; this refetch is how those changes reach the screen.
+// background; this refetch is how those changes reach the screen. Only a real
+// return from the background counts: iOS also goes 'inactive' for Face ID, the
+// Passwords bar and Control Center, which must not reload every screen.
 focusManager.setEventListener((handleFocus) => {
-  const subscription = AppState.addEventListener('change', (state) => handleFocus(state === 'active'));
+  const track = createFocusTracker(AppState.currentState);
+  const subscription = AppState.addEventListener('change', (state) => {
+    const focused = track(state);
+    if (focused !== null) handleFocus(focused);
+  });
   return () => subscription.remove();
 });
 
