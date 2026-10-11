@@ -40,6 +40,10 @@ const target = backend === 'real' ? real : sandbox;
 /** False until the chosen backend's URL and key are set in apps/mobile/.env */
 export const isSupabaseConfigured = Boolean(target.url && target.key);
 
+if (__DEV__ && !isSupabaseConfigured) {
+  console.warn(`[tusky] Supabase is not configured for the ${backend} backend: set it in apps/mobile/.env and restart Metro.`);
+}
+
 /**
  * Dev builds only: switch backends. Reloads the app so every module, query and
  * session starts over against the other project. Sessions never collide:
