@@ -134,6 +134,9 @@
           "android": {
             "minSdkVersion": 26,
             "allowBackup": false
+          },
+          "ios": {
+            "enableSceneSupport": true
           }
         }
       ],
