@@ -39,10 +39,21 @@ focusManager.setEventListener((handleFocus) => {
   const track = createFocusTracker(AppState.currentState);
   const subscription = AppState.addEventListener('change', (state) => {
     const focused = track(state);
-    if (focused !== null) handleFocus(focused);
+    if (focused === null) return;
+    if (__DEV__) console.log(`[tusky] app focus ${focused}`);
+    handleFocus(focused);
   });
   return () => subscription.remove();
 });
+
+if (__DEV__) {
+  // Dev trace: lets a simulator run show what an overlay or a background trip actually refetches.
+  queryClient.getQueryCache().subscribe((event) => {
+    if (event.type === 'updated' && event.action.type === 'fetch') {
+      console.log(`[tusky] fetch ${String(event.query.queryKey[0])}`);
+    }
+  });
+}
 
 const navThemes = {
   dark: {
