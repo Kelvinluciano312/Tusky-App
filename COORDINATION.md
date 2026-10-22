@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| | | | |
+| Pedro | iOS RevenueCat App Store key, so iOS can subscribe | `pedro/ios-revenuecat-key` | `apps/mobile` purchases, paywall, plan screen, `app.json`; `docs/ops/release.md`, `docs/ops/production.md` |
