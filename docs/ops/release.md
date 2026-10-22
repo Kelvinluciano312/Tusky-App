@@ -26,16 +26,24 @@ and no secret ever does.
 - the dev pair (`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`), which only a dev build
   falls back to;
 - `EXPO_PUBLIC_PROD_SUPABASE_URL` and `EXPO_PUBLIC_PROD_SUPABASE_KEY`;
-- `EXPO_PUBLIC_PROD_REVENUECAT_KEY`: RevenueCat's Play key (`goog_…`). Without it the paywall says plans
+- `EXPO_PUBLIC_PROD_REVENUECAT_KEY`: RevenueCat's Play key (`goog_…`). Without it the Android paywall says plans
   are coming soon.
+- `EXPO_PUBLIC_PROD_REVENUECAT_IOS_KEY`: RevenueCat's App Store key (`appl_…`). A TestFlight or App Store
+  build uses the production backend, so this is the key iOS passes to `Purchases.configure`. Without it
+  the iOS paywall says plans are coming soon. Android keeps the Play key above.
 
 ```sh
 cd apps/mobile
 npx eas-cli env:set --environment production --name EXPO_PUBLIC_PROD_SUPABASE_URL --value <prod url> --visibility plaintext
 npx eas-cli env:set --environment production --name EXPO_PUBLIC_PROD_SUPABASE_KEY --value <prod publishable key> --visibility plaintext
 npx eas-cli env:set --environment production --name EXPO_PUBLIC_PROD_REVENUECAT_KEY --value <goog_ key> --visibility plaintext
+npx eas-cli env:set --environment production --name EXPO_PUBLIC_PROD_REVENUECAT_IOS_KEY --value <appl_ key> --visibility plaintext
 npx eas-cli env:list --environment production   # check before building
 ```
+
+A dev client does not read the EAS `production` environment. On iOS it uses `EXPO_PUBLIC_REVENUECAT_IOS_KEY`
+from `apps/mobile/.env` while the backend is Sandbox (the same public App Store key, when a dev build should
+buy through the App Store sandbox). Restart Metro after editing `.env`. The value is a public SDK key.
 
 The legal URLs default to the studio site, `studiosouroboros.com/tusky/privacy`, `/terms` and
 `/delete-account` (`constants/legal.ts`; the pages live in the Ouroboros-Inc repo under
@@ -48,9 +56,15 @@ The paywall needs, for the production backend:
   deployed, with their secrets (`docs/ops/production.md`);
 - in RevenueCat, the Play app with its service-account credentials, a **current** offering named
   `default`, and packages `tusklet_monthly`, `tusklet_yearly`, `tusk_monthly`, `tusk_yearly`,
-  `tusk_herd_monthly`, `tusk_herd_yearly`, each attached to its Play subscription and base plan;
+  `tusk_herd_monthly`, `tusk_herd_yearly`, each attached to its Play subscription and base plan.
+  The same packages also carry the App Store products (`tusklet_monthly`, `tusk_monthly`, and the
+  yearly and Tusk Herd twins);
 - in Play, the subscriptions active, and testers listed under Settings → **License testing** so their
-  purchases are free test purchases.
+  purchases are free test purchases;
+- on iOS, the App Store app (`com.ouroborosstudios.tusky`) in the same RevenueCat project, the Paid
+  Apps agreement signed, and a Sandbox Apple ID for a TestFlight purchase. `eas.json` has no iOS
+  submit profile: build with `npx eas-cli build --platform ios --profile production`, then upload
+  that build to TestFlight.
 
 ## Building and uploading
 

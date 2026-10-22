@@ -74,6 +74,18 @@ export function planSummary(p: PlanDetail, now: Date, payerName: string | null):
 
 const BOUGHT = new Set(['play', 'app_store', 'test']);
 
+/** Manage subscription is for a store purchase that is still running. */
+export function canManage(p: PlanDetail, now: Date): boolean {
+  return !!ownPaidPlan(p, now) && (p.store === 'play' || p.store === 'app_store');
+}
+
+/** When RevenueCat has no management URL, open the store's own subscriptions page. */
+export function manageFallbackUrl(platform: string): string {
+  return platform === 'ios'
+    ? 'https://apps.apple.com/account/subscriptions'
+    : 'https://play.google.com/store/account/subscriptions?package=com.ouroborosstudios.tusky';
+}
+
 /**
  * The plan I pay for myself, if it is still running. It can differ from the
  * effective plan: a herd mate's Tusk Herd outranks my own Tusklet, and I still
