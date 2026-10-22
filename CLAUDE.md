@@ -8,6 +8,8 @@ Phase 14, monetization (`docs/superpowers/specs/2026-09-28-phase-14-monetization
 milestones 14a (plans and limits) → 14b (lifecycle, reconnect merge) → 14c (purchases), all merged
 → 14d (launch readiness: Play Billing, account deletion, release builds), on `pedro-14d`.
 
+**Coordination.** Pedro (`DahVincis`) and Kelvyn (`Kelvinluciano312`) share this repo. Read `COORDINATION.md` before starting work.
+
 **Plaid keys per project.** Dev stays on Sandbox, and all general testing happens there. Production
 keys live only in the production project's secrets. Phase 6's old "key switch" step is superseded by
 this split. `supabase/functions/.env` now holds **production** values (`PLAID_ENV=production`), so it
