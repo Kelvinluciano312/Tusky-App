@@ -11,5 +11,5 @@ Claude Code loads `.claude/skills`. The tree is not mirrored or symlinked there:
 | Set | Where | How to use it |
 | --- | --- | --- |
 | Superpowers (obra/superpowers, MIT) | `.cursor/skills/<skill-name>/` | Skills trigger from their descriptions (brainstorming, TDD, debugging, plans). In Cursor chat, `/add-plugin superpowers` installs the upstream plugin instead of this copy. |
-| Graphify (PyPI `graphifyy`, Apache-2.0) | `.cursor/rules/graphify.mdc`, `.cursor/skills/graphify/SKILL.md` | `graphify query "<question>"` when the CLI is installed. If it is not, install `graphifyy` or skip. `graphify-out/` is gitignored. |
+| Graphify (PyPI `graphifyy`, Apache-2.0) | `.cursor/rules/graphify.mdc`, `.cursor/skills/graphify/SKILL.md`, `graphify-out/` | Read `graphify-out/GRAPH_REPORT.md` first for codebase orientation. If the CLI is installed, `graphify query "<question>"`, and commit a refreshed graph in the same PR after a significant code change. If it is not installed, use the committed graph and note that it may be stale. |
 | fablize (fivetaku/fablize, MIT) | `.cursor/skills/fablize/SKILL.md` | Multi-step work, debugging, and rendered artifacts. `goals.py` is the local ledger. No Claude hooks and no star prompt. |

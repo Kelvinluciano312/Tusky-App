@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | Ask one herd member from review, and show who categorized the transaction | `pedro/review-ask-source-a908`, [#55](https://github.com/Kelvinluciano312/Tusky-App/pull/55), [#54](https://github.com/Kelvinluciano312/Tusky-App/issues/54) | Review card and queue (`apps/mobile/src/app/review.tsx`, `components/review-card.tsx`, `components/questions.tsx`, `lib/review.ts`, `lib/queries.ts`); `transactions.review_assignee` migration; `scripts/rls-check.mjs` |
+| Pedro | Commit the Graphify graph so every agent can read it | `pedro/graphify-context`, [#60](https://github.com/Kelvinluciano312/Tusky-App/pull/60), [#58](https://github.com/Kelvinluciano312/Tusky-App/issues/58) | `graphify-out/`; `.gitignore`; `.cursor/skills/graphify/SKILL.md`; `.cursor/rules/graphify.mdc`; `.cursor/rules/agent-skills.mdc`; `AGENTS.md`; `CLAUDE.md` |
