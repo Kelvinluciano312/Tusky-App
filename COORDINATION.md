@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | Explicit Data API grants (already applied on production Oct 22) and the `rls_auto_enable` execute revoke | `pedro/data-api-grants` | `supabase/migrations/20261023160000_explicit_data_api_grants.sql`, `supabase/migrations/20261023160100_lock_rls_auto_enable.sql`, `CLAUDE.md` |
+| Pedro | Explicit Data API grants (already applied on production Oct 22) and the `rls_auto_enable` execute revoke | `pedro/data-api-grants`, [#64](https://github.com/Kelvinluciano312/Tusky-App/pull/64) | `supabase/migrations/20261023160000_explicit_data_api_grants.sql`, `supabase/migrations/20261023160100_lock_rls_auto_enable.sql`, `CLAUDE.md` |
