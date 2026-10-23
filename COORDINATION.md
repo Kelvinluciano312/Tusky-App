@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | Launch prep: 1.0.0, permission cleanup, Sentry, iOS Plaid OAuth, profiles SELECT merge and hot FK indexes. Paywall change is a console warning only | `pedro/launch-prep` | `apps/mobile/app.json`, `src/lib/plaid.ts`, `src/app/paywall.tsx` (warn only), `supabase/functions/plaid-create-link-token`, `supabase/migrations/20261023170000_plaid_events_platform.sql`, `20261023180000_profiles_select_and_hot_fks.sql` |
+| Pedro | Launch prep: 1.0.0, permission cleanup, Sentry, iOS Plaid OAuth, profiles SELECT merge and hot FK indexes. Paywall change is a console warning only | `pedro/launch-prep`, [#68](https://github.com/Kelvinluciano312/Tusky-App/pull/68) | `apps/mobile/app.json`, `src/lib/plaid.ts`, `src/app/paywall.tsx` (warn only), `supabase/functions/plaid-create-link-token`, `supabase/migrations/20261023170000_plaid_events_platform.sql`, `20261023180000_profiles_select_and_hot_fks.sql` |
