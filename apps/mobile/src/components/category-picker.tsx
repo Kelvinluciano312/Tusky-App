@@ -9,6 +9,7 @@ import { Radius, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { buildTree, pickerSections } from '@/lib/categories';
 import { type Category, useCategories } from '@/lib/queries';
+import { SHEET_KEYBOARD_PERSIST_TAPS, sheetListStyle } from '@/lib/sheet-keyboard';
 
 const KIND_LABEL: Record<Category['kind'], string> = {
   income: 'Income',
@@ -101,7 +102,7 @@ export function CategoryPicker({ visible, selectedId, onSelect, onClose, onReque
         ) : null}
       </View>
 
-      <ScrollView>
+      <ScrollView style={sheetListStyle} keyboardShouldPersistTaps={SHEET_KEYBOARD_PERSIST_TAPS}>
         {sections.map(({ kind, groups }) => (
           <View key={kind}>
             <AppText

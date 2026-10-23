@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Linking, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Linking, Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
+import { Sheet, SheetScroll } from '@/components/ui/sheet';
 import { TextField } from '@/components/ui/text-field';
-import { Layout, Radius, Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { manageSubscriptionsUrl } from '@/lib/purchases';
 
@@ -29,7 +29,6 @@ type Props = {
  */
 export function DeleteAccountSheet({ visible, warning, isDeleting, error, onDelete, onClose }: Props) {
   const colors = useTheme();
-  const insets = useSafeAreaInsets();
   // Empty on each opening; the screen keys this sheet by visibility.
   const [word, setWord] = useState('');
   const [password, setPassword] = useState('');
@@ -39,28 +38,8 @@ export function DeleteAccountSheet({ visible, warning, isDeleting, error, onDele
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
-      {/* Padding on Android too: a Modal is its own window. */}
-      <KeyboardAvoidingView
-        style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}
-        behavior="padding">
-        <Pressable style={StyleSheet.absoluteFill} onPress={close} />
-        <View
-          style={{
-            ...Layout.sheet,
-            backgroundColor: colors.surface,
-            borderTopLeftRadius: Radius.xl,
-            borderTopRightRadius: Radius.xl,
-            maxHeight: '90%',
-          }}>
-          <ScrollView
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{
-              paddingTop: Spacing.lg,
-              paddingHorizontal: Spacing.md,
-              paddingBottom: insets.bottom + Spacing.md,
-              gap: Spacing.md,
-            }}>
+    <Sheet visible={visible} onClose={close} style={{ maxHeight: '90%', paddingTop: Spacing.lg, paddingHorizontal: Spacing.md }}>
+      <SheetScroll contentContainerStyle={{ gap: Spacing.md }}>
             <AppText variant="title">Delete your account?</AppText>
             <AppText tone="dim">
               Tusky disconnects your banks and deletes everything you have tracked: your accounts,
@@ -123,9 +102,7 @@ export function DeleteAccountSheet({ visible, warning, isDeleting, error, onDele
               onPress={() => onDelete(password)}
             />
             <Button title="Cancel" variant="ghost" disabled={isDeleting} onPress={close} />
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+      </SheetScroll>
+    </Sheet>
   );
 }

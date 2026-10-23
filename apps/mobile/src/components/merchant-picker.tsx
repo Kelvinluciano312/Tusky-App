@@ -6,6 +6,7 @@ import { AppText } from '@/components/ui/app-text';
 import { Sheet } from '@/components/ui/sheet';
 import { Radius, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { SHEET_KEYBOARD_PERSIST_TAPS, sheetListStyle } from '@/lib/sheet-keyboard';
 
 type Option = { key: string; name: string; count: number };
 
@@ -65,7 +66,8 @@ export function MerchantPicker({
       <FlatList
         data={shown}
         keyExtractor={(o) => o.key}
-        keyboardShouldPersistTaps="handled"
+        style={sheetListStyle}
+        keyboardShouldPersistTaps={SHEET_KEYBOARD_PERSIST_TAPS}
         ListEmptyComponent={
           <AppText tone="dim" style={{ padding: Spacing.md }}>
             {options.length === 0 ? 'No merchants loaded yet.' : 'No merchant matches that.'}

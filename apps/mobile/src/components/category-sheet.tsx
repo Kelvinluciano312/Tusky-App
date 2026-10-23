@@ -6,11 +6,12 @@ import { dialog } from '@/components/ui/dialog';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { CategoryIcon } from '@/components/ui/category-icon';
-import { Sheet } from '@/components/ui/sheet';
+import { Sheet, SheetScroll } from '@/components/ui/sheet';
 import { TextField } from '@/components/ui/text-field';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { CUSTOM_ICONS, SWATCHES, changedFields, deleteCategoryMessage, validateCategoryName } from '@/lib/categories';
+import { SHEET_KEYBOARD_PERSIST_TAPS } from '@/lib/sheet-keyboard';
 import {
   type Category,
   countCategoryTransactions,
@@ -116,7 +117,8 @@ export function CategorySheet({ target, onClose }: Props) {
       visible={target !== null}
       onClose={onClose}
       avoidKeyboard
-      style={{ paddingTop: Spacing.lg, paddingHorizontal: Spacing.md, gap: Spacing.md }}>
+      style={{ paddingTop: Spacing.lg, paddingHorizontal: Spacing.md }}>
+      <SheetScroll contentContainerStyle={{ gap: Spacing.md }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm + 2 }}>
         <View
           style={{
@@ -147,7 +149,10 @@ export function CategorySheet({ target, onClose }: Props) {
             Icon
           </AppText>
           {/* 70 icons: a short scrolling grid, so the sheet's Save button stays in view. */}
-          <ScrollView style={{ maxHeight: 176 }} nestedScrollEnabled>
+          <ScrollView
+            style={{ maxHeight: 176, flexGrow: 0 }}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps={SHEET_KEYBOARD_PERSIST_TAPS}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm }}>
             {CUSTOM_ICONS.map((iconName) => (
               <Pressable
@@ -208,6 +213,7 @@ export function CategorySheet({ target, onClose }: Props) {
       {editing?.is_custom ? (
         <Button title="Delete category" variant="ghost" onPress={() => void confirmDelete()} />
       ) : null}
+      </SheetScroll>
     </Sheet>
   );
 }

@@ -4,7 +4,7 @@ import { TextInput, View } from 'react-native';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
-import { Sheet } from '@/components/ui/sheet';
+import { Sheet, SheetScroll } from '@/components/ui/sheet';
 import { Radius, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { payerLabel } from '@/lib/herd';
@@ -57,7 +57,8 @@ export function SplitSheet({ visible, members, total, current, onSave, onClose }
       visible={visible}
       onClose={onClose}
       avoidKeyboard
-      style={{ paddingTop: Spacing.lg, paddingHorizontal: Spacing.md, gap: Spacing.md }}>
+      style={{ paddingTop: Spacing.lg, paddingHorizontal: Spacing.md }}>
+      <SheetScroll contentContainerStyle={{ gap: Spacing.md }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <AppText variant="title">Split</AppText>
         <Button
@@ -105,6 +106,7 @@ export function SplitSheet({ visible, members, total, current, onSave, onClose }
       </AppText>
 
       <Button title="Save split" disabled={problem !== null} onPress={() => onSave(cleanSplit(percents))} />
+      </SheetScroll>
     </Sheet>
   );
 }
