@@ -14,6 +14,9 @@
       "supportsTablet": true,
       "usesAppleSignIn": true,
       "associatedDomains": ["applinks:studiosouroboros.com"],
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {

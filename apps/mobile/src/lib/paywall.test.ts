@@ -160,10 +160,30 @@ test('after a purchase: confirmed says nothing, unconfirmed and deferred explain
   });
 });
 
+test('manage is offered for store subscriptions only', () => {
+  assert.equal(canManage(detail({ store: 'play' }), NOW), true);
+  assert.equal(canManage(detail({ store: 'app_store' }), NOW), true);
+  assert.equal(canManage(detail({ store: 'test' }), NOW), false);
+  assert.equal(canManage(detail({ store: 'comp' }), NOW), false);
+  assert.equal(canManage(detail({ store: 'play', status: 'expired' }), NOW), false);
+});
+
+test('manage falls back to the platform store page', () => {
+  assert.equal(manageFallbackUrl('ios'), 'https://apps.apple.com/account/subscriptions');
+  assert.equal(
+    manageFallbackUrl('android'),
+    'https://play.google.com/store/account/subscriptions?package=com.ouroborosstudios.tusky',
+  );
+});
+
 test('deleting an account warns a store subscriber, and nobody else', () => {
   assert.equal(
     deleteWarning(detail({ store: 'play', own_plan: 'tusk' }), NOW),
     'You pay for Tusk through the Play Store. Deleting your Tusky account does not cancel it: cancel it in the store first, or you keep being charged.',
+  );
+  assert.match(
+    deleteWarning(detail({ store: 'app_store', own_plan: 'tusk' }), NOW) ?? '',
+    /App Store/,
   );
   assert.equal(deleteWarning(detail({ store: 'comp' }), NOW), null);
   assert.equal(deleteWarning(detail({ store: 'trial', own_plan: 'trial' }), NOW), null);
@@ -196,17 +216,4 @@ test("a failed offerings load names RevenueCat's message and code", () => {
   assert.equal(offeringsErrorDetail({ message: 'Same', underlyingErrorMessage: 'Same', code: 10 }), 'Same (10)');
   assert.equal(offeringsErrorDetail(new Error('Network down')), 'Network down');
   assert.equal(offeringsErrorDetail(null), 'Unknown error.');
-});
-
-test('manage is offered for store subscriptions only', () => {
-  assert.equal(canManage(detail({ store: 'play' }), NOW), true);
-  assert.equal(canManage(detail({ store: 'app_store' }), NOW), true);
-  assert.equal(canManage(detail({ store: 'test' }), NOW), false);
-  assert.equal(canManage(detail({ store: 'comp' }), NOW), false);
-  assert.equal(canManage(detail({ store: 'play', status: 'expired' }), NOW), false);
-});
-
-test('manage falls back to the platform store page', () => {
-  assert.equal(manageFallbackUrl('ios'), 'https://apps.apple.com/account/subscriptions');
-  assert.equal(manageFallbackUrl('android'), 'https://play.google.com/store/account/subscriptions?package=com.ouroborosstudios.tusky');
 });

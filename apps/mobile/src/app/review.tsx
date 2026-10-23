@@ -52,6 +52,7 @@ export default function ReviewScreen() {
 
   const apply = (move: DeckMove) => {
     if (!deck) return;
+    // handOff is an ask: the server already took the card out of this queue.
     if (move.type === 'accept' && top) setReviewed.mutate({ transactionId: top, reviewed: true });
     if (move.type === 'undo') {
       const last = deck.history.at(-1);
@@ -71,7 +72,13 @@ export default function ReviewScreen() {
       ) : !deck ? (
         <ActivityIndicator style={{ marginTop: Spacing.xl }} color={colors.textDim} />
       ) : !top ? (
-        <CaughtUp reviewed={deck.accepted} skipped={deck.skipped.length} canUndo={deck.history.length > 0} onUndo={() => apply({ type: 'undo' })} />
+        <CaughtUp
+          reviewed={deck.accepted}
+          skipped={deck.skipped.length}
+          handed={deck.handed}
+          canUndo={deck.history.length > 0}
+          onUndo={() => apply({ type: 'undo' })}
+        />
       ) : (
         <View style={{ flex: 1, paddingBottom: insets.bottom + Spacing.md }}>
           {/* On a tablet the deck is a capped, centred column; the scroll view stays
@@ -95,6 +102,7 @@ export default function ReviewScreen() {
                 fling={fling}
                 onAccept={() => apply({ type: 'accept' })}
                 onSkip={() => apply({ type: 'skip' })}
+                onAsked={() => top && apply({ type: 'handOff', id: top })}
               />
             </View>
           </ScrollView>
@@ -136,11 +144,13 @@ function SwipeCard({
   fling,
   onAccept,
   onSkip,
+  onAsked,
 }: {
   id: string;
   fling: Fling;
   onAccept: () => void;
   onSkip: () => void;
+  onAsked: () => void;
 }) {
   const colors = useTheme();
   const { width } = useWindowDimensions();
@@ -196,7 +206,7 @@ function SwipeCard({
   return (
     <GestureDetector gesture={pan}>
       <Animated.View style={cardStyle}>
-        <ReviewCard id={id} />
+        <ReviewCard id={id} onAsked={onAsked} />
         <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: Spacing.lg, left: Spacing.lg }, acceptStamp]}>
           <Stamp label="REVIEWED" color={colors.positive} rotate="-14deg" />
         </Animated.View>
@@ -299,11 +309,13 @@ function Progress({ done, total }: { done: number; total: number }) {
 function CaughtUp({
   reviewed,
   skipped,
+  handed,
   canUndo,
   onUndo,
 }: {
   reviewed: number;
   skipped: number;
+  handed: number;
   canUndo: boolean;
   onUndo: () => void;
 }) {
@@ -314,9 +326,10 @@ function CaughtUp({
       <PartyPopper size={40} color={colors.brand} strokeWidth={1.75} />
       <AppText variant="title">{skipped > 0 ? 'Done for now' : 'All caught up'}</AppText>
       <AppText tone="dim" style={{ textAlign: 'center' }}>
-        {reviewed > 0 ? `You reviewed ${reviewed} transaction${reviewed === 1 ? '' : 's'}.` : 'Nothing new to review.'}
+        {reviewed > 0 ? `You reviewed ${reviewed} transaction${reviewed === 1 ? '' : 's'}.` : handed > 0 ? '' : 'Nothing new to review.'}
+        {handed > 0 ? `${reviewed > 0 ? ' ' : ''}You asked about ${handed} transaction${handed === 1 ? '' : 's'}.` : ''}
         {skipped > 0 ? ` ${skipped} ${skipped === 1 ? 'waits' : 'wait'} for next time.` : ''}
-        {reviewed === 0 && skipped === 0 ? ' New transactions land here after each sync.' : ''}
+        {reviewed === 0 && skipped === 0 && handed === 0 ? ' New transactions land here after each sync.' : ''}
       </AppText>
       <Button title="Done" onPress={() => router.back()} style={{ alignSelf: 'stretch', marginTop: Spacing.sm }} />
       {canUndo ? <Button title="Undo last" variant="ghost" onPress={onUndo} /> : null}

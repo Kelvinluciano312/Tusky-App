@@ -74,6 +74,18 @@ export function planSummary(p: PlanDetail, now: Date, payerName: string | null):
 
 const BOUGHT = new Set(['play', 'app_store', 'test']);
 
+/** Manage subscription is for a store purchase that is still running. */
+export function canManage(p: PlanDetail, now: Date): boolean {
+  return !!ownPaidPlan(p, now) && (p.store === 'play' || p.store === 'app_store');
+}
+
+/** When RevenueCat has no management URL, open the store's own subscriptions page. */
+export function manageFallbackUrl(platform: string): string {
+  return platform === 'ios'
+    ? 'https://apps.apple.com/account/subscriptions'
+    : 'https://play.google.com/store/account/subscriptions?package=com.ouroborosstudios.tusky';
+}
+
 /**
  * The plan I pay for myself, if it is still running. It can differ from the
  * effective plan: a herd mate's Tusk Herd outranks my own Tusklet, and I still
@@ -84,17 +96,6 @@ export function ownPaidPlan(p: PlanDetail, now: Date): string | null {
   if (p.status !== 'active' && p.status !== 'grace') return null;
   if (p.own_expires_at !== null && Date.parse(p.own_expires_at) <= now.getTime()) return null;
   return p.own_plan;
-}
-
-/** Cancelling and changing payment happen in a store, so only a store subscription has anything to manage. */
-export function canManage(p: PlanDetail, now: Date): boolean {
-  return !!ownPaidPlan(p, now) && (p.store === 'play' || p.store === 'app_store');
-}
-
-export function manageFallbackUrl(platform: string): string {
-  return platform === 'ios'
-    ? 'https://apps.apple.com/account/subscriptions'
-    : 'https://play.google.com/store/account/subscriptions?package=com.ouroborosstudios.tusky';
 }
 
 export function bankUsage(used: number, max: number): string {

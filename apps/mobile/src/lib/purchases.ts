@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import Purchases, { PURCHASES_ERROR_CODE, STORE_REPLACEMENT_MODE, type PurchasesPackage } from 'react-native-purchases';
 
 import { pickRevenueCatKey } from '@/lib/environment';
-import { manageFallbackUrl, type PaidPlan, type Period, productChange } from '@/lib/paywall';
+import { type PaidPlan, type Period, manageFallbackUrl, productChange } from '@/lib/paywall';
 import { ensurePurchaser } from '@/lib/purchaser';
 import { backend, supabase } from '@/lib/supabase';
 
@@ -13,8 +13,8 @@ import { backend, supabase } from '@/lib/supabase';
  * to re-read RevenueCat, then refetches the plan. The app never grants access.
  */
 
-// `||` not `??`: unset EXPO_PUBLIC_ vars arrive as empty strings. The Test Store key
-// works on both platforms, so dev may set it in both slots.
+// `||` not `??`: unset EXPO_PUBLIC_ vars arrive as empty strings. The Test Store
+// key works on both platforms, so dev may set it in both non-production slots.
 const apiKey = pickRevenueCatKey({
   backend,
   platform: Platform.OS,
@@ -115,12 +115,13 @@ export function useBuy() {
       period: Period;
     }): Promise<{ outcome: 'bought' | 'deferred' | 'cancelled'; confirmed: boolean }> => {
       await readyToBuy();
-      // Play replaces a running plan; Test Store keys (test_…) have no Play subscription to replace, and
-      // the App Store switches plans inside a subscription group itself, so Play's replacement params
-      // must never reach StoreKit.
-      const change = apiKey.startsWith('test_') || Platform.OS === 'ios'
-        ? null
-        : productChange((await Purchases.getCustomerInfo()).activeSubscriptions, plan, period);
+      // Play replaces a running plan. The App Store switches plans inside the
+      // subscription group, and Test Store keys (test_…) have no Play subscription
+      // to replace, so Play's replacement params must never reach StoreKit.
+      const change =
+        apiKey.startsWith('test_') || Platform.OS === 'ios'
+          ? null
+          : productChange((await Purchases.getCustomerInfo()).activeSubscriptions, plan, period);
       try {
         await Purchases.purchasePackage(
           pkg,

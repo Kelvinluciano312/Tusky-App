@@ -13,6 +13,10 @@ is built on `kelvin` and waits for its PR and the people-only steps: plan
 `docs/superpowers/plans/2026-10-10-phase-17-ios-handoff.md` (every command only a person can run,
 and the device checks, are collected there). Nothing of Phase 17 is on production yet.
 
+**Coordination.** Pedro (`DahVincis`) and Kelvyn (`Kelvinluciano312`) share this repo. Read `COORDINATION.md` before starting work.
+
+**Agent skills.** Superpowers, Graphify, and fablize live in `.cursor/skills` (see `AGENTS.md`). Read the Graphify graph in `graphify-out/` (`GRAPH_REPORT.md` and the graph files) first when orienting in the codebase. `COORDINATION.md` wins over any skill.
+
 **Plaid keys per project.** Dev stays on Sandbox, and all general testing happens there. Production
 keys live only in the production project's secrets. Phase 6's old "key switch" step is superseded by
 this split. `supabase/functions/.env` now holds **production** values (`PLAID_ENV=production`), so it
@@ -243,11 +247,7 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     - The math is `lib/settle.ts`, kept in whole cents per purchase so the balance squares exactly.
     - Anything that can move a balance must invalidate `['settle']`: payer, split, owner, hidden, private,
       category.
-  - **Questions (15d).** `transaction_questions`: one member asks another what a row was. Asking requeues
-    the row (`reviewed_at` null), and `orderQueue` puts my open questions first, even outside the batch.
-    The database answers a question (`af_transactions_answer_questions`) when its addressee changes who
-    spent it, the split or the memo, or reviews the row. In-app only; push notifications come later.
-    Question queries live under `['transactions', 'questions']`.
+  - **Questions (15d; one queue since the ask-assignee migration).** `transaction_questions`: one member asks another what a row was. Asking sets `transactions.review_assignee` to that member and clears `reviewed_at`, so only their review queue includes the row (a newer ask closes the older one). `orderQueue` still puts my open questions first, even outside the batch. The database answers a question (`af_transactions_answer_questions`) when its addressee changes the category, who spent it, the split or the memo, or reviews the row: that sets `answered_by`, marks the row reviewed for the herd, and clears the assignee. Dismissing or taking the ask back clears the assignee and returns the row to the shared queue. Undo by the person who answered reopens their ask. In-app only; push notifications come later. Question queries live under `['transactions', 'questions']`.
   - **The app hides connector-only actions**: reconnect, disconnect, the Private switch and the sandbox
     tools show only when `item.user_id` is the signed-in user.
   - **`node scripts/rls-check.mjs`** proves every member sees exactly their herd minus others' private

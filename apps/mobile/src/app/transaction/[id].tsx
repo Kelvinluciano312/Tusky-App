@@ -18,10 +18,12 @@ import { Layout, Spacing } from '@/constants/theme';
 import { useCategoryChoice } from '@/hooks/use-category-choice';
 import { useTheme } from '@/hooks/use-theme';
 import { setBy } from '@/lib/category-source';
+import { payerLabel } from '@/lib/herd';
 import { transactionName } from '@/lib/merchants';
 import {
   type Category,
   useCategories,
+  useHerd,
   useMerchantRules,
   useSetMerchantRule,
   useSetReviewed,
@@ -49,6 +51,7 @@ export default function TransactionScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: t, error } = useTransaction(id);
+  const { data: herd } = useHerd();
   const { data: categories = [] } = useCategories();
   const { data: rules = new Map() } = useMerchantRules();
   const chooseCategory = useCategoryChoice();
@@ -75,6 +78,7 @@ export default function TransactionScreen() {
   const merchantKey = t.merchant_key || null;
   const rule = merchantKey ? rules.get(merchantKey) : undefined;
   const category = t.category_id ? byId.get(t.category_id) : undefined;
+  const answerer = t.answered_by && herd ? payerLabel(t.answered_by, herd.members) : null;
   const failed = (err: Error) => dialog.alert('Could not save', err.message);
 
   const choose = (next: Category) => {
@@ -115,7 +119,12 @@ export default function TransactionScreen() {
               {t.category_is_manual ? ', but this one was set by hand' : ''}.
             </AppText>
           ) : null}
-          <Line label="Set by" value={setBy(t.category_source)} dim />
+          <Line label="Set by" value={setBy(t.category_source, answerer)} dim />
+          {answerer && t.category_source !== 'manual' ? (
+            <AppText variant="caption" tone="dim" style={{ paddingBottom: Spacing.sm }}>
+              {answerer} answered
+            </AppText>
+          ) : null}
           <Line label="Memo" value={t.notes ?? 'Add a memo'} dim={!t.notes} onPress={() => setNoting(true)} />
           <WhoPaid transaction={t} />
           <AskButton transactionId={t.id} />

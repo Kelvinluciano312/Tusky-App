@@ -5,7 +5,7 @@
  * - `sandbox`: the dev Supabase project, with Plaid Sandbox.
  * - `real`: the production project (Ouroboros), with real banks.
  *
- * Dev builds choose in Settings. Release (Play) builds are always real data
+ * Dev builds choose in Settings. Release builds are always real data
  * once the production project is configured.
  */
 
@@ -30,8 +30,8 @@ export function backendLabel(backend: Backend): string {
 }
 
 /**
- * RevenueCat's public key for this launch: one per store and per backend. Empty
- * means purchases are off, and the paywall says plans are coming soon.
+ * RevenueCat's public key for this launch: one per store and per backend.
+ * Empty means purchases are off, and the paywall says plans are coming soon.
  */
 export function pickRevenueCatKey(i: {
   backend: Backend;

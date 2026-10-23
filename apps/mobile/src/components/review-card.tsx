@@ -12,15 +12,17 @@ import { RenameSheet } from '@/components/rename-sheet';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
 import { CategoryIcon } from '@/components/ui/category-icon';
-import { QuestionBanner } from '@/components/questions';
+import { AskButton, QuestionBanner } from '@/components/questions';
 import { WhoPaid } from '@/components/who-paid';
 import { Radius, Spacing } from '@/constants/theme';
 import { useCategoryChoice } from '@/hooks/use-category-choice';
 import { useTheme } from '@/hooks/use-theme';
-import { guessHint } from '@/lib/category-source';
+import { sourceLine } from '@/lib/category-source';
+import { payerLabel } from '@/lib/herd';
 import { transactionName } from '@/lib/merchants';
 import {
   useCategories,
+  useHerd,
   useMerchantRules,
   useSetMerchantRule,
   useSetTransactionNotes,
@@ -42,9 +44,10 @@ function tint(hex: string, alpha: number): string {
  * fixes a review usually needs, all on the card: its category (the big chip),
  * the merchant's name, a memo, and who paid. The deck owns the swiping.
  */
-export function ReviewCard({ id }: { id: string }) {
+export function ReviewCard({ id, onAsked }: { id: string; onAsked?: () => void }) {
   const colors = useTheme();
   const { data: t } = useTransaction(id);
+  const { data: herd } = useHerd();
   const { data: categories = [] } = useCategories();
   const { data: rules = new Map() } = useMerchantRules();
   const chooseCategory = useCategoryChoice();
@@ -59,6 +62,7 @@ export function ReviewCard({ id }: { id: string }) {
   if (!t) return <View style={{ height: 420 }} />;
 
   const name = transactionName(t, rules);
+  const answerer = t.answered_by && herd ? payerLabel(t.answered_by, herd.members) : null;
   const original = t.merchant_name ?? t.name;
   const merchantKey = t.merchant_key || null;
   const rule = merchantKey ? rules.get(merchantKey) : undefined;
@@ -149,9 +153,12 @@ export function ReviewCard({ id }: { id: string }) {
           <AppText variant="label">{category?.name ?? 'Uncategorized'}</AppText>
           <ChevronDown size={16} color={colors.textDim} strokeWidth={2} />
         </Pressable>
-        {guessHint(t.category_source) ? (
+        <AppText variant="caption" tone="dim" style={{ textAlign: 'center' }}>
+          {sourceLine(t.category_source, answerer)}
+        </AppText>
+        {answerer && t.category_source !== 'manual' ? (
           <AppText variant="caption" tone="dim" style={{ textAlign: 'center' }}>
-            Tusky guessed this {guessHint(t.category_source)}
+            {answerer} answered
           </AppText>
         ) : null}
         {t.review_priority === 2 ? (
@@ -167,6 +174,7 @@ export function ReviewCard({ id }: { id: string }) {
 
         <DetailLine label="Memo" value={t.notes ?? 'Add a memo'} dim={!t.notes} onPress={() => setNoting(true)} />
         <WhoPaid transaction={t} />
+        <AskButton transactionId={t.id} onAsked={onAsked} />
       </View>
 
       <CategoryPicker

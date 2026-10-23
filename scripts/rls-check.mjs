@@ -369,6 +369,8 @@ begin
       insert into public.transaction_questions (transaction_id, asked_to, body) values (own_tx, mate, 'What was this?');
       w := w || jsonb_build_object('ask_mate_requeues',
         (select reviewed_at is null or pending from public.transactions where id = own_tx));
+      w := w || jsonb_build_object('ask_assigns_mate',
+        (select review_assignee = mate or pending from public.transactions where id = own_tx));
       -- The mate asks me; my memo answers it. (Inserted as the admin: the mate is not the caller.)
       reset role;
       insert into public.transaction_questions (herd_id, transaction_id, asked_by, asked_to)
@@ -378,6 +380,10 @@ begin
       update public.transactions set notes = 'RLS answer' where id = own_tx;
       w := w || jsonb_build_object('memo_answers_question',
         not exists (select 1 from public.transaction_questions where transaction_id = own_tx and asked_to = u and resolved_at is null));
+      w := w || jsonb_build_object('answer_reviews_for_herd',
+        (select reviewed_at is not null or pending from public.transactions where id = own_tx));
+      w := w || jsonb_build_object('answer_records_who',
+        (select answered_by = u or pending from public.transactions where id = own_tx));
     end if;
   end if;
   -- Terms (15c): accepting records one active row per user.
@@ -391,6 +397,18 @@ begin
       w := w || jsonb_build_object('update_category_source', 'allowed');
     exception when insufficient_privilege then
       w := w || jsonb_build_object('update_category_source', 'denied');
+    end;
+    begin
+      update public.transactions set review_assignee = u where id = own_tx;
+      w := w || jsonb_build_object('update_review_assignee', 'allowed');
+    exception when insufficient_privilege then
+      w := w || jsonb_build_object('update_review_assignee', 'denied');
+    end;
+    begin
+      update public.transactions set answered_by = u where id = own_tx;
+      w := w || jsonb_build_object('update_answered_by', 'allowed');
+    exception when insufficient_privilege then
+      w := w || jsonb_build_object('update_answered_by', 'denied');
     end;
   end if;
   -- A hand-picked category is stamped manual, and remembers which source it corrected.
@@ -712,7 +730,12 @@ const WRITE_EXPECT = {
   ask_self: 'denied',
   ask_outsider: 'denied',
   ask_mate_requeues: true,
+  ask_assigns_mate: true,
   memo_answers_question: true,
+  answer_reviews_for_herd: true,
+  answer_records_who: true,
+  update_review_assignee: 'denied',
+  update_answered_by: 'denied',
   terms_recorded: true,
   update_category_source: 'denied',
   correction_recorded: true,

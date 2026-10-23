@@ -6,7 +6,7 @@ import { readFunctionError } from '@/lib/functions';
 import type { MerchantRule, MerchantRules } from '@/lib/merchants';
 import { herdPayer, type PlanDetail, type PlanLimits } from '@/lib/paywall';
 import type { PresetLine } from '@/lib/presets';
-import { orderQueue } from '@/lib/review';
+import { orderQueue, reviewQueueFilter } from '@/lib/review';
 import type { SharedLine } from '@/lib/settle';
 import { supabase } from '@/lib/supabase';
 
@@ -244,6 +244,10 @@ export type Transaction = {
   split: Record<string, number> | null;
   /** When it left the review queue (Phase 8); null = waiting. Pending rows are never queued. */
   reviewed_at: string | null;
+  /** Herd member an open ask was sent to. Null = the shared unreviewed queue. */
+  review_assignee: string | null;
+  /** Herd member who answered an ask. Null when nobody has. */
+  answered_by: string | null;
   /** Jev's review triage (12d): 0 routine, 1 worth a glance, 2 likely needs a fix. Null = not judged. */
   review_priority: number | null;
   /** Jev thinks this looks shared (12d, shared herds only). A hint: never a split. */
@@ -254,7 +258,7 @@ const PAGE_SIZE = 50;
 type PageCursor = { date: string; id: string } | null;
 
 const TRANSACTION_COLUMNS =
-  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, category_source, notes, paid_by, paid_by_is_manual, split, reviewed_at, review_priority, split_suggested';
+  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, category_source, notes, paid_by, paid_by_is_manual, split, reviewed_at, review_assignee, answered_by, review_priority, split_suggested';
 
 /**
  * Keyset pagination on (date, id), NOT offset. Sync inserts rows while the user
@@ -768,20 +772,30 @@ export function useTransaction(id: string) {
   });
 }
 
-// The review queue (Phase 8): unreviewed, posted rows on shown accounts. Pending
-// rows post under a new id, so they wait. Both queries below use this filter.
+// The review queue (Phase 8): unreviewed, posted rows on shown accounts, plus a
+// row someone asked me about (review_assignee). Pending rows post under a new
+// id, so they wait. An open ask is not in anyone else's queue.
 
-/** How many transactions wait for review. Under ['transactions'], so syncs and edits refresh it. */
+async function reviewQueueUserId(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.user.id ?? null;
+}
+
+/** How many transactions wait for my review. Under ['transactions'], so syncs and edits refresh it. */
 export function useReviewCount() {
   return useQuery({
     queryKey: ['transactions', 'review-count'],
     queryFn: async (): Promise<number> => {
-      const { count, error } = await supabase
+      const me = await reviewQueueUserId();
+      let query = supabase
         .from('transactions')
         .select('id, accounts!inner(hidden)', { count: 'exact', head: true })
-        .is('reviewed_at', null)
         .eq('pending', false)
         .eq('accounts.hidden', false);
+      query = me
+        ? query.or(reviewQueueFilter(me))
+        : query.is('reviewed_at', null).is('review_assignee', null);
+      const { count, error } = await query;
       if (error) throw error;
       return count ?? 0;
     },
@@ -802,19 +816,22 @@ export function useReviewQueue() {
     staleTime: Infinity,
     gcTime: 0,
     queryFn: async (): Promise<string[]> => {
-      const { data, error } = await supabase
+      const me = await reviewQueueUserId();
+      let query = supabase
         .from('transactions')
         .select('id, review_priority, accounts!inner(hidden)')
-        .is('reviewed_at', null)
         .eq('pending', false)
         .eq('accounts.hidden', false)
         .order('date', { ascending: true })
         .order('id', { ascending: true })
         .limit(REVIEW_BATCH);
+      query = me
+        ? query.or(reviewQueueFilter(me))
+        : query.is('reviewed_at', null).is('review_assignee', null);
+      const { data, error } = await query;
       if (error) throw error;
       // Rows a herd mate asked me about come first (15d), even outside the batch.
-      const { data: auth } = await supabase.auth.getSession();
-      const me = auth.session?.user.id;
+      // The filter above already drops asks meant for someone else.
       const asked = me
         ? await supabase
             .from('transaction_questions')
@@ -834,8 +851,8 @@ export function useReviewQueue() {
 
 // Questions (Phase 15d): one herd mate asks another what a transaction was.
 // Under ['transactions'], so every edit that might answer one refreshes them
-// (the database resolves a question when its addressee tags, splits, writes
-// the memo or reviews the row).
+// (the database resolves a question when its addressee changes the category,
+// tags who spent it, splits, writes the memo, or reviews the row).
 
 export type Question = {
   id: string;
@@ -882,6 +899,24 @@ export function useMyQuestions(userId: string | undefined) {
   });
 }
 
+/** Open questions I asked someone else, oldest first. */
+export function useQuestionsIAsked(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['transactions', 'questions', 'asked', userId],
+    enabled: !!userId,
+    queryFn: async (): Promise<Question[]> => {
+      const { data, error } = await supabase
+        .from('transaction_questions')
+        .select('id, transaction_id, asked_by, asked_to, body, created_at')
+        .eq('asked_by', userId!)
+        .is('resolved_at', null)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data as Question[];
+    },
+  });
+}
+
 export function useAskQuestion() {
   const queryClient = useQueryClient();
 
@@ -908,7 +943,8 @@ export function useDismissQuestion() {
         : await supabase.from('transaction_questions').update({ resolved_at: new Date().toISOString() }).eq('id', id);
       if (error) throw error;
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['transactions', 'questions'] }),
+    // Taking an ask back, or dismissing it, returns the row to the shared queue.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['transactions'] }),
   });
 }
 
@@ -969,8 +1005,12 @@ export function useSetTransactionNotes() {
     onError: (_err, { transactionId }, context) => {
       if (context?.previous) queryClient.setQueryData(['transactions', 'detail', transactionId], context.previous);
     },
-    onSettled: (_data, _err, { transactionId }) =>
-      queryClient.invalidateQueries({ queryKey: ['transactions', 'detail', transactionId] }),
+    // A memo can answer an ask, which reviews the row for the herd.
+    onSettled: (_data, _err, { transactionId }) => {
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'detail', transactionId] });
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'questions'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'review-count'] });
+    },
   });
 }
 
