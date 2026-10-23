@@ -1,6 +1,6 @@
 import { Bell, ChartPie, Landmark, ListChecks, Users } from 'lucide-react-native';
 import { type ReactNode, useState } from 'react';
-import { KeyboardAvoidingView, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,6 +9,7 @@ import { AiSwitch, CrowdSwitch } from '@/components/privacy-switches';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { KeyboardScreen } from '@/components/ui/keyboard-screen';
 import { TextField } from '@/components/ui/text-field';
 import { Layout, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -56,7 +57,7 @@ export default function OnboardingScreen() {
   const back = previousStep(step);
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior="padding">
+    <KeyboardScreen style={{ backgroundColor: colors.bg }}>
       <ScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
@@ -81,7 +82,7 @@ export default function OnboardingScreen() {
         ) : null}
         {back ? <Button title="Back" variant="ghost" onPress={() => setStep(back)} /> : null}
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }
 

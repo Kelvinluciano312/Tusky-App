@@ -1,15 +1,25 @@
 import { type ReactNode, useEffect, useState } from 'react';
-import { Animated, Easing, KeyboardAvoidingView, Modal, Pressable, StyleSheet, type ViewStyle } from 'react-native';
+import { Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, useWindowDimensions, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Layout, Radius, Spacing } from '@/constants/theme';
+import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
 import { useTheme } from '@/hooks/use-theme';
+import {
+  SHEET_KEYBOARD_PERSIST_TAPS,
+  sheetKeyboardFrame,
+  sheetLiftStyle,
+  sheetListStyle,
+} from '@/lib/sheet-keyboard';
 
 type SheetProps = {
   visible: boolean;
   onClose: () => void;
-  /** Shifts the sheet above the keyboard on Android — a Modal is its own
-      window, so the activity's resize-for-keyboard never reaches it. */
+  /**
+   * Lift the sheet above the keyboard. On by default: a Modal does not resize
+   * for the keyboard on edge-to-edge Android, and a content-sized sheet would
+   * collapse under it.
+   */
   avoidKeyboard?: boolean;
   style?: ViewStyle;
   children: ReactNode;
@@ -26,10 +36,16 @@ const OFFSCREEN = 600;
  * moving the dim and the panel together as one block (which reads as the
  * darkening itself sliding in). The sheet stays mounted through the close
  * animation — `visible` on the Modal flips off only once it finishes.
+ *
+ * The panel's bottom edge tracks the keyboard (`sheetKeyboardFrame`), and its
+ * height is capped to the band above it, so a short list sits on the keyboard
+ * and a long one scrolls.
  */
-export function Sheet({ visible, onClose, avoidKeyboard, style, children }: SheetProps) {
+export function Sheet({ visible, onClose, avoidKeyboard = true, style, children }: SheetProps) {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const keyboardHeight = useKeyboardHeight();
   // A plain module-level Animated.Value would be shared across every Sheet
   // instance; useState's lazy initializer keeps it stable per-instance
   // without the render-time ref access `useRef().current` would need.
@@ -71,11 +87,17 @@ export function Sheet({ visible, onClose, avoidKeyboard, style, children }: Shee
 
   if (!mounted) return null;
 
+  const frame = sheetKeyboardFrame({
+    windowHeight,
+    keyboardHeight: avoidKeyboard ? keyboardHeight : 0,
+    topInset: insets.top,
+    bottomInset: insets.bottom,
+    gap: Spacing.md,
+  });
+
   return (
     <Modal visible transparent animationType="none" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={{ flex: 1, justifyContent: 'flex-end' }}
-        behavior={avoidKeyboard ? 'padding' : undefined}>
+      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)', opacity: progress }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         </Animated.View>
@@ -87,16 +109,38 @@ export function Sheet({ visible, onClose, avoidKeyboard, style, children }: Shee
               backgroundColor: colors.surface,
               borderTopLeftRadius: Radius.xl,
               borderTopRightRadius: Radius.xl,
-              paddingBottom: insets.bottom + Spacing.md,
+              paddingBottom: frame.paddingBottom,
+              overflow: 'hidden',
               transform: [
                 { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [OFFSCREEN, 0] }) },
               ],
             },
             style,
+            sheetLiftStyle(frame),
           ]}>
           {children}
         </Animated.View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
+  );
+}
+
+/** A scrolling sheet body. A short list stays short; a long one scrolls above the keyboard. */
+export function SheetScroll({
+  children,
+  style,
+  contentContainerStyle,
+}: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  contentContainerStyle?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <ScrollView
+      style={[sheetListStyle, style]}
+      contentContainerStyle={contentContainerStyle}
+      keyboardShouldPersistTaps={SHEET_KEYBOARD_PERSIST_TAPS}>
+      {children}
+    </ScrollView>
   );
 }

@@ -9,6 +9,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { TextField } from '@/components/ui/text-field';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { SHEET_KEYBOARD_PERSIST_TAPS, sheetListStyle } from '@/lib/sheet-keyboard';
 import { type Direction, type Filters, NO_FILTERS, parseAmount, type SpentBy } from '@/lib/transaction-filters';
 
 export type TransactionSort = 'newest' | 'oldest' | 'expensive' | 'cheap';
@@ -57,7 +58,10 @@ export function TransactionFilterSheet({
 
   return (
     <Sheet visible={visible} onClose={onClose} avoidKeyboard style={{ maxHeight: '88%', paddingTop: Spacing.lg }}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: Spacing.md, gap: Spacing.lg, paddingBottom: Spacing.md }}>
+      <ScrollView
+        style={sheetListStyle}
+        keyboardShouldPersistTaps={SHEET_KEYBOARD_PERSIST_TAPS}
+        contentContainerStyle={{ paddingHorizontal: Spacing.md, gap: Spacing.lg, paddingBottom: Spacing.md }}>
         <AppText variant="title">Filter and sort</AppText>
 
         <Section title="Sort">

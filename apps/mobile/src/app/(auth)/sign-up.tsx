@@ -1,12 +1,13 @@
 import { Link, router } from 'expo-router';
 import { Check, LockKeyhole } from 'lucide-react-native';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Linking, Pressable, ScrollView, View } from 'react-native';
+import { Linking, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PasswordChecklist } from '@/components/password-checklist';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
+import { KeyboardScreen } from '@/components/ui/keyboard-screen';
 import { TextField } from '@/components/ui/text-field';
 import { PRIVACY_URL, TERMS_URL, TERMS_VERSION } from '@/constants/legal';
 import { Layout, Radius, Spacing, Type } from '@/constants/theme';
@@ -53,7 +54,7 @@ export default function SignUpScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior="padding">
+    <KeyboardScreen style={{ backgroundColor: colors.bg }}>
       <ScrollView
         contentContainerStyle={{
           ...Layout.column,
@@ -188,6 +189,6 @@ export default function SignUpScreen() {
           </View>
         )}
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }

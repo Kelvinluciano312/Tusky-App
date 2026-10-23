@@ -1,11 +1,12 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CodeEntry } from '@/components/code-entry';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
+import { KeyboardScreen } from '@/components/ui/keyboard-screen';
 import { TextField } from '@/components/ui/text-field';
 import { Layout, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -42,7 +43,7 @@ export default function ForgotPasswordScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior="padding">
+    <KeyboardScreen style={{ backgroundColor: colors.bg }}>
       <ScrollView
         contentContainerStyle={{
           ...Layout.column,
@@ -110,6 +111,6 @@ export default function ForgotPasswordScreen() {
           </View>
         )}
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }

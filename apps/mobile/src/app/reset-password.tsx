@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PasswordChecklist } from '@/components/password-checklist';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { dialog } from '@/components/ui/dialog';
+import { KeyboardScreen } from '@/components/ui/keyboard-screen';
 import { TextField } from '@/components/ui/text-field';
 import { Layout, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -62,7 +63,7 @@ export default function ResetPasswordScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior="padding">
+    <KeyboardScreen style={{ backgroundColor: colors.bg }}>
       <ScrollView
         contentContainerStyle={{
           ...Layout.column,
@@ -126,6 +127,6 @@ export default function ResetPasswordScreen() {
           </View>
         )}
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }

@@ -20,6 +20,7 @@ import {
   typicalByLine,
 } from '@/lib/presets';
 import { useCategories, useMonthlyTotals } from '@/lib/queries';
+import { SHEET_KEYBOARD_PERSIST_TAPS, sheetListStyle } from '@/lib/sheet-keyboard';
 
 type Props = {
   visible: boolean;
@@ -83,7 +84,10 @@ export function PresetSheet({ visible, onApply, onClose, isSaving }: Props) {
           <Button title="Close" variant="secondary" onPress={onClose} />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={{ gap: Spacing.md, paddingBottom: Spacing.md }}>
+        <ScrollView
+          style={sheetListStyle}
+          keyboardShouldPersistTaps={SHEET_KEYBOARD_PERSIST_TAPS}
+          contentContainerStyle={{ gap: Spacing.md, paddingBottom: Spacing.md }}>
           <View style={{ gap: Spacing.xs }}>
             <TextField
               label="Monthly income"

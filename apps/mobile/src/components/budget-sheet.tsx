@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { CategoryIcon } from '@/components/ui/category-icon';
-import { Sheet } from '@/components/ui/sheet';
+import { Sheet, SheetScroll } from '@/components/ui/sheet';
 import { TextField } from '@/components/ui/text-field';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -36,7 +36,8 @@ export function BudgetSheet({ category, budget, onSave, onRemove, onClose, isSav
       visible={category !== null}
       onClose={onClose}
       avoidKeyboard
-      style={{ paddingTop: Spacing.lg, paddingHorizontal: Spacing.md, gap: Spacing.md }}>
+      style={{ paddingTop: Spacing.lg, paddingHorizontal: Spacing.md }}>
+      <SheetScroll contentContainerStyle={{ gap: Spacing.md }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm + 2 }}>
         <View
           style={{
@@ -68,6 +69,7 @@ export function BudgetSheet({ category, budget, onSave, onRemove, onClose, isSav
       <Button title="Save budget" disabled={!valid} loading={isSaving} onPress={() => onSave(parsed)} />
 
       {budget ? <Button title="Remove budget" variant="ghost" onPress={() => onRemove(budget.id)} /> : null}
+      </SheetScroll>
     </Sheet>
   );
 }

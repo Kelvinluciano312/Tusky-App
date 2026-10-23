@@ -1,11 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CodeEntry } from '@/components/code-entry';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
+import { KeyboardScreen } from '@/components/ui/keyboard-screen';
 import { Layout, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { FirstRunState } from '@/lib/first-run';
@@ -99,7 +100,7 @@ export default function VerifyScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior="padding">
+    <KeyboardScreen style={{ backgroundColor: colors.bg }}>
       <ScrollView
         contentContainerStyle={{
           ...Layout.column,
@@ -118,6 +119,6 @@ export default function VerifyScreen() {
         <CodeEntry sentAt={sentAt} sendError={sendError} onSubmit={submit} onResend={() => void resend()} />
         <Button title="Sign out" variant="secondary" onPress={() => void signOut()} />
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }

@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { ArrowLeftRight, Search, SlidersHorizontal, X } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, SectionList, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, SectionList, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CategoryPicker } from '@/components/category-picker';
@@ -13,10 +13,12 @@ import { Button } from '@/components/ui/button';
 import { Column } from '@/components/ui/column';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Layout, Radius, Spacing, Type } from '@/constants/theme';
+import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
 import { useTheme } from '@/hooks/use-theme';
 import { groupIdOf } from '@/lib/categories';
 import { isShared, payerLabel } from '@/lib/herd';
 import { transactionName } from '@/lib/merchants';
+import { screenKeyboardPadding, SHEET_KEYBOARD_PERSIST_TAPS } from '@/lib/sheet-keyboard';
 import { useSyncTransactions } from '@/lib/plaid';
 import { type Transaction, useAccounts, useCategories, useHerd, useMerchantRules, useTransactions } from '@/lib/queries';
 import {
@@ -66,6 +68,7 @@ type Open = null | 'filters' | 'category' | 'merchant';
 export default function TransactionsScreen() {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
+  const keyboardPad = screenKeyboardPadding(useKeyboardHeight(), insets.bottom, Spacing.md, Platform.OS);
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, error: fetchError } = useTransactions();
   const { data: categories = [] } = useCategories();
   const { data: rules = new Map() } = useMerchantRules();
@@ -158,7 +161,7 @@ export default function TransactionsScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top, paddingBottom: keyboardPad }}>
       {/* Title, search and filters share the feed's centred column on a tablet. */}
       <Column>
       <AppText variant="display" style={{ paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm }}>
@@ -226,11 +229,13 @@ export default function TransactionsScreen() {
       </Column>
 
       <SectionList
+        style={{ flex: 1 }}
         sections={sections}
         keyExtractor={(item) => item.id}
         stickySectionHeadersEnabled={false}
         // flexGrow so the empty state centres; the list must always render so
         // RefreshControl exists — otherwise there is no way to run a first sync.
+        keyboardShouldPersistTaps={SHEET_KEYBOARD_PERSIST_TAPS}
         contentContainerStyle={sorted.length === 0 ? { ...Layout.column, flexGrow: 1 } : Layout.column}
         ListEmptyComponent={
           isLoading || isLoadingAll ? null : allLoaded.length === 0 ? (

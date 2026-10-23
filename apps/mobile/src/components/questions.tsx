@@ -1,14 +1,14 @@
 import { MessageCircleQuestion } from 'lucide-react-native';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { dialog } from '@/components/ui/dialog';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Chips } from '@/components/ui/chips';
+import { Sheet, SheetScroll } from '@/components/ui/sheet';
 import { TextField } from '@/components/ui/text-field';
-import { Layout, Radius, Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { isShared, payerLabel } from '@/lib/herd';
 import { useAskQuestion, useDismissQuestion, useHerd, useTransactionQuestions } from '@/lib/queries';
@@ -122,8 +122,6 @@ function AskSheet({
   onClose: () => void;
   onAsked?: () => void;
 }) {
-  const colors = useTheme();
-  const insets = useSafeAreaInsets();
   const { session } = useSession();
   const me = session?.user.id;
   const { data: herd } = useHerd();
@@ -134,24 +132,9 @@ function AskSheet({
   if (!herd) return null;
 
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      {/* Padding on Android too: a Modal is its own window. */}
-      <KeyboardAvoidingView
-        style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}
-        behavior="padding">
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View
-          style={{
-            ...Layout.sheet,
-            backgroundColor: colors.surface,
-            borderTopLeftRadius: Radius.xl,
-            borderTopRightRadius: Radius.xl,
-            paddingTop: Spacing.lg,
-            paddingHorizontal: Spacing.md,
-            paddingBottom: insets.bottom + Spacing.md,
-            gap: Spacing.md,
-          }}>
-          <AppText variant="title">Ask about this</AppText>
+    <Sheet visible onClose={onClose} style={{ paddingTop: Spacing.lg, paddingHorizontal: Spacing.md }}>
+      <SheetScroll contentContainerStyle={{ gap: Spacing.md }}>
+        <AppText variant="title">Ask about this</AppText>
           {others.length > 1 ? (
             <Chips<string | null>
               accessibilityLabel="Who to ask"
@@ -189,8 +172,7 @@ function AskSheet({
               )
             }
           />
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+      </SheetScroll>
+    </Sheet>
   );
 }

@@ -10,7 +10,7 @@ import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Sheet } from '@/components/ui/sheet';
+import { Sheet, SheetScroll } from '@/components/ui/sheet';
 import { TextField } from '@/components/ui/text-field';
 import { Layout, Spacing } from '@/constants/theme';
 import { transferLabel, useSettleUp } from '@/hooks/use-settle-up';
@@ -234,7 +234,8 @@ function RecordPaymentSheet({
       visible
       onClose={onClose}
       avoidKeyboard
-      style={{ paddingTop: Spacing.lg, paddingHorizontal: Spacing.md, gap: Spacing.md }}>
+      style={{ paddingTop: Spacing.lg, paddingHorizontal: Spacing.md }}>
+      <SheetScroll contentContainerStyle={{ gap: Spacing.md }}>
       <AppText variant="title">{title}</AppText>
       <TextField label="Amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" autoFocus />
       <TextField label="Note (optional)" value={note} onChangeText={setNote} placeholder="Venmo, dinner week" maxLength={200} />
@@ -244,6 +245,7 @@ function RecordPaymentSheet({
         loading={saving}
         onPress={() => onSave(Math.round(parsed * 100) / 100, note.trim() || null)}
       />
+      </SheetScroll>
     </Sheet>
   );
 }

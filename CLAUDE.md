@@ -456,9 +456,15 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
 - **`Sheet` (`components/ui/sheet.tsx`) runs its close animation only when mounted.** A no-op
   `setMounted(false)` on a closed sheet made React drop the render-phase `setMounted(true)` on the
   next open, and no Sheet-based picker ever appeared. Keep the `else if (mounted)`.
-- **Bottom sheets need `KeyboardAvoidingView behavior="padding"` on Android too.** A `Modal` is its own
-  window: the activity's resize for the keyboard never reaches it, and a text field there has the whole
-  sheet covered by the keyboard (`budget-sheet.tsx` and `category-sheet.tsx` are the reference).
+- **Bottom sheets track the keyboard themselves.** `Sheet` (`components/ui/sheet.tsx`) lifts by the
+  keyboard height and caps its height to the band above it (`lib/sheet-keyboard.ts`), on Android and
+  iOS. Edge-to-edge (SDK 57, and Android 16 regardless of `app.json`) does not resize the window, and
+  a `Modal` is its own window, so `softwareKeyboardLayoutMode` cannot do this. A content-sized sheet
+  would otherwise collapse under the keyboard — the category picker's short search results did.
+  Lists inside a sheet use `sheetListStyle` and `keyboardShouldPersistTaps="handled"` (`SheetScroll`).
+  Do not add a second `KeyboardAvoidingView` around `Sheet`. Full screens that are not modals
+  (sign-in, sign-up, and the other auth screens, plus the invite-code screen) use `KeyboardScreen`,
+  which pads by the same keyboard height.
 - **App pure logic is tested with `npm test`** (`node --test src/lib/*.test.ts`; Node strips the types).
   A module under test may import other modules only as `import type`, or at runtime by relative
   `./x.ts` path (`allowImportingTsExtensions` is on). A `@/` alias or a React Native import breaks

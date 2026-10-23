@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
+import { KeyboardScreen } from '@/components/ui/keyboard-screen';
 import { TextField } from '@/components/ui/text-field';
 import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -18,26 +19,33 @@ export default function JoinScreen() {
   const code = normalizeCode(value);
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.bg }}
-      keyboardShouldPersistTaps="handled"
-      contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
-      <AppText tone="dim">Enter the code from your invite. It looks like ABCD-1234.</AppText>
-      <TextField
-        label="Invite code"
-        value={value}
-        onChangeText={setValue}
-        autoCapitalize="characters"
-        autoCorrect={false}
-        autoComplete="off"
-        importantForAutofill="no"
-        autoFocus
-      />
-      <Button
-        title="Continue"
-        disabled={!code}
-        onPress={() => code && router.replace({ pathname: '/join/[code]', params: { code } })}
-      />
-    </ScrollView>
+    <KeyboardScreen style={{ backgroundColor: colors.bg }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{
+          ...Layout.column,
+          padding: Spacing.md,
+          paddingBottom: insets.bottom + Spacing.xl,
+          gap: Spacing.md,
+        }}>
+        <AppText tone="dim">Enter the code from your invite. It looks like ABCD-1234.</AppText>
+        <TextField
+          label="Invite code"
+          value={value}
+          onChangeText={setValue}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          autoComplete="off"
+          importantForAutofill="no"
+          autoFocus
+        />
+        <Button
+          title="Continue"
+          disabled={!code}
+          onPress={() => code && router.replace({ pathname: '/join/[code]', params: { code } })}
+        />
+      </ScrollView>
+    </KeyboardScreen>
   );
 }
