@@ -180,11 +180,7 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     - The math is `lib/settle.ts`, kept in whole cents per purchase so the balance squares exactly.
     - Anything that can move a balance must invalidate `['settle']`: payer, split, owner, hidden, private,
       category.
-  - **Questions (15d).** `transaction_questions`: one member asks another what a row was. Asking requeues
-    the row (`reviewed_at` null), and `orderQueue` puts my open questions first, even outside the batch.
-    The database answers a question (`af_transactions_answer_questions`) when its addressee changes who
-    spent it, the split or the memo, or reviews the row. In-app only; push notifications come later.
-    Question queries live under `['transactions', 'questions']`.
+  - **Questions (15d; one queue since the ask-assignee migration).** `transaction_questions`: one member asks another what a row was. Asking sets `transactions.review_assignee` to that member and clears `reviewed_at`, so only their review queue includes the row (a newer ask closes the older one). `orderQueue` still puts my open questions first, even outside the batch. The database answers a question (`af_transactions_answer_questions`) when its addressee changes the category, who spent it, the split or the memo, or reviews the row: that sets `answered_by`, marks the row reviewed for the herd, and clears the assignee. Dismissing or taking the ask back clears the assignee and returns the row to the shared queue. Undo by the person who answered reopens their ask. In-app only; push notifications come later. Question queries live under `['transactions', 'questions']`.
   - **The app hides connector-only actions**: reconnect, disconnect, the Private switch and the sandbox
     tools show only when `item.user_id` is the signed-in user.
   - **`node scripts/rls-check.mjs`** proves every member sees exactly their herd minus others' private
