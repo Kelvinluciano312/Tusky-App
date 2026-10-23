@@ -43,9 +43,9 @@ apps/mobile/ios/
 supabase/.temp/
 supabase/.branches/
 
-# Graphify generated knowledge graph. Rebuild locally with `graphify .`.
-# A snapshot was committed in #51; it is no longer tracked.
-/graphify-out/
+# The Graphify graph in graphify-out/ is tracked. Machine-local files
+# (cache, scan root, cost log, dated backups) are ignored by
+# graphify-out/.gitignore.
 
 # fablize multi-story ledger (local agent state)
 /.fablize/
