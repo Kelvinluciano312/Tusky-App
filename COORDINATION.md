@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | Push notifications: tokens, prefs, onboarding choice, and all 12 types | `pedro/push-notifications`, [#59](https://github.com/Kelvinluciano312/Tusky-App/issues/59) | `apps/mobile` notifications, onboarding, Settings, Home; `supabase/functions/send-push`, `notifications-cron`, `_shared/notify.ts`; migration `20261023140000_push_notifications.sql` |
+| Pedro | Push notifications: tokens, prefs, onboarding choice, and all 12 types. Also Play internal submissions release as completed. | `pedro/push-notifications`, [#61](https://github.com/Kelvinluciano312/Tusky-App/pull/61), [#59](https://github.com/Kelvinluciano312/Tusky-App/issues/59) | `apps/mobile` notifications, onboarding, Settings, Home, `eas.json`; `supabase/functions/send-push`, `notifications-cron`, `_shared/notify.ts`; migration `20261023140000_push_notifications.sql` |
