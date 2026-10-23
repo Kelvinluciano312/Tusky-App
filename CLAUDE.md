@@ -201,6 +201,14 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   drops that table's column grants, so re-issue them afterwards. Since 9a, functions `postgres`
   creates in `public` no longer get `EXECUTE` from PUBLIC; grant it per function when one is meant to
   be called.
+- **Data API grants (Supabase, from Oct 30 2026).** New tables, views, sequences and functions in `public`
+  get no Data API access automatically, including `service_role`. Every migration that creates one must
+  grant explicitly in the same migration: `grant select, insert, update, delete on public.<table> to service_role;`
+  (Edge Functions) plus `grant usage, select on sequence ... to service_role`; only what the app needs to
+  `authenticated`, column-level where some columns are server-owned; RPCs: `revoke all on function ... from public, anon;`
+  then `grant execute ... to authenticated` or `service_role`. Never grant to `anon` (no pre-auth Data API reads).
+  Always enable RLS and add policies. Don't add `alter default privileges`. PostgREST 42501 'permission denied'
+  means a missing grant. `20261023160000_explicit_data_api_grants.sql` lists current grants.
 - **Disconnecting a bank** (`plaid-disconnect-item`, logic in `_shared/connections.ts`) calls
   `/item/remove` FIRST, and changes local state only if that succeeds or returns `ITEM_NOT_FOUND`. The
   token is the only way to stop Plaid's billing, so it is never deleted after a transient error. "Keep
