@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { eventFor, nextOnOrAfter } from './calendar.ts';
+import { addToPhoneCalendar, eventFor, nextOnOrAfter } from './calendar.ts';
 
 const day = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -47,4 +47,42 @@ test('every two weeks is weekly with an interval of 2; deposits say so', () => {
   assert.equal(e.title, 'Acme payroll deposit');
   assert.deepEqual(e.recurrenceRule, { frequency: 'weekly', interval: 2 });
   assert.match(e.notes, /every 2 weeks/);
+});
+
+const draft = eventFor(
+  { name: 'RENT', direction: 'outflow', frequency: 'monthly', average_amount: 100, next_date: '2026-10-15' },
+  'Rent',
+  today,
+);
+
+test('adding an event asks for calendar access and then opens the editor', async () => {
+  const order: string[] = [];
+  const opened = await addToPhoneCalendar(draft, {
+    requestAccess: async () => {
+      order.push('request');
+      return true;
+    },
+    openEditor: async (event) => {
+      order.push('open');
+      return event.title;
+    },
+  });
+  assert.equal(opened, 'Rent bill');
+  assert.deepEqual(order, ['request', 'open']);
+});
+
+test('a denied calendar permission never opens the editor', async () => {
+  let opened = false;
+  await assert.rejects(
+    () =>
+      addToPhoneCalendar(draft, {
+        requestAccess: async () => false,
+        openEditor: async () => {
+          opened = true;
+          return undefined;
+        },
+      }),
+    /calendar access/i,
+  );
+  assert.equal(opened, false);
 });

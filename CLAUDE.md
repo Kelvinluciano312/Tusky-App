@@ -412,20 +412,22 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     (`passwordsMatch`). The hosted projects enforce length and `lower_upper_letters_digits_symbols` in
     the Auth dashboard (`config.toml` is only the local copy). Existing users keep signing in; the
     rule applies on their next change.
-- **Recurring → calendar** (15g). Tapping a recurring row offers "Add to calendar", which opens the
-  phone's own new-event screen through `createEventInCalendarAsync` from `expo-calendar/legacy`
-  (SDK 57 made the root export throw). It needs no calendar permission. Expo still auto-applies the
-  expo-calendar config plugin, which would write generic calendar and reminders purpose strings and
-  `READ_CALENDAR` / `WRITE_CALENDAR`. The plugin's `calendarPermission: false` deletes
-  `NSCalendarsUsageDescription` and `NSCalendarsFullAccessUsageDescription` during prebuild, which is
-  what App Store Connect rejects (ITMS-90683): the linked pod still references `EKEventStore`.
-  `ios.infoPlist` keeps an honest string for both keys, and the plugin must not set
-  `calendarPermission` to false. `remindersPermission: false` still omits the reminders strings.
-  `android.blockedPermissions` strips the two calendar permissions plus `READ_EXTERNAL_STORAGE` and
-  `WRITE_EXTERNAL_STORAGE` (template / image / file-system; the app never reads storage).
-  `expo-secure-store` is listed with `faceIDPermission: false`: the app does not use biometrics, and
-  the default Face ID string is vague enough for Apple to reject. `lib/calendar.ts` (`eventFor`)
-  builds the all-day repeating event. expo-calendar is native: dev clients need a rebuild.
+- **Recurring → calendar** (15g). Tapping a recurring row offers "Add to calendar".
+  `addToPhoneCalendar` (`lib/calendar.ts`) asks for calendar access, then
+  `createEventInCalendarAsync` from `expo-calendar/legacy` (SDK 57 made the root export throw)
+  opens the phone's own new-event screen. That request lives only in `app/recurring.tsx`, on the
+  tap. The expo-calendar plugin's `calendarPermission` is
+  "Tusky adds your recurring bills to your calendar when you ask it to." Setting it to `false`
+  deletes `NSCalendarsUsageDescription` and `NSCalendarsFullAccessUsageDescription` during prebuild,
+  which is the ITMS-90683 rejection: the linked pod still references `EKEventStore`.
+  `remindersPermission` is a short honest string. App code never uses reminders, but the same pod
+  references them, so Apple can require `NSRemindersUsageDescription` and
+  `NSRemindersFullAccessUsageDescription`. Android `READ_CALENDAR` and `WRITE_CALENDAR` stay in the
+  manifest (the plugin adds them). `android.blockedPermissions` still strips
+  `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` (template / image / file-system; the app
+  never reads storage). `expo-secure-store` is listed with `faceIDPermission: false`: the app does
+  not use biometrics, and the default Face ID string is vague enough for Apple to reject.
+  `eventFor` builds the all-day repeating event. expo-calendar is native: dev clients need a rebuild.
 - **Account & privacy** (`app/account.tsx`, 15f) holds sign-in, the AI and crowd switches
   (`components/privacy-switches.tsx`), legal links, and a quiet "Delete my account" at the bottom.
   Settings links to it in one row.

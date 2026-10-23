@@ -1,4 +1,4 @@
-import { createEventInCalendarAsync, Frequency } from 'expo-calendar/legacy';
+import { createEventInCalendarAsync, Frequency, requestCalendarPermissionsAsync } from 'expo-calendar/legacy';
 import { Repeat } from 'lucide-react-native';
 import { useMemo } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
@@ -11,7 +11,7 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { eventFor } from '@/lib/calendar';
+import { addToPhoneCalendar, eventFor } from '@/lib/calendar';
 import { streamName } from '@/lib/merchants';
 import {
   type RecurringStream,
@@ -38,18 +38,22 @@ export default function RecurringScreen() {
   const dismissed = streams.filter((s) => s.dismissed);
   const perMonth = bills.reduce((sum, s) => sum + monthlyEquivalent(s), 0);
 
-  // The phone's own "new event" screen (15g): no calendar permission, and the
-  // user picks the calendar (Google on Android, Apple's on iOS) and can edit it.
+  // The phone's own "new event" screen (15g). Permission is asked only on this
+  // tap, then the user picks the calendar and can edit the event before saving.
   const addToCalendar = async (s: RecurringStream) => {
     const name = streamName(s, rules);
     const draft = eventFor(s, name);
     try {
-      await createEventInCalendarAsync({
-        ...draft,
-        recurrenceRule: {
-          frequency: draft.recurrenceRule.frequency === 'monthly' ? Frequency.MONTHLY : Frequency.WEEKLY,
-          interval: draft.recurrenceRule.interval,
-        },
+      await addToPhoneCalendar(draft, {
+        requestAccess: async () => (await requestCalendarPermissionsAsync()).granted,
+        openEditor: (event) =>
+          createEventInCalendarAsync({
+            ...event,
+            recurrenceRule: {
+              frequency: event.recurrenceRule.frequency === 'monthly' ? Frequency.MONTHLY : Frequency.WEEKLY,
+              interval: event.recurrenceRule.interval,
+            },
+          }),
       });
     } catch (err) {
       dialog.alert('Could not open your calendar', err instanceof Error ? err.message : 'Try again in a moment.');

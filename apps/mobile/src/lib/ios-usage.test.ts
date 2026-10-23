@@ -1,6 +1,6 @@
 /// <reference types="node" />
-// The App Store scan looks at linked native code, not at which permission the
-// app requests. These assertions lock the Info.plist answer to that scan.
+// App Store Connect scans linked native code. These assertions lock the
+// purpose strings and the fact that calendar access is asked for in one place.
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -11,38 +11,42 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const app = JSON.parse(readFileSync(join(root, 'app.json'), 'utf8')) as {
   expo: {
     ios?: { infoPlist?: Record<string, string> };
+    android?: { blockedPermissions?: string[] };
     plugins: (string | [string, Record<string, unknown>])[];
   };
 };
 
-const CALENDAR_PURPOSE =
-  "Tusky doesn't access your calendar. This message is required because an included library references the calendar.";
+const CALENDAR_PURPOSE = 'Tusky adds your recurring bills to your calendar when you ask it to.';
+const REMINDERS_PURPOSE =
+  "Tusky doesn't use your reminders. This message is required because an included library references them.";
 
 function pluginOptions(name: string): Record<string, unknown> | undefined {
   const entry = app.expo.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === name);
   return Array.isArray(entry) ? entry[1] : undefined;
 }
 
-test('Info.plist states why the calendar purpose strings exist', () => {
-  const plist = app.expo.ios?.infoPlist;
-  assert.equal(plist?.NSCalendarsUsageDescription, CALENDAR_PURPOSE);
-  assert.equal(plist?.NSCalendarsFullAccessUsageDescription, CALENDAR_PURPOSE);
+test('calendarPermission is the add-to-calendar explanation', () => {
+  assert.equal(pluginOptions('expo-calendar')?.calendarPermission, CALENDAR_PURPOSE);
 });
 
-test('the calendar plugin keeps those strings and still omits reminders', () => {
-  const calendar = pluginOptions('expo-calendar');
-  assert.ok(calendar, 'expo-calendar plugin');
-  // false deletes the key during prebuild, even when ios.infoPlist sets it.
-  assert.notEqual(calendar.calendarPermission, false);
-  assert.equal(calendar.remindersPermission, false);
+test('remindersPermission is an honest library string', () => {
+  // App code never reads or writes reminders. The linked ExpoCalendar pod does,
+  // and that is what makes Apple require the key.
+  assert.equal(pluginOptions('expo-calendar')?.remindersPermission, REMINDERS_PURPOSE);
+});
+
+test('Android calendar permissions stay available for add-to-calendar', () => {
+  const blocked = app.expo.android?.blockedPermissions ?? [];
+  assert.equal(blocked.includes('android.permission.READ_CALENDAR'), false);
+  assert.equal(blocked.includes('android.permission.WRITE_CALENDAR'), false);
+  assert.equal(blocked.includes('android.permission.READ_EXTERNAL_STORAGE'), true);
+  assert.equal(blocked.includes('android.permission.WRITE_EXTERNAL_STORAGE'), true);
 });
 
 test('Face ID, photo, camera, and location purpose strings stay unset', () => {
   const plist = app.expo.ios?.infoPlist ?? {};
   for (const key of [
     'NSFaceIDUsageDescription',
-    'NSRemindersUsageDescription',
-    'NSRemindersFullAccessUsageDescription',
     'NSPhotoLibraryUsageDescription',
     'NSPhotoLibraryAddUsageDescription',
     'NSCameraUsageDescription',
@@ -63,14 +67,19 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-test('app code never asks for calendar, reminder, or Face ID permission', () => {
-  const banned = [
-    'requestCalendarPermissionsAsync',
-    'requestRemindersPermissionsAsync',
-    'requestCalendarPermissions(',
-    'requireAuthentication: true',
-    'canUseBiometricAuthentication',
-  ];
+test('calendar permission is requested only from the add-to-calendar screen', () => {
+  const callers = sourceFiles(join(root, 'src')).filter((file) => {
+    if (file.endsWith('.test.ts')) return false;
+    return readFileSync(file, 'utf8').includes('requestCalendarPermissionsAsync');
+  });
+  assert.deepEqual(
+    callers.map((file) => file.slice(root.length + 1)),
+    ['src/app/recurring.tsx'],
+  );
+});
+
+test('app code never asks for reminders or Face ID', () => {
+  const banned = ['requestRemindersPermissionsAsync', 'requireAuthentication: true', 'canUseBiometricAuthentication'];
   for (const file of sourceFiles(join(root, 'src'))) {
     if (file.endsWith('.test.ts')) continue;
     const text = readFileSync(file, 'utf8');
