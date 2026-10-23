@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | Fair plan changes: block a second subscription on the other store, and tell iOS downgrades they wait for renewal | `pedro/fair-plan-changes` | `apps/mobile/src/lib/paywall.ts`, `apps/mobile/src/lib/purchases.ts`, `apps/mobile/src/app/paywall.tsx` |
+| Pedro | Fair plan changes: block a second subscription on the other store, and tell iOS downgrades they wait for renewal | `pedro/fair-plan-changes`, [#67](https://github.com/Kelvinluciano312/Tusky-App/pull/67) | `apps/mobile/src/lib/paywall.ts`, `apps/mobile/src/lib/purchases.ts`, `apps/mobile/src/app/paywall.tsx` |
