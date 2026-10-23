@@ -10,6 +10,8 @@ milestones 14a (plans and limits) → 14b (lifecycle, reconnect merge) → 14c (
 
 **Coordination.** Pedro (`DahVincis`) and Kelvyn (`Kelvinluciano312`) share this repo. Read `COORDINATION.md` before starting work.
 
+**Agent skills.** Superpowers, Graphify, and fablize live in `.cursor/skills` (see `AGENTS.md`). Read the Graphify graph in `graphify-out/` (`GRAPH_REPORT.md` and the graph files) first when orienting in the codebase. `COORDINATION.md` wins over any skill.
+
 **Plaid keys per project.** Dev stays on Sandbox, and all general testing happens there. Production
 keys live only in the production project's secrets. Phase 6's old "key switch" step is superseded by
 this split. `supabase/functions/.env` now holds **production** values (`PLAID_ENV=production`), so it

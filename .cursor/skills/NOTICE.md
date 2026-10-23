@@ -17,7 +17,7 @@ These skills are third-party. `COORDINATION.md` overrides them in this repositor
 - Version: 0.9.94
 - License: Apache-2.0. Copyright 2026 Safi Shamsi and the Graphify contributors.
 - Text: `.cursor/skills/graphify/LICENSE`, `LICENSE-MIT`, and `NOTICE`
-- Generated file: `.cursor/rules/graphify.mdc`, from `graphify install --project --platform cursor`, plus a local Tusky paragraph (missing CLI: install or skip; do not commit `graphify-out/`).
+- Generated file: `.cursor/rules/graphify.mdc`, from `graphify install --project --platform cursor`, plus local Tusky notes (read the committed `graphify-out/` graph first; refresh and commit it after a significant code change when the CLI is installed).
 - `.cursor/skills/graphify/SKILL.md` is a short project skill added here. The Cursor installer does not write a skill file.
 
 ## fablize

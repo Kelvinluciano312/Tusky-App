@@ -13,6 +13,6 @@ Skills under `.cursor/skills/` (Superpowers, Graphify, fablize) are workflow hel
 - Branch prefixes are `pedro/...` and `kelvyn/...`. Never create a branch named exactly `pedro` or `kelvyn`.
 - Superpowers' `finishing-a-development-branch` opens or updates a pull request. It does not merge, and it does not offer a local merge to `master`.
 - Superpowers' `brainstorming` asks clarifying questions. A headless or cloud agent with no human in the loop makes reasonable assumptions, writes them down, and proceeds. It does not stall waiting for an answer.
-- Graphify: if the `graphify` command is not installed, install it (`uv tool install graphifyy` or `pip install graphifyy`) or skip the graph and keep working with Read, Grep, and Glob. Do not block the task. Do not commit `graphify-out/` (it is gitignored).
+- Graphify: read the committed graph in `graphify-out/` (`GRAPH_REPORT.md`, then the graph files) before exploring the codebase. After a significant code change, if `graphify` is installed, refresh the graph and commit `graphify-out/` in the same pull request. If it is not installed, use the committed graph and say once that it may be stale. Do not block the task. Install with `uv tool install graphifyy` or `pip install graphifyy` when you can.
 
 Where the skills live, and the upstream licenses, is `.cursor/skills/NOTICE.md`. A short map is in `AGENTS.md`.
