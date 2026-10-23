@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | iOS 1.0.0 (8) ITMS-90683: keep an honest calendar purpose string because expo-calendar stays linked | `pedro/ios-calendar-purpose-string` | `apps/mobile/app.json`, `apps/mobile/src/lib/ios-usage.test.ts` |
+| Pedro | iOS 1.0.0 (8) ITMS-90683: keep an honest calendar purpose string because expo-calendar stays linked | `pedro/ios-calendar-purpose-string`, [#69](https://github.com/Kelvinluciano312/Tusky-App/pull/69) | `apps/mobile/app.json`, `apps/mobile/src/lib/ios-usage.test.ts` |
