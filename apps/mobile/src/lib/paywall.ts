@@ -263,6 +263,16 @@ export function deleteWarning(p: PlanDetail, now: Date): string | null {
 }
 
 /**
+ * Why the paywall is showing "coming soon" with nothing to buy. The two causes
+ * look the same on screen and are not: a missing key never asked the store,
+ * and an empty offering did.
+ */
+export function paywallUnavailableWarning(enabled: boolean): string {
+  if (!enabled) return 'Plans are hidden: missing RevenueCat key for this build.';
+  return 'Plans are hidden: no store products in the current offering. The RevenueCat key is set.';
+}
+
+/**
  * What the paywall shows when the store's offerings fail to load. RevenueCat's
  * own message and code name the cause (Play credentials, a missing product,
  * a non-tester account), which "check your connection" never did.

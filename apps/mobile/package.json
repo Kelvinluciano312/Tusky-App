@@ -8,6 +8,7 @@
     "@expo-google-fonts/ibm-plex-mono": "^0.4.1",
     "@expo/ui": "~57.0.19",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@sentry/react-native": "~7.11.0",
     "@supabase/supabase-js": "^2.110.2",
     "@tanstack/react-query": "^5.101.2",
     "expo": "~57.0.24",
@@ -60,5 +61,8 @@
     "lint": "expo lint",
     "test": "node --test src/lib/*.test.ts"
   },
-  "private": true
+  "private": true,
+  "engines": {
+    "node": ">=22.6"
+  }
 }

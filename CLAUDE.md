@@ -3,10 +3,11 @@
 Monarch-Money-style personal finance mobile app. Expo (React Native) + Supabase + Plaid Sandbox.
 Approved plan/phases: see README Status. Phases 0–13 are merged, including Phase 12's four layers
 (12a–12d, `docs/superpowers/specs/2026-09-26-phase-12-categorization-engine-design.md`). Phase 9's
-Track P (production) is live and waits only on Plaid's production access for OAuth banks. Now:
-Phase 14, monetization (`docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md`),
-milestones 14a (plans and limits) → 14b (lifecycle, reconnect merge) → 14c (purchases), all merged
-→ 14d (launch readiness: Play Billing, account deletion, release builds), on `pedro-14d`.
+Track P (production) is live and waits only on Plaid's production access for OAuth banks. Phase 14
+(monetization, `docs/superpowers/specs/2026-09-28-phase-14-monetization-design.md`) is merged through
+14d (Play Billing, account deletion, release builds). Current work is launch prep on
+`pedro/launch-prep`: store version 1.0.0, unused permission cleanup, optional Sentry, iOS Plaid
+OAuth, and the prod migrations that go with it.
 
 **Coordination.** Pedro (`DahVincis`) and Kelvyn (`Kelvinluciano312`) share this repo. Read `COORDINATION.md` before starting work.
 
@@ -382,6 +383,21 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     (`deleteWarning`). A deleted member's settlements go with them.
   - **Release builds.** EAS profiles and the Play upload flow: `docs/ops/release.md`. **Every store build
     is production** (real banks), internal testing included; Sandbox is for dev builds only. Legal pages live on the studio site (Ouroboros-Inc repo, `public/tusky/`); `constants/legal.ts` holds the URLs.
+    The user-facing version is `expo.version` in `app.json` (1.0.0). `eas.json` `appVersionSource: remote`
+    stores only `android.versionCode` and `ios.buildNumber`; `eas build:version:set` reseeds those integers
+    and does not change 1.0.0. `runtimeVersion` policy is `appVersion`, so 1.0.0 starts a new OTA runtime.
+  - **Crash reporting.** `@sentry/react-native` (Expo plugin in `app.json`, Metro via
+    `getSentryExpoConfig`). `initCrashReporting` (`lib/sentry.ts`) calls `Sentry.init` only when
+    `EXPO_PUBLIC_SENTRY_DSN` is a non-empty string; `''` (an unset `EXPO_PUBLIC_*` var) leaves it off.
+    `sendDefaultPii` is false and traces are off. The root layout's `RootErrorBoundary` shows
+    "Something went wrong" and Try again even when the DSN is empty; `componentDidCatch` reports only
+    if Sentry started. No DSN, org, project or auth token is committed.
+    Setup, once a Sentry project exists: put the DSN in `apps/mobile/.env` as `EXPO_PUBLIC_SENTRY_DSN`
+    and restart Metro. For EAS, `npx eas-cli env:set --environment production --name EXPO_PUBLIC_SENTRY_DSN --value <dsn> --visibility plaintext`.
+    Source maps need `SENTRY_AUTH_TOKEN` (sensitive, EAS only, never git), plus `SENTRY_ORG` and
+    `SENTRY_PROJECT` (plaintext). The plugin warns and falls back to those env vars when `organization`
+    and `project` are not in `app.json`; do not put `authToken` in the plugin. A native rebuild is
+    required after adding the package. Empty DSN means the next build reports nothing.
 - **First run** (Phase 15c). The root layout gates a session with `gateFor` (`lib/first-run.ts`):
   `accept-terms` until the active `terms` consent matches `TERMS_VERSION` (`constants/legal.ts`), then
   `onboarding` until `profiles.onboarded_at` is set, then the app. A failed read opens the app.
@@ -398,10 +414,15 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
     rule applies on their next change.
 - **Recurring → calendar** (15g). Tapping a recurring row offers "Add to calendar", which opens the
   phone's own new-event screen through `createEventInCalendarAsync` from `expo-calendar/legacy`
-  (SDK 57 made the root export throw). It needs no calendar permission, so the config plugin is left
-  out of `app.json` on purpose: adding it would request READ/WRITE_CALENDAR and change the Play Data
-  safety answers. `lib/calendar.ts` (`eventFor`) builds the all-day repeating event.
-  expo-calendar is native: dev clients need a rebuild.
+  (SDK 57 made the root export throw). It needs no calendar permission. Expo still auto-applies the
+  expo-calendar config plugin, which would write generic calendar and reminders purpose strings and
+  `READ_CALENDAR` / `WRITE_CALENDAR`. `app.json` lists the plugin with `calendarPermission: false` and
+  `remindersPermission: false` so that first run wins and the strings are omitted, and
+  `android.blockedPermissions` strips those two plus `READ_EXTERNAL_STORAGE` and
+  `WRITE_EXTERNAL_STORAGE` (template / image / file-system; the app never reads storage).
+  `expo-secure-store` is listed with `faceIDPermission: false`: the app does not use biometrics, and
+  the default Face ID string is vague enough for Apple to reject. `lib/calendar.ts` (`eventFor`)
+  builds the all-day repeating event. expo-calendar is native: dev clients need a rebuild.
 - **Account & privacy** (`app/account.tsx`, 15f) holds sign-in, the AI and crowd switches
   (`components/privacy-switches.tsx`), legal links, and a quiet "Delete my account" at the bottom.
   Settings links to it in one row.
@@ -480,6 +501,21 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   There is no `/item/public_token/exchange` afterwards — the token does not change. A successful sync
   is what returns the Item to `active`, which is why `plaid-sync-transactions` selects
   `status in ('active','login_required')` rather than just active.
+- **Plaid OAuth return (iOS).** The app sends `platform: Platform.OS` with the link token.
+  `linkTokenClientConfig` (`_shared/link-token.ts`) puts `redirect_uri`
+  `https://studiosouroboros.com/tusky/plaid-oauth` on the token when platform is `ios`, and
+  `android_package_name` `com.ouroborosstudios.tusky` for Android and for a missing platform (an old
+  client). Never both: Plaid rejects the pair. `app.json` `ios.associatedDomains` is
+  `applinks:studiosouroboros.com`; prebuild writes the associated-domains entitlement, and the next
+  EAS iOS build (managed credentials) enables the capability on `com.ouroborosstudios.tusky`.
+  `react-native-plaid-link-sdk` 13 opens Link with `createPlaidLinkSession` and keeps `linkSession`
+  until exit. The iOS module has no resume method; the README's OAuth note is to register the bundle
+  id and redirect URI in the Plaid dashboard, and the universal link returns through the associated
+  domain. The studio site already hosts both (Ouroboros-Inc, merged): `public/tusky/plaid-oauth.html`
+  and `public/.well-known/apple-app-site-association` (`M3877DV975.com.ouroborosstudios.tusky`, path
+  `/tusky/plaid-oauth*`). Still outside this repo: register that redirect URI, with no query string,
+  on the Sandbox and production Plaid dashboards, and confirm the next EAS iOS build's provisioning
+  profile includes Associated Domains. OAuth banks still need a physical device.
 - **`plaid-webhook` is the only public function** (`verify_jwt = false` in `supabase/config.toml`):
   Plaid calls it, not a user. Its auth is Plaid's ES256 JWT, checked by `verifyPlaidWebhook` in
   `_shared/webhook.ts` before anything else runs. Never ship another `verify_jwt = false` function
@@ -492,8 +528,12 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   goes through `recordPlaidEvent` (`_shared/plaid-log.ts`), which never throws: a lost log row must
   never fail a sync, a link or a disconnect. `plaidErrorFields` reads only `response.data` and the
   message, never the request. `item_id` has no foreign key on purpose, so the log outlives a deleted
-  bank. The app reports Link exits to `plaid-link-event` (30 per user per hour) and sends
-  `link_session_id` with the token exchange. A new Plaid call that can fail should record an event.
+  bank. The app reports Link exits, and OPEN / SELECT_INSTITUTION / ERROR, to `plaid-link-event`
+  (30 of those client events per user per hour, counted together) and sends `link_session_id` with
+  the token exchange. `platform` (`ios` or `android`, or null) is on the same row. A new Plaid call
+  that can fail should record an event. Apply `20261023170000_plaid_events_platform.sql` before
+  redeploying `plaid-create-link-token` and `plaid-link-event`, or the new column is missing and the
+  swallowed insert drops the log line.
 - Webhook URLs: new Items get one on `linkTokenCreate`. Items linked before 2026-09-22 have none,
   and Plaid then silently sends nothing — either dev action below registers it.
 - `plaid-sandbox` is **dev/test only**, with two actions: `reset_login` forces a real

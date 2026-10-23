@@ -12,6 +12,7 @@ import {
   herdPayer,
   manageFallbackUrl,
   offeringsErrorDetail,
+  paywallUnavailableWarning,
   elsewhereNotice,
   foreignStoreProduct,
   ownPaidPlan,
@@ -291,6 +292,12 @@ test('iOS uses the plan change only for the renewal message, and Play still rece
     replacement: null,
     deferred: false,
   });
+});
+
+test('an empty paywall says whether the key is missing or the store returned nothing', () => {
+  assert.match(paywallUnavailableWarning(false), /missing RevenueCat key/i);
+  assert.match(paywallUnavailableWarning(true), /no store products/i);
+  assert.notEqual(paywallUnavailableWarning(false), paywallUnavailableWarning(true));
 });
 
 test("a failed offerings load names RevenueCat's message and code", () => {

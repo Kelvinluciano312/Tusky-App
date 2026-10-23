@@ -10,6 +10,7 @@ import { useEffect } from 'react';
 import { AppState, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { RootErrorBoundary } from '@/components/root-error-boundary';
 import { RealDataBanner } from '@/components/real-data-banner';
 import { DialogHost } from '@/components/ui/dialog';
 import { Palette } from '@/constants/theme';
@@ -20,8 +21,10 @@ import { listenForRecovery, useRecovering } from '@/lib/recovery-session';
 import { identifyPurchaser } from '@/lib/purchases';
 import { useFirstRun } from '@/lib/queries';
 import { SessionProvider, useSession } from '@/lib/session';
+import { initCrashReporting } from '@/lib/sentry';
 import { onTwoFactorRequired } from '@/lib/two-factor';
 
+initCrashReporting();
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
@@ -75,6 +78,7 @@ export default function RootLayout() {
   return (
     // Gestures anywhere in the app (the review deck's swipes) need this at the root.
     <GestureHandlerRootView style={{ flex: 1 }}>
+    <RootErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
         <ThemeProvider value={scheme === 'light' ? navThemes.light : navThemes.dark}>
@@ -85,6 +89,7 @@ export default function RootLayout() {
         </ThemeProvider>
       </SessionProvider>
     </QueryClientProvider>
+    </RootErrorBoundary>
     </GestureHandlerRootView>
   );
 }

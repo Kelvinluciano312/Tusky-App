@@ -1,9 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Platform } from 'react-native';
 import { createPlaidLinkSession } from 'react-native-plaid-link-sdk';
 
 import { readFunctionError } from '@/lib/functions';
-import { linkExitBody } from '@/lib/link-log';
+import { linkEventBody, linkExitBody } from '@/lib/link-log';
 import { planLimitMessage } from '@/lib/plans';
 import { HIDDEN_DEPENDENT_KEYS } from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
@@ -35,7 +36,7 @@ export function useConnectBank() {
     setIsConnecting(true);
     try {
       const { data, error: fnError } = await supabase.functions.invoke('plaid-create-link-token', {
-        body: itemId ? { item_id: itemId } : {},
+        body: { ...(itemId ? { item_id: itemId } : {}), platform: Platform.OS },
       });
       if (fnError) {
         const { status, message, body } = await readFunctionError(fnError);
@@ -50,7 +51,12 @@ export function useConnectBank() {
 
       const session = await createPlaidLinkSession({
         token: data.link_token,
-        onEvent: () => {}, // required by the SDK; per-step analytics can hook in later
+        onEvent: (event) => {
+          // OPEN, SELECT_INSTITUTION and ERROR only. A lost log line must never touch Link.
+          const body = linkEventBody(event, itemId, Platform.OS);
+          if (!body) return;
+          void supabase.functions.invoke('plaid-link-event', { body }).catch(() => {});
+        },
         onSuccess: async (success) => {
           try {
             if (!itemId) {
@@ -94,7 +100,7 @@ export function useConnectBank() {
         onExit: (exit) => {
           // Fire and forget: a lost log line must never touch the Link flow.
           void supabase.functions
-            .invoke('plaid-link-event', { body: linkExitBody(exit, itemId) })
+            .invoke('plaid-link-event', { body: linkExitBody(exit, itemId, Platform.OS) })
             .catch(() => {});
           if (exit.error?.errorMessage) {
             setError(exit.error.errorMessage);

@@ -16,6 +16,7 @@ import {
   afterPurchase,
   elsewhereNotice,
   offeringsErrorDetail,
+  paywallUnavailableWarning,
   ownPaidPlan,
   type Period,
   PLAN_NAMES,
@@ -54,7 +55,10 @@ export default function PaywallScreen() {
   const payerName = herd?.members.find((m) => m.user_id === payerId)?.display_name ?? null;
   const failed = (title: string) => (err: Error) => dialog.alert(title, err.message);
 
-  if (!purchasesEnabled) return <Notice title="Plans are coming soon" body="Everything you have tracked stays here in the meantime." />;
+  if (!purchasesEnabled) {
+    console.warn(paywallUnavailableWarning(false));
+    return <Notice title="Plans are coming soon" body="Everything you have tracked stays here in the meantime." />;
+  }
   const ownError = planError ?? limitsError;
   if (ownError) {
     return (
@@ -90,7 +94,10 @@ export default function PaywallScreen() {
       </View>
     );
   }
-  if (tiers.length === 0) return <Notice title="Plans are coming soon" body="Everything you have tracked stays here in the meantime." />;
+  if (tiers.length === 0) {
+    console.warn(paywallUnavailableWarning(true));
+    return <Notice title="Plans are coming soon" body="Everything you have tracked stays here in the meantime." />;
+  }
 
   return (
     <ScrollView
