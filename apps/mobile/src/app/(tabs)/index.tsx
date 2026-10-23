@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { ChevronRight, HandCoins, Landmark, ListChecks } from 'lucide-react-native';
+import { ChevronRight, HandCoins, Landmark, ListChecks, MessageCircleQuestion } from 'lucide-react-native';
 import { useMemo } from 'react';
 import { Pressable, RefreshControl, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,10 +26,11 @@ import {
   useNetWorthHistory,
   usePlan,
   useProfile,
+  useQuestionsIAsked,
   useRecurringStreams,
   useReviewCount,
 } from '@/lib/queries';
-import { askedLine } from '@/lib/review';
+import { askedLine, waitingLine } from '@/lib/review';
 import { todayLocal } from '@/lib/recurring';
 import { useSession } from '@/lib/session';
 
@@ -74,7 +75,8 @@ export default function HomeScreen() {
   const { data: history = [], refetch: refetchHistory } = useNetWorthHistory(from, to);
   const { data: streams = [], refetch: refetchStreams } = useRecurringStreams();
   const { data: toReview = 0, refetch: refetchReview } = useReviewCount();
-  const { data: asked = [] } = useMyQuestions(session?.user.id);
+  const { data: asked = [], refetch: refetchAsked } = useMyQuestions(session?.user.id);
+  const { data: waiting = [], refetch: refetchWaiting } = useQuestionsIAsked(session?.user.id);
   const { data: herd } = useHerd();
   const herdName = (id: string) => (herd ? payerLabel(id, herd.members) : 'Someone');
   const { data: categories = [] } = useCategories();
@@ -141,6 +143,26 @@ export default function HomeScreen() {
               </AppText>
             </View>
             <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
+          </Card>
+        </Pressable>
+      ) : null}
+
+      {waiting.length > 0 ? (
+        <Pressable
+          disabled={waiting.length !== 1}
+          onPress={() => {
+            if (waiting.length === 1) router.push(`/transaction/${waiting[0].transaction_id}`);
+          }}
+          style={({ pressed }) => ({ opacity: pressed && waiting.length === 1 ? 0.7 : 1 })}>
+          <Card style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+            <MessageCircleQuestion size={22} color={colors.brand} strokeWidth={1.75} />
+            <View style={{ flex: 1 }}>
+              <AppText variant="title">{waitingLine(waiting, herdName)}</AppText>
+              <AppText variant="caption" tone="dim">
+                Their answer clears it for the herd
+              </AppText>
+            </View>
+            {waiting.length === 1 ? <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} /> : null}
           </Card>
         </Pressable>
       ) : null}
@@ -222,6 +244,8 @@ export default function HomeScreen() {
             refetchHistory();
             refetchStreams();
             refetchReview();
+            refetchAsked();
+            refetchWaiting();
             refetchPlan();
           }}
           tintColor={colors.textDim}

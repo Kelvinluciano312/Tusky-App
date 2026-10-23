@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | iOS RevenueCat App Store key, so iOS can subscribe | `pedro/ios-revenuecat-key`, [#53](https://github.com/Kelvinluciano312/Tusky-App/pull/53) | `apps/mobile` purchases, paywall, plan screen, `app.json`; `docs/ops/release.md`, `docs/ops/production.md` |
+| Pedro | Ask one herd member from review, and show who categorized the transaction | `pedro/review-ask-source-a908`, [#54](https://github.com/Kelvinluciano312/Tusky-App/issues/54) | Review card and queue (`apps/mobile/src/app/review.tsx`, `components/review-card.tsx`, `components/questions.tsx`, `lib/review.ts`, `lib/queries.ts`); `transactions.review_assignee` migration; `scripts/rls-check.mjs` |

@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { guessHint, setBy } from './category-source.ts';
+import { guessHint, setBy, sourceLine } from './category-source.ts';
 
 test('guessHint names where a guess came from, and is null for everything else', () => {
   assert.equal(guessHint('learned'), 'from your past choices');
@@ -21,4 +21,23 @@ test('setBy has words for every source, and a safe default', () => {
   assert.equal(setBy('plaid'), 'Your bank (via Plaid)');
   assert.equal(setBy('fallback'), 'No match yet');
   assert.equal(setBy('something-new'), 'Tusky');
+});
+
+test('setBy names the herd member who set a category by hand', () => {
+  assert.equal(setBy('manual', 'Annie'), 'Annie');
+  assert.equal(setBy('plaid', 'Annie'), 'Your bank (via Plaid)');
+  assert.equal(setBy('manual', null), 'You');
+});
+
+test('sourceLine is the short label on the review card', () => {
+  assert.equal(sourceLine('plaid'), 'Plaid');
+  assert.equal(sourceLine('ai'), 'AI');
+  assert.equal(sourceLine('community'), 'Community');
+  assert.equal(sourceLine('learned'), 'Learned');
+  assert.equal(sourceLine('rule'), 'Your rule');
+  assert.equal(sourceLine('manual'), 'Set by you');
+  assert.equal(sourceLine('fallback'), 'No match yet');
+  assert.equal(sourceLine('something-new'), 'Tusky');
+  assert.equal(sourceLine('manual', 'Annie'), 'Set by Annie');
+  assert.equal(sourceLine('plaid', 'Annie'), 'Plaid');
 });

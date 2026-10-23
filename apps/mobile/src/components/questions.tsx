@@ -54,7 +54,7 @@ export function QuestionBanner({ transactionId }: { transactionId: string }) {
               </AppText>
               <AppText variant="caption" tone="dim">
                 {forMe
-                  ? 'Tag who spent it or add a memo to answer.'
+                  ? 'Change the category, tag who spent it, or add a memo to answer.'
                   : mine
                     ? `Waiting on ${name(q.asked_to)}.`
                     : `Waiting on ${name(q.asked_to)}.`}
@@ -77,8 +77,8 @@ export function QuestionBanner({ transactionId }: { transactionId: string }) {
   );
 }
 
-/** "Ask Annie about this": shared herds only; lands first in their review deck. */
-export function AskButton({ transactionId }: { transactionId: string }) {
+/** "Ask Annie about this": shared herds only. It leaves this queue and lands in theirs. */
+export function AskButton({ transactionId, onAsked }: { transactionId: string; onAsked?: () => void }) {
   const colors = useTheme();
   const { session } = useSession();
   const me = session?.user.id;
@@ -106,12 +106,22 @@ export function AskButton({ transactionId }: { transactionId: string }) {
           {label}
         </AppText>
       </Pressable>
-      {open ? <AskSheet transactionId={transactionId} onClose={() => setOpen(false)} /> : null}
+      {open ? (
+        <AskSheet transactionId={transactionId} onClose={() => setOpen(false)} onAsked={onAsked} />
+      ) : null}
     </>
   );
 }
 
-function AskSheet({ transactionId, onClose }: { transactionId: string; onClose: () => void }) {
+function AskSheet({
+  transactionId,
+  onClose,
+  onAsked,
+}: {
+  transactionId: string;
+  onClose: () => void;
+  onAsked?: () => void;
+}) {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
   const { session } = useSession();
@@ -159,7 +169,7 @@ function AskSheet({ transactionId, onClose }: { transactionId: string; onClose: 
             autoFocus
           />
           <AppText variant="caption" tone="dim">
-            It goes to the front of their Review, with your note.
+            Only they see it in Review until they answer.
           </AppText>
           <Button
             title={to ? `Ask ${payerLabel(to, herd.members)}` : 'Ask'}
@@ -169,7 +179,13 @@ function AskSheet({ transactionId, onClose }: { transactionId: string; onClose: 
               to &&
               ask.mutate(
                 { transactionId, askedTo: to, body: body.trim() || null },
-                { onSuccess: onClose, onError: (err) => dialog.alert('Could not ask', err.message) },
+                {
+                  onSuccess: () => {
+                    onAsked?.();
+                    onClose();
+                  },
+                  onError: (err) => dialog.alert('Could not ask', err.message),
+                },
               )
             }
           />

@@ -3,7 +3,18 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { askedLine, deckReducer, newDeck, NOTE_MAX, normalizeNote, orderQueue, topCard } from './review.ts';
+import {
+  askedLine,
+  deckReducer,
+  inMyReview,
+  newDeck,
+  NOTE_MAX,
+  normalizeNote,
+  orderQueue,
+  reviewQueueFilter,
+  topCard,
+  waitingLine,
+} from './review.ts';
 
 test('normalizeNote trims, and blank means no memo', () => {
   assert.equal(normalizeNote('  Dinner with Ana \n'), 'Dinner with Ana');
@@ -97,6 +108,50 @@ test('orderQueue puts likely fixes first, then glances, oldest first within each
       { id: 'e', review_priority: 2 },
     ]),
     ['b', 'e', 'd', 'a', 'c'],
+  );
+});
+
+test('handOff drops the asked card without counting it reviewed, and undo does not bring it back', () => {
+  let d = newDeck(['a', 'b']);
+  d = deckReducer(d, { type: 'handOff', id: 'a' });
+  assert.deepEqual(d.queue, ['b']);
+  assert.equal(d.accepted, 0);
+  assert.equal(d.handed, 1);
+  assert.equal(topCard(d), 'b');
+  d = deckReducer(d, { type: 'undo' });
+  assert.deepEqual(d.queue, ['b']);
+  assert.equal(deckReducer(newDeck([]), { type: 'handOff', id: 'missing' }).handed, 0);
+});
+
+test('inMyReview keeps an ask with the person it was sent to', () => {
+  const open = { reviewed_at: null, review_assignee: null };
+  assert.equal(inMyReview(open, 'pedro'), true);
+  assert.equal(inMyReview(open, null), true);
+  assert.equal(inMyReview({ reviewed_at: '2026-10-01', review_assignee: null }, 'pedro'), false);
+  assert.equal(inMyReview({ reviewed_at: null, review_assignee: 'annie' }, 'pedro'), false);
+  assert.equal(inMyReview({ reviewed_at: null, review_assignee: 'annie' }, 'annie'), true);
+  assert.equal(inMyReview({ reviewed_at: null, review_assignee: 'annie' }, null), false);
+  // Already reviewed by someone else, but still waiting on Annie.
+  assert.equal(inMyReview({ reviewed_at: '2026-10-01', review_assignee: 'annie' }, 'annie'), true);
+  assert.equal(inMyReview({ reviewed_at: '2026-10-01', review_assignee: 'annie' }, 'pedro'), false);
+});
+
+test('reviewQueueFilter matches inMyReview for a user id', () => {
+  assert.equal(
+    reviewQueueFilter('706f7db5-1111-4111-8111-111111111111'),
+    'and(reviewed_at.is.null,review_assignee.is.null),review_assignee.eq.706f7db5-1111-4111-8111-111111111111',
+  );
+  assert.throws(() => reviewQueueFilter('annie'), /user id/);
+});
+
+test('waitingLine names who I asked, once each', () => {
+  const name = (id: string) => ({ a: 'Annie', p: 'Pedro', k: 'Kel' })[id] ?? '?';
+  assert.equal(waitingLine([{ asked_to: 'a' }], name), 'Waiting on Annie');
+  assert.equal(waitingLine([{ asked_to: 'a' }, { asked_to: 'a' }], name), 'Waiting on Annie · 2');
+  assert.equal(waitingLine([{ asked_to: 'a' }, { asked_to: 'p' }], name), 'Waiting on Annie and Pedro · 2');
+  assert.equal(
+    waitingLine([{ asked_to: 'a' }, { asked_to: 'p' }, { asked_to: 'k' }], name),
+    'Waiting on Annie, Pedro and Kel · 3',
   );
 });
 
