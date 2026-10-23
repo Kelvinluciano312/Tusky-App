@@ -354,8 +354,15 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   - **Store products (14d).** Play has one subscription per plan and period (`tusk_monthly`, …), so
     RevenueCat's ids read `tusk_monthly:<base plan>`; Test Store products may carry `_v2`. `periodOf`
     and `baseOf` (`lib/paywall.ts`) accept every form, and `productChange` hands Play the old
-    subscription id without its base plan. A higher plan or monthly → yearly applies now (proration);
-    anything else waits for renewal. `plan-refresh` answers 429 `too_soon` within 10 s of the last
+    subscription id without its base plan. It only considers this store's products (Android: ids
+    containing `:`), so an App Store id is never `oldProductIdentifier`. A higher plan or monthly →
+    yearly applies now (proration); anything else waits for renewal. On iOS that result is messaging
+    only — the purchase is not given a replacement, and a downgrade or yearly → monthly says the plan
+    changes at renewal. App Store ranking is yearly above monthly within each tier, highest tier first
+    (herd, then tusk, then tusklet), which is the same comparison. A live subscription on the other
+    store disables the paywall buttons (`You subscribe through the {store}. Change your plan there.`)
+    and `useBuy` refuses the purchase. Test Store keys are exempt: their ids have no colon.
+    `plan-refresh` answers 429 `too_soon` within 10 s of the last
     refresh (`subscriptions.refreshed_at`, claimed in one conditional update); the app then refetches
     the plan at 15 s and 60 s.
   - **Deleting an account (14d, 16d).** `delete-account` (logic in `_shared/account.ts`) takes
