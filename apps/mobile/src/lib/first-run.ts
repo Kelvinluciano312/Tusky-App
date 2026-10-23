@@ -32,7 +32,7 @@ export function gateFor(state: FirstRunState | null, currentTerms: string): Gate
   return 'app';
 }
 
-export const ONBOARDING_STEPS = ['welcome', 'name', 'bank', 'budget', 'sharing', 'plans'] as const;
+export const ONBOARDING_STEPS = ['welcome', 'name', 'bank', 'budget', 'sharing', 'plans', 'notifications'] as const;
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 
 /** "Step 2 of 6", counted from one. */

@@ -1,5 +1,6 @@
 import { sameSecret } from '../_shared/enforce.ts';
-import { getAdminClient, jsonResponse } from '../_shared/lib.ts';
+import { getAdminClient, jsonResponse, loggable } from '../_shared/lib.ts';
+import { notifyGrace } from '../_shared/push-events.ts';
 import { adminSubStore, eventUserIds, revenueCatClient, syncSubscriber } from '../_shared/revenuecat.ts';
 
 /**
@@ -23,12 +24,26 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, users: 0 });
   }
 
-  const db = adminSubStore(getAdminClient());
+  const admin = getAdminClient();
+  const db = adminSubStore(admin);
   const rc = revenueCatClient(Deno.env.get('REVENUECAT_SECRET_KEY') ?? '');
   const allowTest = Deno.env.get('PLAID_ENV') === 'sandbox';
   try {
     const results = [];
-    for (const id of ids) results.push([id, await syncSubscriber(db, rc, id, new Date(), allowTest)]);
+    for (const id of ids) {
+      const outcome = await syncSubscriber(db, rc, id, new Date(), allowTest);
+      results.push([id, outcome]);
+      if (outcome === 'written') {
+        const { data } = await admin.from('subscriptions').select('status, expires_at').eq('user_id', id).maybeSingle();
+        if (data?.status === 'grace') {
+          try {
+            await notifyGrace(admin, id, (data.expires_at as string | null) ?? null);
+          } catch (err) {
+            console.warn(`grace push failed for ${id}`, loggable(err));
+          }
+        }
+      }
+    }
     console.log('revenuecat-webhook', JSON.stringify(results));
     return jsonResponse({ ok: true, users: ids.length });
   } catch (err) {

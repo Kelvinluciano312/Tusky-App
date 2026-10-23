@@ -4,6 +4,7 @@
 
 import { getAdminClient, getPlaidClient, jsonResponse, loggable } from '../_shared/lib.ts';
 import { recordPlaidEvent } from '../_shared/plaid-log.ts';
+import { noteLoginRequired, notifyPendingExpiration } from '../_shared/push-events.ts';
 import { loadSyncContext, syncItem } from '../_shared/sync.ts';
 import { classifyWebhook, type PlaidJwk, type PlaidWebhookBody, verifyPlaidWebhook } from '../_shared/webhook.ts';
 
@@ -91,10 +92,19 @@ Deno.serve(async (req) => {
     return ok();
   }
 
+  if (action === 'pending_expiration') {
+    try {
+      await notifyPendingExpiration(admin, item.id);
+    } catch (err) {
+      console.warn(`${tag}: expiration heads-up failed`, loggable(err));
+    }
+    return ok();
+  }
+
   if (action === 'login_required') {
-    const { error } = await admin.from('plaid_items').update({ status: 'login_required' }).eq('id', item.id);
-    if (error) {
-      console.error(`${tag}: could not mark item ${item.id}`, error);
+    const marked = await noteLoginRequired(admin, item.id);
+    if (marked.error) {
+      console.error(`${tag}: could not mark item ${item.id}`, marked.error);
       return jsonResponse({ error: 'Update failed' }, 500);
     }
     console.log(`${tag}: item ${item.id} → login_required`);

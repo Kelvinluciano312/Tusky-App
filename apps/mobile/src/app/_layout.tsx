@@ -15,6 +15,7 @@ import { DialogHost } from '@/components/ui/dialog';
 import { Palette } from '@/constants/theme';
 import { TERMS_VERSION } from '@/constants/legal';
 import { gateFor } from '@/lib/first-run';
+import { ensureAndroidChannels, listenForNotificationOpens, registerIfGranted } from '@/lib/push';
 import { identifyPurchaser } from '@/lib/purchases';
 import { useFirstRun } from '@/lib/queries';
 import { SessionProvider, useSession } from '@/lib/session';
@@ -104,6 +105,17 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   // RevenueCat's user follows the Supabase user (Phase 14c).
   useEffect(() => {
     void identifyPurchaser(userId);
+  }, [userId]);
+
+  // Channels once, and a tap opens the screen the push named. Registering a
+  // token happens only when permission was already granted — the prompt itself
+  // waits for Turn on.
+  useEffect(() => {
+    void ensureAndroidChannels();
+    return listenForNotificationOpens();
+  }, []);
+  useEffect(() => {
+    if (userId) void registerIfGranted();
   }, [userId]);
 
   useEffect(() => {
