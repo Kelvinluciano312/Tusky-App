@@ -1,0 +1,18 @@
+---
+description: Tusky coordination overrides every vendored agent skill
+alwaysApply: true
+---
+
+# Agent skills
+
+Skills under `.cursor/skills/` (Superpowers, Graphify, fablize) are workflow help. `COORDINATION.md` always takes precedence over any skill, including when a skill says to follow it exactly.
+
+- Do not merge. That includes a local merge into `master`.
+- Do not push to `master`. Every change goes through a pull request. Do not merge that pull request.
+- Before starting, check open pull requests, open issues, and recent commits. Claim the work with an issue. Stay off files another open pull request already touches.
+- Branch prefixes are `pedro/...` and `kelvyn/...`. Never create a branch named exactly `pedro` or `kelvyn`.
+- Superpowers' `finishing-a-development-branch` opens or updates a pull request. It does not merge, and it does not offer a local merge to `master`.
+- Superpowers' `brainstorming` asks clarifying questions. A headless or cloud agent with no human in the loop makes reasonable assumptions, writes them down, and proceeds. It does not stall waiting for an answer.
+- Graphify: if the `graphify` command is not installed, install it (`uv tool install graphifyy` or `pip install graphifyy`) or skip the graph and keep working with Read, Grep, and Glob. Do not block the task. Do not commit `graphify-out/` (it is gitignored).
+
+Where the skills live, and the upstream licenses, is `.cursor/skills/NOTICE.md`. A short map is in `AGENTS.md`.
