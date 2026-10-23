@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import Purchases, { PURCHASES_ERROR_CODE, STORE_REPLACEMENT_MODE, type PurchasesPackage } from 'react-native-purchases';
 
 import { pickRevenueCatKey } from '@/lib/environment';
-import { type PaidPlan, type Period, manageFallbackUrl, productChange } from '@/lib/paywall';
+import { type PaidPlan, type Period, manageFallbackUrl, planChange } from '@/lib/paywall';
 import { ensurePurchaser } from '@/lib/purchaser';
 import { backend, supabase } from '@/lib/supabase';
 
@@ -109,25 +109,35 @@ export function useBuy() {
       pkg,
       plan,
       period,
+      store,
     }: {
       pkg: PurchasesPackage;
       plan: PaidPlan;
       period: Period;
+      store?: string | null;
     }): Promise<{ outcome: 'bought' | 'deferred' | 'cancelled'; confirmed: boolean }> => {
       await readyToBuy();
+      const active = (await Purchases.getCustomerInfo()).activeSubscriptions;
       // Play replaces a running plan. The App Store does that inside the
-      // subscription group, and Test Store keys (test_…) have no Play subscription to replace.
-      const change =
-        apiKey.startsWith('test_') || Platform.OS === 'ios'
-          ? null
-          : productChange((await Purchases.getCustomerInfo()).activeSubscriptions, plan, period);
+      // subscription group, so iOS keeps the result for the renewal message only.
+      const decision = planChange({
+        active,
+        target: plan,
+        period,
+        platform: Platform.OS,
+        testStore: apiKey.startsWith('test_'),
+        store,
+      });
+      if (decision.message) throw new Error(decision.message);
       try {
         await Purchases.purchasePackage(
           pkg,
           null,
-          change && {
-            oldProductIdentifier: change.oldProductIdentifier,
-            replacementMode: change.upgrade ? STORE_REPLACEMENT_MODE.WITH_TIME_PRORATION : STORE_REPLACEMENT_MODE.DEFERRED,
+          decision.replacement && {
+            oldProductIdentifier: decision.replacement.oldProductIdentifier,
+            replacementMode: decision.replacement.upgrade
+              ? STORE_REPLACEMENT_MODE.WITH_TIME_PRORATION
+              : STORE_REPLACEMENT_MODE.DEFERRED,
           },
         );
       } catch (err) {
@@ -137,7 +147,7 @@ export function useBuy() {
         throw err;
       }
       const confirmed = await refreshPlan(queryClient);
-      return { outcome: change && !change.upgrade ? 'deferred' : 'bought', confirmed };
+      return { outcome: decision.deferred ? 'deferred' : 'bought', confirmed };
     },
   });
 }

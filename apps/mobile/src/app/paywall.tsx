@@ -14,6 +14,7 @@ import { useTheme } from '@/hooks/use-theme';
 import {
   activePeriod,
   afterPurchase,
+  elsewhereNotice,
   offeringsErrorDetail,
   ownPaidPlan,
   type Period,
@@ -21,9 +22,10 @@ import {
   paywallTiers,
   planSummary,
   storeName,
+  subscribedElsewhere,
   tierAction,
 } from '@/lib/paywall';
-import { purchasesEnabled, useActiveProducts, useBuy, useOfferings, useRestore } from '@/lib/purchases';
+import { manageSubscriptionsUrl, purchasesEnabled, useActiveProducts, useBuy, useOfferings, useRestore } from '@/lib/purchases';
 import { useHerd, useHerdPayer, usePlan, usePlanLimits } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 
@@ -48,6 +50,7 @@ export default function PaywallScreen() {
 
   const tiers = paywallTiers(packages, limits);
   const own = plan ? ownPaidPlan(plan, new Date()) : null;
+  const otherStore = own && plan && subscribedElsewhere(plan.store, Platform.OS) ? plan.store : null;
   const payerName = herd?.members.find((m) => m.user_id === payerId)?.display_name ?? null;
   const failed = (title: string) => (err: Error) => dialog.alert(title, err.message);
 
@@ -108,6 +111,17 @@ export default function PaywallScreen() {
         </Card>
       ) : null}
 
+      {otherStore ? (
+        <Card style={{ gap: Spacing.sm }}>
+          <AppText tone="dim">{elsewhereNotice(otherStore)}</AppText>
+          <Button
+            title="Manage"
+            variant="secondary"
+            onPress={async () => Linking.openURL(await manageSubscriptionsUrl())}
+          />
+        </Card>
+      ) : null}
+
       <Chips<Period>
         accessibilityLabel="Billing period"
         options={[
@@ -149,12 +163,12 @@ export default function PaywallScreen() {
             ))}
             <Button
               title={action.title}
-              disabled={action.disabled || buy.isPending}
+              disabled={action.disabled || buy.isPending || otherStore !== null}
               loading={buy.isPending && buy.variables?.plan === tier.plan}
               onPress={() =>
                 pkg &&
                 buy.mutate(
-                  { pkg, plan: tier.plan, period },
+                  { pkg, plan: tier.plan, period, store: plan?.store ?? null },
                   {
                     onSuccess: ({ outcome, confirmed }) => {
                       if (outcome === 'cancelled') return;

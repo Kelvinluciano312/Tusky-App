@@ -146,15 +146,44 @@ export function activePeriod(active: string[], plan: string): Period | null {
 }
 
 /**
+ * Play product ids are `subscription:base` (`tusk_monthly:tusk-monthly`).
+ * App Store and Test Store ids have no colon (`tusk_monthly`).
+ */
+function onDeviceStore(id: string, platform: string): boolean {
+  const playId = id.includes(':');
+  return platform === 'ios' ? !playId : playId;
+}
+
+/** A live `play` or `app_store` subscription bought on the store this device cannot charge. */
+export function subscribedElsewhere(store: string | null, platform: string): boolean {
+  if (store !== 'play' && store !== 'app_store') return false;
+  return store !== (platform === 'ios' ? 'app_store' : 'play');
+}
+
+export function elsewhereNotice(store: string | null): string {
+  return `You subscribe through the ${storeName(store)}. Change your plan there.`;
+}
+
+/** A running plan whose product id belongs to the other store. */
+export function foreignStoreProduct(active: string[], platform: string): boolean {
+  return active.some((id) => (ORDER as string[]).includes(baseOf(id)) && !onDeviceStore(id, platform));
+}
+
+/**
  * Play replaces a running subscription instead of adding a second one. A
  * higher plan, or monthly to yearly, applies now; anything else at renewal.
+ * Only this store's products count, so an App Store id is never sent as the
+ * Play subscription to replace. On iOS the same answer is messaging only:
+ * App Store ranking is yearly above monthly within each tier, and
+ * herd above tusk above tusklet, which is this comparison.
  */
 export function productChange(
   active: string[],
   target: string,
   period: Period,
+  platform: string = 'android',
 ): { oldProductIdentifier: string; upgrade: boolean } | null {
-  const id = active.find((a) => (ORDER as string[]).includes(baseOf(a)));
+  const id = active.find((a) => onDeviceStore(a, platform) && (ORDER as string[]).includes(baseOf(a)));
   if (!id) return null;
   const old = baseOf(id) as PaidPlan;
   const oldPeriod = periodOf(id);
@@ -162,6 +191,38 @@ export function productChange(
   const rank = ORDER.indexOf(target as PaidPlan) - ORDER.indexOf(old);
   // Play wants the subscription id without its base plan.
   return { oldProductIdentifier: id.split(':')[0], upgrade: rank > 0 || (rank === 0 && period === 'yearly') };
+}
+
+/**
+ * What a purchase may do. Play is told which subscription to replace. iOS
+ * lets the App Store apply the group ranking, so the replacement is not sent
+ * and a downgrade (or yearly to monthly) only changes the message. A product
+ * or row from the other store refuses the purchase. Test Store keys are this
+ * device's store: their ids have no colon, the same shape as the App Store.
+ */
+export function planChange(i: {
+  active: string[];
+  target: string;
+  period: Period;
+  platform: string;
+  testStore: boolean;
+  store?: string | null;
+}): {
+  message: string | null;
+  replacement: { oldProductIdentifier: string; upgrade: boolean } | null;
+  deferred: boolean;
+} {
+  const store = i.store ?? null;
+  if (!i.testStore && (subscribedElsewhere(store, i.platform) || foreignStoreProduct(i.active, i.platform))) {
+    const named = subscribedElsewhere(store, i.platform) ? store : i.platform === 'ios' ? 'play' : 'app_store';
+    return { message: elsewhereNotice(named), replacement: null, deferred: false };
+  }
+  const change = productChange(i.active, i.target, i.period, i.platform);
+  return {
+    message: null,
+    replacement: !i.testStore && i.platform !== 'ios' ? change : null,
+    deferred: !!change && !change.upgrade,
+  };
 }
 
 export function tierAction(i: {

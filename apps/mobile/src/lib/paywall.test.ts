@@ -12,13 +12,17 @@ import {
   herdPayer,
   manageFallbackUrl,
   offeringsErrorDetail,
+  elsewhereNotice,
+  foreignStoreProduct,
   ownPaidPlan,
   periodOf,
   type PlanDetail,
+  planChange,
   planSummary,
   paywallTiers,
   productChange,
   storeName,
+  subscribedElsewhere,
   tierAction,
 } from './paywall.ts';
 
@@ -201,6 +205,92 @@ test('trial, comp, lapsed and expired rows are not a paid plan of my own', () =>
   assert.equal(ownPaidPlan(detail({ status: 'expired' }), NOW), null);
   assert.equal(ownPaidPlan(detail({ own_plan: 'tusk', own_expires_at: '2026-10-09T00:00:00Z' }), NOW), null);
   assert.equal(ownPaidPlan(detail({ status: 'grace', own_expires_at: '2026-10-12T00:00:00Z' }), NOW), 'tusk');
+});
+
+test('an active subscription on the other store is changed there', () => {
+  // Breaks if Android treats an App Store subscription as local, or a Test Store row as cross-store.
+  assert.equal(subscribedElsewhere('app_store', 'android'), true);
+  assert.equal(subscribedElsewhere('play', 'ios'), true);
+  assert.equal(subscribedElsewhere('play', 'android'), false);
+  assert.equal(subscribedElsewhere('app_store', 'ios'), false);
+  assert.equal(subscribedElsewhere('test', 'android'), false);
+  assert.equal(subscribedElsewhere('comp', 'ios'), false);
+  assert.equal(subscribedElsewhere(null, 'android'), false);
+  assert.equal(elsewhereNotice('app_store'), 'You subscribe through the App Store. Change your plan there.');
+  assert.equal(elsewhereNotice('play'), 'You subscribe through the Play Store. Change your plan there.');
+});
+
+test('productChange ignores the other store, so an App Store id is never the Play product to replace', () => {
+  assert.equal(productChange(['tusk_monthly'], 'tusklet', 'monthly', 'android'), null);
+  assert.deepEqual(productChange(['tusk_yearly', 'tusk_monthly:tusk-monthly'], 'tusklet', 'monthly', 'android'), {
+    oldProductIdentifier: 'tusk_monthly',
+    upgrade: false,
+  });
+  assert.equal(productChange(['tusk_monthly:tusk-monthly'], 'tusk', 'yearly', 'ios'), null);
+  assert.deepEqual(productChange(['tusk_monthly:tusk-monthly', 'tusk_yearly'], 'tusk', 'monthly', 'ios'), {
+    oldProductIdentifier: 'tusk_yearly',
+    upgrade: false,
+  });
+});
+
+test('a purchase is refused when the active product belongs to the other store', () => {
+  assert.equal(foreignStoreProduct(['tusk_monthly'], 'android'), true);
+  assert.equal(foreignStoreProduct(['tusk_monthly:tusk-monthly'], 'android'), false);
+  assert.equal(foreignStoreProduct(['tusk_monthly:tusk-monthly'], 'ios'), true);
+  assert.equal(foreignStoreProduct(['tusk_monthly'], 'ios'), false);
+  assert.equal(foreignStoreProduct(['tusk_monthly_v2'], 'ios'), false);
+  assert.equal(foreignStoreProduct(['something_else'], 'android'), false);
+  assert.equal(foreignStoreProduct([], 'ios'), false);
+});
+
+test('iOS uses the plan change only for the renewal message, and Play still receives the replacement', () => {
+  // App Store ranking: yearly above monthly within a tier, herd above tusk above tusklet.
+  assert.deepEqual(planChange({ active: ['tusk_yearly'], target: 'tusk', period: 'monthly', platform: 'ios', testStore: false }), {
+    message: null,
+    replacement: null,
+    deferred: true,
+  });
+  assert.deepEqual(planChange({ active: ['tusk_herd_yearly'], target: 'tusk', period: 'yearly', platform: 'ios', testStore: false }), {
+    message: null,
+    replacement: null,
+    deferred: true,
+  });
+  assert.deepEqual(planChange({ active: ['tusk_monthly'], target: 'tusk', period: 'yearly', platform: 'ios', testStore: false }), {
+    message: null,
+    replacement: null,
+    deferred: false,
+  });
+  assert.deepEqual(planChange({ active: ['tusklet_monthly'], target: 'tusk_herd', period: 'monthly', platform: 'ios', testStore: false }), {
+    message: null,
+    replacement: null,
+    deferred: false,
+  });
+  assert.deepEqual(
+    planChange({ active: ['tusk_monthly:tusk-monthly'], target: 'tusk', period: 'yearly', platform: 'android', testStore: false }),
+    { message: null, replacement: { oldProductIdentifier: 'tusk_monthly', upgrade: true }, deferred: false },
+  );
+  assert.deepEqual(
+    planChange({ active: ['tusk_yearly:tusk-yearly'], target: 'tusk', period: 'monthly', platform: 'android', testStore: false }),
+    { message: null, replacement: { oldProductIdentifier: 'tusk_yearly', upgrade: false }, deferred: true },
+  );
+  assert.equal(
+    planChange({ active: ['tusk_monthly'], target: 'tusk', period: 'yearly', platform: 'android', testStore: false }).message,
+    'You subscribe through the App Store. Change your plan there.',
+  );
+  assert.equal(
+    planChange({ active: ['tusk_monthly:tusk-monthly'], target: 'tusk', period: 'yearly', platform: 'ios', testStore: false }).message,
+    'You subscribe through the Play Store. Change your plan there.',
+  );
+  assert.equal(
+    planChange({ active: [], target: 'tusk', period: 'monthly', platform: 'android', testStore: false, store: 'app_store' }).message,
+    'You subscribe through the App Store. Change your plan there.',
+  );
+  // Test Store ids have no colon. They are this device's store, not a second real subscription.
+  assert.deepEqual(planChange({ active: ['tusk_monthly'], target: 'tusk', period: 'yearly', platform: 'android', testStore: true }), {
+    message: null,
+    replacement: null,
+    deferred: false,
+  });
 });
 
 test("a failed offerings load names RevenueCat's message and code", () => {
