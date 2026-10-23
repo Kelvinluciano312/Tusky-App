@@ -26,6 +26,7 @@ import { describeError, loggable } from './lib.ts';
 import { mergeReconnected } from './merge.ts';
 import { plaidErrorFields, recordPlaidEvent } from './plaid-log.ts';
 import { aiAllowed, loadPlan } from './plans.ts';
+import { noteLoginRequired, onSyncNotifications } from './push-events.ts';
 import {
   ignoredCategoryIds,
   jevRecurringDecide,
@@ -640,7 +641,8 @@ export async function syncItem(
           continue;
         }
         if (code === 'ITEM_LOGIN_REQUIRED') {
-          await admin.from('plaid_items').update({ status: 'login_required' }).eq('id', item.id);
+          const marked = await noteLoginRequired(admin, item.id);
+          if (marked.error) throw new Error(marked.error);
           await recordPlaidEvent(admin, { event: 'login_required', user_id: item.user_id, item_id: item.id, ...plaidErrorFields(err) });
           result = { ...base, status: 'login_required' };
           throw new Error(HANDLED);
@@ -807,7 +809,7 @@ export async function syncItem(
     // un-archive a bank disconnected meanwhile.
     await admin
       .from('plaid_items')
-      .update({ sync_cursor: finalCursor, status: 'active' })
+      .update({ sync_cursor: finalCursor, status: 'active', login_required_at: null })
       .eq('id', item.id)
       .in('status', ['active', 'login_required']);
 
@@ -875,7 +877,12 @@ export async function syncItem(
     // After the snapshot, for the same reasons: success is already latched and
     // the cursor has advanced, so a failed radar costs nothing but a log line.
     // Never in `finally` — the login_required and error paths have no new data,
-    // and a throw there would escape syncItem.
+    // and a throw there would escape syncItem. Notifications run even when
+    // recurring detection fails; price changes wait for a finished refresh so a
+    // thrown pass cannot announce a price that did not move.
+    const accountIds = [...new Set(accountByPlaidId.values())];
+    let streamsBefore: { id: string; amount_change: number | null }[] = [];
+    let pricesReady = false;
     try {
       // The herd's custom transfer categories join the built-in ones. Loaded
       // per Item, so the shared context never holds every herd's rows.
@@ -893,14 +900,38 @@ export async function syncItem(
         if (namesError) throw namesError;
         decide = jevRecurringDecide(askJev, new Map((names ?? []).map((c) => [c.id as string, c.name as string])));
       }
+      if (accountIds.length > 0) {
+        const { data: beforeStreams, error: beforeError } = await admin
+          .from('recurring_streams')
+          .select('id, amount_change')
+          .in('account_id', accountIds);
+        if (beforeError) throw beforeError;
+        streamsBefore = (beforeStreams ?? []).map((row) => ({
+          id: row.id as string,
+          amount_change: row.amount_change === null ? null : Number(row.amount_change),
+        }));
+      }
       await refreshRecurring(
         admin,
         item,
         [...transferCategoryIds, ...ignoredCategoryIds(ownTransfers ?? [])],
         decide,
       );
+      pricesReady = true;
     } catch (err) {
       console.warn(`recurring refresh failed for item ${item.id}: ${describeError(err)}`);
+    }
+    try {
+      await onSyncNotifications(admin, {
+        herdId: item.herd_id,
+        addedPlaidIds: added.map((tx) => tx.transaction_id as string),
+        accountIds,
+        streamsBefore,
+        notifyPrices: pricesReady,
+        now: new Date(),
+      });
+    } catch (err) {
+      console.warn(`sync notifications failed for item ${item.id}: ${describeError(err)}`);
     }
   } catch (err) {
     if ((err as Error).message !== HANDLED) {

@@ -1,4 +1,4 @@
-import { ChartPie, Landmark, ListChecks, Users } from 'lucide-react-native';
+import { Bell, ChartPie, Landmark, ListChecks, Users } from 'lucide-react-native';
 import { type ReactNode, useState } from 'react';
 import { KeyboardAvoidingView, ScrollView, View } from 'react-native';
 import { dialog } from '@/components/ui/dialog';
@@ -14,6 +14,8 @@ import { Layout, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { nextStep, type OnboardingStep, previousStep, stepLabel } from '@/lib/first-run';
 import { PLAN_NAMES, tierLines } from '@/lib/paywall';
+import { markPrompted } from '@/lib/notification-prefs';
+import { enableNotifications } from '@/lib/push';
 import { useConnectBank } from '@/lib/plaid';
 import type { PresetLine } from '@/lib/presets';
 import { NAME_MAX, validatePersonName } from '@/lib/profile';
@@ -73,7 +75,10 @@ export default function OnboardingScreen() {
         {step === 'bank' ? <BankStep onNext={forward} /> : null}
         {step === 'budget' ? <BudgetStep onNext={forward} /> : null}
         {step === 'sharing' ? <SharingStep onNext={forward} /> : null}
-        {step === 'plans' ? <PlansStep userId={userId} onNext={forward} finishing={finish.isPending} /> : null}
+        {step === 'plans' ? <PlansStep userId={userId} onNext={forward} /> : null}
+        {step === 'notifications' ? (
+          <NotificationsStep userId={userId} onDone={forward} finishing={finish.isPending} />
+        ) : null}
         {back ? <Button title="Back" variant="ghost" onPress={() => setStep(back)} /> : null}
       </ScrollView>
     </KeyboardAvoidingView>
@@ -250,7 +255,55 @@ function SharingStep({ onNext }: { onNext: () => void }) {
   );
 }
 
-function PlansStep({ userId, onNext, finishing }: { userId: string | undefined; onNext: () => void; finishing: boolean }) {
+function NotificationsStep({
+  userId,
+  onDone,
+  finishing,
+}: {
+  userId: string | undefined;
+  onDone: () => void;
+  finishing: boolean;
+}) {
+  const colors = useTheme();
+  const [busy, setBusy] = useState<'on' | 'later' | null>(null);
+  const icon = <Bell size={22} color={colors.brand} strokeWidth={1.75} />;
+
+  const finish = async (turnOn: boolean) => {
+    if (!userId) return;
+    setBusy(turnOn ? 'on' : 'later');
+    try {
+      if (turnOn) await enableNotifications();
+      await markPrompted(userId);
+      onDone();
+    } catch (err) {
+      dialog.alert('Could not save that', err instanceof Error ? err.message : 'Check your connection and try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <>
+      <Heading
+        title="Stay in the loop"
+        body="Tusky can tell you when someone asks about a purchase, when transactions are waiting for review, and when a bank needs to be reconnected. You pick the rest later in Settings, and you can turn any of it off. Your phone is asked for permission only if you turn them on."
+      />
+      <Card style={{ flexDirection: 'row', gap: Spacing.md, alignItems: 'flex-start' }}>
+        {icon}
+        <View style={{ flex: 1, gap: 2 }}>
+          <AppText variant="label">Nothing in the background until you say so</AppText>
+          <AppText variant="caption" tone="dim">
+            Not now skips the prompt. You can turn notifications on from Settings whenever you want.
+          </AppText>
+        </View>
+      </Card>
+      <Button title="Turn on notifications" loading={busy === 'on' || finishing} disabled={!userId} onPress={() => void finish(true)} />
+      <Button title="Not now" variant="ghost" loading={busy === 'later' || finishing} disabled={!userId} onPress={() => void finish(false)} />
+    </>
+  );
+}
+
+function PlansStep({ userId, onNext }: { userId: string | undefined; onNext: () => void }) {
   const { data: plan } = usePlan(userId);
   const { data: limits = [] } = usePlanLimits();
   const trialEnds = plan?.plan === 'trial' && plan.expires_at ? new Date(plan.expires_at) : null;
@@ -280,7 +333,7 @@ function PlansStep({ userId, onNext, finishing }: { userId: string | undefined; 
       <AppText variant="caption" tone="dim">
         See prices and choose a plan any time in Settings, under Plan.
       </AppText>
-      <Button title="Start using Tusky" loading={finishing} onPress={onNext} />
+      <Button title="Continue" onPress={onNext} />
     </>
   );
 }

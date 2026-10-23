@@ -6,6 +6,7 @@ import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NameSheet } from '@/components/name-sheet';
+import { NotificationSettings } from '@/components/notification-settings';
 import { PlanBanner } from '@/components/plan-banner';
 import { Chips } from '@/components/ui/chips';
 import { AppText } from '@/components/ui/app-text';
@@ -234,6 +235,8 @@ export default function SettingsScreen() {
           <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
         </Pressable>
       </Card>
+
+      <NotificationSettings userId={session?.user.id} />
 
       {/* Phase 15f: sign-in, privacy, legal and account deletion live one level down. */}
       <Card>

@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AccountRow } from '@/components/account-row';
 import { Sparkline } from '@/components/charts/sparkline';
+import { NotificationPrompt } from '@/components/notification-prompt';
 import { PlanBanner } from '@/components/plan-banner';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
@@ -99,6 +100,7 @@ export default function HomeScreen() {
       </View>
 
       <PlanBanner userId={session?.user.id} />
+      <NotificationPrompt userId={session?.user.id} />
 
       {/* Net worth hero — the ledger voice, oversized */}
       <Card style={{ gap: Spacing.xs }}>

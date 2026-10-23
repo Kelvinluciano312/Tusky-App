@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | Ask one herd member from review, and show who categorized the transaction | `pedro/review-ask-source-a908`, [#55](https://github.com/Kelvinluciano312/Tusky-App/pull/55), [#54](https://github.com/Kelvinluciano312/Tusky-App/issues/54) | Review card and queue (`apps/mobile/src/app/review.tsx`, `components/review-card.tsx`, `components/questions.tsx`, `lib/review.ts`, `lib/queries.ts`); `transactions.review_assignee` migration; `scripts/rls-check.mjs` |
+| Pedro | Push notifications: tokens, prefs, onboarding choice, and all 12 types | `pedro/push-notifications`, [#59](https://github.com/Kelvinluciano312/Tusky-App/issues/59) | `apps/mobile` notifications, onboarding, Settings, Home; `supabase/functions/send-push`, `notifications-cron`, `_shared/notify.ts`; migration `20261023140000_push_notifications.sql` |

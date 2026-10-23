@@ -119,6 +119,19 @@ export async function runEnforcer(
           const { error } = await admin
             .from('subscriptions').update({ over_limit_since: verdict.overLimitSince }).in('user_id', covered);
           if (error) throw error;
+          if (verdict.overLimitSince) {
+            try {
+              const { notifyOverLimit } = await import('./push-events.ts');
+              await notifyOverLimit(admin, covered, {
+                since: verdict.overLimitSince,
+                maxBanks: plan.max_banks,
+                banksUsed: plan.banks_used,
+                now,
+              });
+            } catch (err) {
+              console.warn(`over-limit push failed: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }
         }
       }
       reports.push({ user_id: userId, plan: plan.plan, scope: plan.scope, ...verdict, results });

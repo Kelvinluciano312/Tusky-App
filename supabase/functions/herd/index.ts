@@ -4,7 +4,8 @@
 // JWT-verified by default: no config.toml entry.
 
 import { describeMembershipError, generateCode, MAX_MEMBERS, parseHerdRequest } from '../_shared/herd.ts';
-import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, jsonResponse, requireSecondStep } from '../_shared/lib.ts';
+import { corsHeaders, getAdminClient, getAuthedUser, getCallerHerd, jsonResponse, loggable, requireSecondStep } from '../_shared/lib.ts';
+import { notifyHerdJoined } from '../_shared/push-events.ts';
 
 const MAX_PENDING_INVITES = 5;
 
@@ -114,6 +115,14 @@ Deno.serve(async (req) => {
           p_private_accounts: input.private_account_ids,
         });
         if (error) return fromRpc(error);
+        const herdId = (data as { herd_id?: string } | null)?.herd_id;
+        if (herdId) {
+          try {
+            await notifyHerdJoined(admin, herdId, user.id);
+          } catch (err) {
+            console.warn(`herd join push failed for ${user.id}`, loggable(err));
+          }
+        }
         return jsonResponse(data);
       }
 

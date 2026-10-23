@@ -12,7 +12,7 @@ export type PlaidWebhookBody = {
   error?: { error_code?: string; error_type?: string; error_message?: string; request_id?: string } | null;
 };
 
-export type WebhookAction = 'sync' | 'login_required' | 'ignore';
+export type WebhookAction = 'sync' | 'login_required' | 'pending_expiration' | 'ignore';
 
 async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -62,16 +62,17 @@ export async function verifyPlaidWebhook(
 
 /**
  * What an authentic webhook asks of us. Deliberately narrow: PENDING_DISCONNECT
- * and PENDING_EXPIRATION are NOT login_required — the credentials still work in
- * that window, so the next successful sync would flip the Item back to active
- * and the Reconnect prompt would flap. ITEM_LOGIN_REQUIRED fires when access
- * actually lapses.
+ * is not login_required — the credentials still work, so marking the Item would
+ * flap back to active on the next sync. PENDING_EXPIRATION is a heads-up only:
+ * it does not change status. ITEM_LOGIN_REQUIRED fires when access actually lapses.
  */
 export function classifyWebhook(body: PlaidWebhookBody): WebhookAction {
   switch (`${body.webhook_type}/${body.webhook_code}`) {
     case 'TRANSACTIONS/SYNC_UPDATES_AVAILABLE':
     case 'ITEM/LOGIN_REPAIRED': // a successful sync is what returns an Item to active
       return 'sync';
+    case 'ITEM/PENDING_EXPIRATION':
+      return 'pending_expiration';
     case 'ITEM/ERROR':
       return body.error?.error_code === 'ITEM_LOGIN_REQUIRED' ? 'login_required' : 'ignore';
     default:

@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/card';
 import { DELETE_URL, PRIVACY_URL, TERMS_URL } from '@/constants/legal';
 import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { releasePushToken } from '@/lib/push';
 import { deleteWarning } from '@/lib/paywall';
 import { useDeleteAccount, usePlan } from '@/lib/queries';
 import { useSession } from '@/lib/session';
@@ -37,6 +38,7 @@ export default function AccountScreen() {
   const [deleting, setDeleting] = useState(false);
 
   const signOut = async () => {
+    await releasePushToken();
     await supabase.auth.signOut();
     // The next person to sign in on this device must never see this one's cached data.
     queryClient.clear();
@@ -62,6 +64,7 @@ export default function AccountScreen() {
     deleteAccount.mutate(password, {
       onSuccess: async () => {
         setDeleting(false);
+        await releasePushToken();
         await supabase.auth.signOut();
         queryClient.clear();
       },

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { PRIVACY_URL, TERMS_URL, TERMS_VERSION } from '@/constants/legal';
 import { Layout, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { releasePushToken } from '@/lib/push';
 import { useAcceptTerms } from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
 
@@ -50,7 +51,13 @@ export default function AcceptTermsScreen() {
           })
         }
       />
-      <Button title="Sign out" variant="ghost" onPress={() => void supabase.auth.signOut()} />
+      <Button
+        title="Sign out"
+        variant="ghost"
+        onPress={() => {
+          void releasePushToken().finally(() => supabase.auth.signOut());
+        }}
+      />
     </ScrollView>
   );
 }

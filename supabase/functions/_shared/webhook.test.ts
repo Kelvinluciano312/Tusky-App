@@ -102,6 +102,10 @@ Deno.test('classifyWebhook ignores PENDING_DISCONNECT, which would flap against 
   assertEquals(classifyWebhook({ webhook_type: 'ITEM', webhook_code: 'PENDING_DISCONNECT' }), 'ignore');
 });
 
+Deno.test('classifyWebhook flags PENDING_EXPIRATION without calling it a login failure', () => {
+  assertEquals(classifyWebhook({ webhook_type: 'ITEM', webhook_code: 'PENDING_EXPIRATION' }), 'pending_expiration');
+});
+
 Deno.test('classifyWebhook ignores a known code under the wrong type', () => {
   assertEquals(classifyWebhook({ webhook_type: 'ITEM', webhook_code: 'SYNC_UPDATES_AVAILABLE' }), 'ignore');
 });

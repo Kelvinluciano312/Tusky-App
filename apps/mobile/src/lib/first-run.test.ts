@@ -36,9 +36,12 @@ test('an unknown state opens the app', () => {
 
 test('steps walk forward and back, and say where you are', () => {
   assert.equal(nextStep('welcome'), 'name');
-  assert.equal(nextStep('plans'), null);
+  assert.equal(nextStep('plans'), 'notifications');
+  assert.equal(nextStep('notifications'), null);
   assert.equal(previousStep('welcome'), null);
   assert.equal(previousStep('name'), 'welcome');
-  assert.equal(stepLabel('welcome'), 'Step 1 of 6');
-  assert.equal(stepLabel('plans'), 'Step 6 of 6');
+  assert.equal(previousStep('notifications'), 'plans');
+  assert.equal(stepLabel('welcome'), 'Step 1 of 7');
+  assert.equal(stepLabel('plans'), 'Step 6 of 7');
+  assert.equal(stepLabel('notifications'), 'Step 7 of 7');
 });

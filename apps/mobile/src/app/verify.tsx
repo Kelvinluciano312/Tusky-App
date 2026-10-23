@@ -10,6 +10,7 @@ import { Layout, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { FirstRunState } from '@/lib/first-run';
 import { confirmLoginCode, sendLoginCode } from '@/lib/login-code';
+import { releasePushToken } from '@/lib/push';
 import { useSession } from '@/lib/session';
 import { supabase } from '@/lib/supabase';
 import { RESEND_SECONDS } from '@/lib/two-factor';
@@ -91,6 +92,7 @@ export default function VerifyScreen() {
 
   const signOut = async () => {
     lastSent.delete(email);
+    await releasePushToken();
     await supabase.auth.signOut();
     // The next person to sign in on this device must never see this one's cached data.
     queryClient.clear();
