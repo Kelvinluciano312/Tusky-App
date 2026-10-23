@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Switch, View } from 'react-native';
+import { Linking, Platform, Switch, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
@@ -7,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Chips } from '@/components/ui/chips';
 import { dialog } from '@/components/ui/dialog';
 import { Spacing } from '@/constants/theme';
+import { useDevicePush } from '@/lib/device-push';
 import { useTheme } from '@/hooks/use-theme';
 import { displayedPrefs, useNotificationPrefs, useSetNotificationPref } from '@/lib/notification-prefs';
 import {
@@ -18,7 +18,7 @@ import {
   REVIEW_HOURS,
   REVIEW_THRESHOLDS,
 } from '@/lib/notifications';
-import { enableNotifications } from '@/lib/push';
+import { settingsAction } from '@/lib/push-status';
 
 type BoolKey =
   | 'question_asked'
@@ -52,125 +52,181 @@ const TOGGLES: { key: BoolKey; label: string; caption: string }[] = [
   { key: 'billing_issue', label: 'Plan and billing', caption: 'A payment problem, or a few days to choose which banks to keep.' },
 ];
 
-/** Notifications in Settings. Reconnect alerts stay on; they are how a broken bank gets fixed. */
+/** Notifications screen. Reconnect alerts stay on; they are how a broken bank gets fixed. */
 export function NotificationSettings({ userId }: { userId: string | undefined }) {
   const colors = useTheme();
   const { data } = useNotificationPrefs(userId);
   const setPref = useSetNotificationPref(userId);
   const prefs = displayedPrefs(data);
-  const [enabling, setEnabling] = useState(false);
+  const device = useDevicePush(userId);
+  const controlsOn = device.state === 'on';
+  const openSettings = settingsAction(device.state, Platform.OS);
 
   const save = (patch: Parameters<typeof setPref.mutate>[0]) => {
+    if (!controlsOn) return;
     setPref.mutate(patch, { onError: () => dialog.alert('Could not save', 'Check your connection and try again.') });
   };
 
+  const onMaster = (on: boolean) => {
+    if (on) {
+      device.enable.mutate(undefined, {
+        onSuccess: (result) => {
+          if (result.status === 'denied') {
+            dialog.alert(
+              'Notifications are blocked',
+              Platform.OS === 'ios'
+                ? 'iOS is not allowing notifications for Tusky. Open Settings and allow them, then come back.'
+                : 'Notifications are blocked for Tusky. Allow them in system settings, then come back.',
+            );
+          } else if (result.status === 'unsupported') {
+            dialog.alert('Not on this device', 'Push notifications need a physical phone.');
+          } else if (result.status === 'error') {
+            dialog.alert('Could not turn on notifications', result.message);
+          }
+        },
+      });
+      return;
+    }
+    device.disable.mutate(undefined, {
+      onSuccess: (result) => {
+        if (result.status === 'error') dialog.alert('Could not turn off notifications', result.message);
+      },
+    });
+  };
+
+  const masterCaption = device.loading
+    ? 'Checking this phone…'
+    : device.state === 'unsupported'
+      ? 'Push notifications need a physical phone.'
+      : device.state === 'denied'
+        ? 'This phone is blocking notifications for Tusky.'
+        : device.error && !controlsOn
+          ? device.error
+          : controlsOn
+            ? 'On for this phone. Tusky can send the alerts you leave on below.'
+            : 'Off for this phone. Nothing is sent here until you turn them on.';
+
   return (
     <Card style={{ gap: Spacing.sm }}>
-      <AppText variant="section" tone="dim">
-        Notifications
-      </AppText>
       <AppText variant="caption" tone="dim">
         Alerts that a bank needs reconnecting always stay on. Everything else is yours to turn off. Quiet hours hold the rest until morning.
       </AppText>
-      <Button
-        title="Turn on notifications"
-        variant="secondary"
-        loading={enabling}
-        onPress={() => {
-          setEnabling(true);
-          void enableNotifications()
-            .then((result) => {
-              if (result === 'denied') {
-                dialog.alert('Notifications are off', 'You can allow them in your phone’s settings, then come back here.');
-              } else if (result === 'unsupported') {
-                dialog.alert('Not on this device', 'Push notifications need a physical phone.');
-              }
-            })
-            .catch(() => dialog.alert('Could not turn on notifications', 'Check your connection and try again.'))
-            .finally(() => setEnabling(false));
-        }}
-      />
-
-      {TOGGLES.map((toggle) => (
-        <View key={toggle.key} style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.xs }}>
-          <View style={{ flex: 1 }}>
-            <AppText variant="label">{toggle.label}</AppText>
-            <AppText variant="caption" tone="dim">
-              {toggle.caption}
-            </AppText>
-          </View>
-          <Switch
-            accessibilityLabel={toggle.label}
-            trackColor={{ false: colors.elevated, true: colors.brand }}
-            value={prefs[toggle.key]}
-            disabled={!userId || setPref.isPending}
-            onValueChange={(value) => save({ [toggle.key]: value })}
-          />
-        </View>
-      ))}
-
-      <AppText variant="label">Review digest</AppText>
-      <AppText variant="caption" tone="dim">
-        Send it when at least this many transactions are waiting, and something new arrived since the last one.
-      </AppText>
-      <Chips
-        accessibilityLabel="Review digest threshold"
-        options={REVIEW_THRESHOLDS.map((value) => ({ value, label: String(value) }))}
-        selected={prefs.review_threshold as (typeof REVIEW_THRESHOLDS)[number]}
-        onSelect={(value) => save({ review_threshold: value })}
-      />
-      <AppText variant="caption" tone="dim">
-        Around this time, in your time zone.
-      </AppText>
-      <Chips
-        accessibilityLabel="Review digest time"
-        options={REVIEW_HOURS.map((value) => ({ value, label: formatHour(value) }))}
-        selected={prefs.review_hour as (typeof REVIEW_HOURS)[number]}
-        onSelect={(value) => save({ review_hour: value })}
-      />
-
-      <AppText variant="label">Large purchase</AppText>
-      <Chips
-        accessibilityLabel="Large purchase amount"
-        options={LARGE_CENTS.map((value) => ({ value, label: formatThreshold(value) }))}
-        selected={prefs.large_cents as (typeof LARGE_CENTS)[number]}
-        onSelect={(value) => save({ large_cents: value })}
-      />
-
-      <AppText variant="label">Quiet hours</AppText>
-      <AppText variant="caption" tone="dim">
-        From
-      </AppText>
-      <Chips
-        accessibilityLabel="Quiet hours start"
-        options={QUIET_STARTS.map((value) => ({ value, label: formatHour(value) }))}
-        selected={prefs.quiet_start as (typeof QUIET_STARTS)[number]}
-        onSelect={(value) => save({ quiet_start: value })}
-      />
-      <AppText variant="caption" tone="dim">
-        until
-      </AppText>
-      <Chips
-        accessibilityLabel="Quiet hours end"
-        options={QUIET_ENDS.map((value) => ({ value, label: formatHour(value) }))}
-        selected={prefs.quiet_end as (typeof QUIET_ENDS)[number]}
-        onSelect={(value) => save({ quiet_end: value })}
-      />
-
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.xs }}>
         <View style={{ flex: 1 }}>
-          <AppText variant="label">Hide amounts on the lock screen</AppText>
-          <AppText variant="caption" tone="dim">
-            Dollar amounts are replaced so a glance does not show what was spent. Merchant names stay.
+          <AppText variant="label">Notifications on this phone</AppText>
+          <AppText variant="caption" tone={device.error && !controlsOn ? 'negative' : 'dim'}>
+            {masterCaption}
           </AppText>
         </View>
         <Switch
-          accessibilityLabel="Hide amounts on the lock screen"
+          accessibilityLabel="Notifications on this phone"
+          accessibilityState={{ disabled: device.pending || device.state === 'unsupported' }}
           trackColor={{ false: colors.elevated, true: colors.brand }}
-          value={prefs.hide_amounts}
-          disabled={!userId || setPref.isPending}
-          onValueChange={(value) => save({ hide_amounts: value })}
+          value={controlsOn}
+          disabled={!userId || device.pending || device.loading || device.state === 'unsupported'}
+          onValueChange={onMaster}
         />
+      </View>
+      {openSettings ? (
+        <Button title={openSettings} variant="secondary" onPress={() => void Linking.openSettings()} />
+      ) : null}
+
+      <View
+        pointerEvents={controlsOn ? 'auto' : 'none'}
+        style={{ gap: Spacing.sm, opacity: controlsOn ? 1 : 0.4 }}>
+        {!controlsOn ? (
+          <AppText variant="caption" tone="dim">
+            Turn notifications on to change these.
+          </AppText>
+        ) : null}
+        {TOGGLES.map((toggle) => (
+          <View key={toggle.key} style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.xs }}>
+            <View style={{ flex: 1 }}>
+              <AppText variant="label">{toggle.label}</AppText>
+              <AppText variant="caption" tone="dim">
+                {toggle.caption}
+              </AppText>
+            </View>
+            <Switch
+              accessibilityLabel={toggle.label}
+              accessibilityState={{ disabled: !controlsOn }}
+              trackColor={{ false: colors.elevated, true: colors.brand }}
+              value={prefs[toggle.key]}
+              disabled={!controlsOn || !userId || setPref.isPending}
+              onValueChange={(value) => save({ [toggle.key]: value })}
+            />
+          </View>
+        ))}
+
+        <AppText variant="label">Review digest</AppText>
+        <AppText variant="caption" tone="dim">
+          Send it when at least this many transactions are waiting, and something new arrived since the last one.
+        </AppText>
+        <Chips
+          accessibilityLabel="Review digest threshold"
+          disabled={!controlsOn}
+          options={REVIEW_THRESHOLDS.map((value) => ({ value, label: String(value) }))}
+          selected={prefs.review_threshold as (typeof REVIEW_THRESHOLDS)[number]}
+          onSelect={(value) => save({ review_threshold: value })}
+        />
+        <AppText variant="caption" tone="dim">
+          Around this time, in your time zone.
+        </AppText>
+        <Chips
+          accessibilityLabel="Review digest time"
+          disabled={!controlsOn}
+          options={REVIEW_HOURS.map((value) => ({ value, label: formatHour(value) }))}
+          selected={prefs.review_hour as (typeof REVIEW_HOURS)[number]}
+          onSelect={(value) => save({ review_hour: value })}
+        />
+
+        <AppText variant="label">Large purchase</AppText>
+        <Chips
+          accessibilityLabel="Large purchase amount"
+          disabled={!controlsOn}
+          options={LARGE_CENTS.map((value) => ({ value, label: formatThreshold(value) }))}
+          selected={prefs.large_cents as (typeof LARGE_CENTS)[number]}
+          onSelect={(value) => save({ large_cents: value })}
+        />
+
+        <AppText variant="label">Quiet hours</AppText>
+        <AppText variant="caption" tone="dim">
+          From
+        </AppText>
+        <Chips
+          accessibilityLabel="Quiet hours start"
+          disabled={!controlsOn}
+          options={QUIET_STARTS.map((value) => ({ value, label: formatHour(value) }))}
+          selected={prefs.quiet_start as (typeof QUIET_STARTS)[number]}
+          onSelect={(value) => save({ quiet_start: value })}
+        />
+        <AppText variant="caption" tone="dim">
+          until
+        </AppText>
+        <Chips
+          accessibilityLabel="Quiet hours end"
+          disabled={!controlsOn}
+          options={QUIET_ENDS.map((value) => ({ value, label: formatHour(value) }))}
+          selected={prefs.quiet_end as (typeof QUIET_ENDS)[number]}
+          onSelect={(value) => save({ quiet_end: value })}
+        />
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.xs }}>
+          <View style={{ flex: 1 }}>
+            <AppText variant="label">Hide amounts on the lock screen</AppText>
+            <AppText variant="caption" tone="dim">
+              Dollar amounts are replaced so a glance does not show what was spent. Merchant names stay.
+            </AppText>
+          </View>
+          <Switch
+            accessibilityLabel="Hide amounts on the lock screen"
+            accessibilityState={{ disabled: !controlsOn }}
+            trackColor={{ false: colors.elevated, true: colors.brand }}
+            value={prefs.hide_amounts}
+            disabled={!controlsOn || !userId || setPref.isPending}
+            onValueChange={(value) => save({ hide_amounts: value })}
+          />
+        </View>
       </View>
     </Card>
   );

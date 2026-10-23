@@ -12,11 +12,13 @@ export function Chips<T>({
   selected,
   onSelect,
   accessibilityLabel,
+  disabled = false,
 }: {
   options: Chip<T>[];
   selected: T;
   onSelect: (value: T) => void;
   accessibilityLabel?: string;
+  disabled?: boolean;
 }) {
   const colors = useTheme();
   return (
@@ -27,9 +29,10 @@ export function Chips<T>({
           <Pressable
             key={String(option.value)}
             accessibilityRole="radio"
-            accessibilityState={{ selected: on }}
+            accessibilityState={{ selected: on, disabled }}
             accessibilityLabel={option.label}
-            onPress={() => !on && onSelect(option.value)}
+            disabled={disabled}
+            onPress={() => !disabled && !on && onSelect(option.value)}
             style={({ pressed }) => ({
               paddingVertical: Spacing.xs + 2,
               paddingHorizontal: Spacing.md - 2,

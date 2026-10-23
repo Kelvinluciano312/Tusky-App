@@ -74,6 +74,11 @@ export default function SignInScreen() {
             autoComplete="current-password"
             placeholder="Your password"
           />
+          <Link href={{ pathname: '/forgot-password', params: { email: email.trim() } }} style={{ alignSelf: 'flex-end' }}>
+            <AppText tone="brand" variant="label">
+              Forgot password?
+            </AppText>
+          </Link>
 
           {error && (
             <AppText variant="caption" tone="negative">

@@ -94,8 +94,9 @@ export function useNotificationPrompt(userId: string | undefined) {
 
   const enable = useMutation({
     mutationFn: async () => {
-      if (!userId) return 'denied' as const;
+      if (!userId) return { status: 'denied' as const };
       const result = await enableNotifications();
+      if (result.status === 'error') throw new Error(result.message);
       await markPrompted(userId);
       return result;
     },

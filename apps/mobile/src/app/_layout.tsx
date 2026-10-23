@@ -16,6 +16,7 @@ import { Palette } from '@/constants/theme';
 import { TERMS_VERSION } from '@/constants/legal';
 import { gateFor } from '@/lib/first-run';
 import { ensureAndroidChannels, listenForNotificationOpens, registerIfGranted } from '@/lib/push';
+import { listenForRecovery, useRecovering } from '@/lib/recovery-session';
 import { identifyPurchaser } from '@/lib/purchases';
 import { useFirstRun } from '@/lib/queries';
 import { SessionProvider, useSession } from '@/lib/session';
@@ -95,8 +96,9 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   // for the answer so the app never flashes before the terms screen.
   const firstRun = useFirstRun(userId ?? undefined);
   // Since 16e the first gate is the emailed code, for users with two-step on whose session the server has not verified.
-  const gate = session ? gateFor(firstRun.data ?? null, TERMS_VERSION) : null;
-  const ready = fontsLoaded && !isLoading && !(session && firstRun.isLoading);
+  const { recovering } = useRecovering();
+  const gate = session || recovering ? gateFor(session ? (firstRun.data ?? null) : null, TERMS_VERSION, recovering) : null;
+  const ready = fontsLoaded && !isLoading && !(session && firstRun.isLoading && !recovering);
 
   // A function answering 403 two_factor_required means the gate's answer is stale: ask again.
   const queryClient = useQueryClient();
@@ -117,6 +119,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   useEffect(() => {
     if (userId) void registerIfGranted();
   }, [userId]);
+  useEffect(() => listenForRecovery(), []);
 
   useEffect(() => {
     if (ready) {
@@ -130,6 +133,9 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Protected guard={gate === 'recovery'}>
+        <Stack.Screen name="reset-password" />
+      </Stack.Protected>
       <Stack.Protected guard={gate === 'verify'}>
         <Stack.Screen name="verify" />
       </Stack.Protected>
@@ -158,11 +164,12 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="join/[code]" options={{ headerShown: true, title: 'Invite' }} />
         <Stack.Screen name="plan" options={{ headerShown: true, title: 'Plan' }} />
         <Stack.Screen name="account" options={{ headerShown: true, title: 'Account & privacy' }} />
+        <Stack.Screen name="notifications" options={{ headerShown: true, title: 'Notifications' }} />
         <Stack.Screen name="paywall" options={{ headerShown: true, title: 'Plans', presentation: 'modal' }} />
         {/* Pushed from Home's balance card and the herd screen (11b). */}
         <Stack.Screen name="settle" options={{ headerShown: true, title: 'Settle up' }} />
       </Stack.Protected>
-      <Stack.Protected guard={session === null}>
+      <Stack.Protected guard={session === null && gate !== 'recovery'}>
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
     </Stack>

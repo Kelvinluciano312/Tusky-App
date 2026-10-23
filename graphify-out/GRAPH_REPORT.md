@@ -1,26 +1,26 @@
 # Graph Report - workspace  (2026-10-23)
 
 ## Corpus Check
-- 471 files · ~430,585 words
+- 483 files · ~435,947 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 27 file(s) not represented in the graph (top: (none) 9, .scss 7, .css 5)
 
 ## Summary
-- 3536 nodes · 8432 edges · 251 communities (187 shown, 64 thin omitted)
-- Extraction: 89% EXTRACTED · 11% INFERRED · 0% AMBIGUOUS · INFERRED: 893 edges (avg confidence: 0.95)
+- 3596 nodes · 8676 edges · 257 communities (190 shown, 67 thin omitted)
+- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 896 edges (avg confidence: 0.95)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `2661b328`
+- Built from commit: `55456030`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- Button
+- useTheme
 - server.cjs
 - dataUtilities.ts
 - ref_react
-- useTheme
+- AppText
 - presets.ts
 - File structure
 - _shared/recurring.ts
@@ -29,13 +29,13 @@
 - expo
 - transaction/[id].tsx
 - revenuecat.ts
-- lib/accounts.ts
-- PasswordSheet
+- _shared/accounts.ts
+- recovery-session.ts
 - legacy/package.json
 - public.transactions
 - rules.ts
 - mobile/package.json
-- Amount
+- recurring.tsx
 - queries.ts
 - plaid-exchange-token/index.ts
 - lib/two-factor.ts
@@ -43,8 +43,8 @@
 - rls-check.mjs
 - lib.ts
 - sync.ts
-- Conventions
-- AppText
+- review.tsx
+- CategorySheet
 - settle.ts
 - route
 - auth.users
@@ -56,12 +56,12 @@
 - public.accounts
 - App1.tsx
 - Endpoint/index.tsx
-- aiAllowed
+- Conventions
 - push-events.ts
 - compilerOptions
 - 20261006120000_phase12c_crowd_labels.sql
 - public.recurring_streams
-- settings.tsx
+- lib/accounts.ts
 - transaction-filters.ts
 - public.categories
 - sync.test.ts
@@ -76,7 +76,7 @@
 - public.transaction_questions
 - devDependencies
 - public.leave_herd
-- loggable
+- recordPlaidEvent
 - Test-Driven Development (TDD)
 - 20261015150000_phase16e2_two_factor_sessions.sql
 - devDependencies
@@ -96,7 +96,7 @@
 - stop-server.sh
 - dependencies
 - syncItem
-- ref_jsr_std
+- Phase 9: names, herds (shared households), who paid, and the production project
 - devDependencies
 - Condition-Based Waiting
 - scripts
@@ -121,7 +121,7 @@
 - Code Review Reception
 - Testing CLAUDE.md Skills Documentation
 - Testing Skills With Subagents
-- loadSyncContext
+- Handoff — Phase 7a done: category groups (2026-09-24)
 - purchases.ts
 - Finishing a Development Branch
 - Root Cause Tracing
@@ -129,7 +129,7 @@
 - Using Git Worktrees
 - Persuasion Principles for Skill Design
 - Writing Skills
-- bank/[id].tsx
+- useReplaceBudgets
 - Not in this plan
 - subagent-driven-development/SKILL.md
 - Findings
@@ -137,10 +137,10 @@
 - 20261023140000_push_notifications.sql
 - push.ts
 - Dispatching Parallel Agents
-- use-crowd-prompt.ts
+- _shared/review.ts
 - writing-skills/SKILL.md
 - 14d-1 — Android launch readiness
-- useSetTransactionCategory
+- Phase 2 Transaction Sync Implementation Plan
 - Brainstorming
 - Defense-in-Depth Validation
 - Writing Plans
@@ -150,15 +150,15 @@
 - Phase 6 — Connections & control (design)
 - Stripe subscriptions: design (ready to build, not scheduled)
 - calendar.ts
-- first-run.ts
+- onboarding.tsx
 - issue.md
 - Verification Before Completion
 - Skill structure
-- README.md
+- carryForward
 - Phase 2.5 (second half) — Plaid webhooks
 - Phase 12: the categorization engine
 - open-balance.ts
-- PlanScreen
+- paywall.tsx
 - Tusky — agent notes
 - Skill authoring best practices
 - Skill Discovery Optimization (SDO)
@@ -188,7 +188,7 @@
 - Muse Tool Mapping
 - Release builds (Phase 14d)
 - Transaction review & groups (planned, unscheduled)
-- Tusky
+- README.md
 - code-reviewer.md
 - The Task Loop
 - Notices for vendored agent skills
@@ -226,15 +226,19 @@
 - test-academic.md
 - preset-budgets.md
 - @testing-library/jest-dom
+- category-source.ts
+- layout.ts
+- Phase 8: transaction review
+- planCategoryDelete
 
 ## God Nodes (most connected - your core abstractions)
-1. `AppText()` - 160 edges
-2. `useTheme()` - 144 edges
-3. `Button()` - 80 edges
-4. `syncItem()` - 74 edges
-5. `react-native` - 73 edges
-6. `Conventions` - 64 edges
-7. `Spacing` - 61 edges
+1. `AppText()` - 164 edges
+2. `useTheme()` - 150 edges
+3. `Button()` - 84 edges
+4. `react-native` - 77 edges
+5. `syncItem()` - 74 edges
+6. `Spacing` - 64 edges
+7. `Conventions` - 64 edges
 8. `Amount()` - 53 edges
 9. `Card()` - 53 edges
 10. `useCategories()` - 42 edges
@@ -254,11 +258,11 @@
 ## Import Cycles
 - None detected.
 
-## Communities (251 total, 64 thin omitted)
+## Communities (257 total, 67 thin omitted)
 
-### Community 0 - "Button"
-Cohesion: 0.10
-Nodes (55): AccountScreen(), Row(), BankStep(), BudgetStep(), Heading(), NameStep(), NotificationsStep(), OnboardingScreen() (+47 more)
+### Community 0 - "useTheme"
+Cohesion: 0.09
+Nodes (54): AcceptTermsScreen(), AccountScreen(), Row(), ForgotPasswordScreen(), SignInScreen(), SignUpScreen(), JoinScreen(), ResetPasswordScreen() (+46 more)
 
 ### Community 1 - "server.cjs"
 Cohesion: 0.05
@@ -269,28 +273,28 @@ Cohesion: 0.05
 Nodes (61): AssetResponseData, assetsCategories, AssetsDataItem, authCategories, AuthDataItem, balanceCategories, BalanceDataItem, checkReportBaseReportCategories (+53 more)
 
 ### Community 3 - "ref_react"
-Cohesion: 0.10
-Nodes (52): SignInScreen(), KIND_LABEL, sectionLabel, Props, Props, Props, Props, DELETE_WORD (+44 more)
+Cohesion: 0.11
+Nodes (44): KIND_LABEL, sectionLabel, NotificationsScreen(), Props, Props, Props, Props, Props (+36 more)
 
-### Community 5 - "useTheme"
-Cohesion: 0.13
-Nodes (39): BudgetsScreen(), GroupBreakdown(), sectionLabel, BudgetRow(), BudgetSheet(), MonthStepper(), Props, PresetSheet() (+31 more)
+### Community 5 - "AppText"
+Cohesion: 0.10
+Nodes (52): CategoriesScreen(), CategoryLine(), sheetKey(), BudgetsScreen(), GroupBreakdown(), sectionLabel, Legend(), PersonRow() (+44 more)
 
 ### Community 6 - "presets.ts"
-Cohesion: 0.12
-Nodes (21): activeMonths(), buildPresets(), capped(), estimateIncome(), finish(), HISTORY_MONTHS, isLoan(), isNeed() (+13 more)
+Cohesion: 0.11
+Nodes (27): addMonths(), monthStart(), activeMonths(), buildPresets(), capped(), estimateIncome(), finish(), HISTORY_MONTHS (+19 more)
 
 ### Community 7 - "File structure"
-Cohesion: 0.16
-Nodes (25): Task 5: Deploy, demo, and docs, Decisions this plan makes where the spec is silent, File structure, Global Constraints, Phase 12c: crowd labels — Implementation Plan, Review Focus, Self-review, Task 0: Branch (+17 more)
+Cohesion: 0.10
+Nodes (36): useCrowdPrompt(), afterFix(), CROWD_PROMPT_AFTER, parsePromptState(), PromptState, useCrowdConsent(), useSetCrowdConsent(), Task 5: Deploy, demo, and docs (+28 more)
 
 ### Community 8 - "_shared/recurring.ts"
 Cohesion: 0.08
-Nodes (48): What shipped, Review Focus, Task 1: Pure detector (`detectStreams`, `staleStreamIds`), Task 2: `recurring_streams` table, Task 3: Run detection at the end of every sync, Task 7: Live verification and docs, Task 5: Recurring tiebreak, anchorDay() (+40 more)
+Nodes (49): What shipped, Review Focus, Task 1: Pure detector (`detectStreams`, `staleStreamIds`), Task 2: `recurring_streams` table, Task 3: Run detection at the end of every sync, Task 7: Live verification and docs, Task 5: Recurring tiebreak, `supabase/functions/_shared/connections.ts` (new, Deno-tested) (+41 more)
 
 ### Community 9 - "lib/categories.ts"
-Cohesion: 0.09
-Nodes (39): CategorySheet(), bySortOrder(), CategoryNode, changedFields(), CUSTOM_ICONS, deleteCategoryMessage(), KIND_ORDER, pickerSections() (+31 more)
+Cohesion: 0.11
+Nodes (21): bySortOrder(), CategoryNode, CUSTOM_ICONS, KIND_ORDER, pickerSections(), sectionsByKind(), SWATCHES, all (+13 more)
 
 ### Community 10 - "dependencies"
 Cohesion: 0.05
@@ -298,23 +302,23 @@ Nodes (42): dependencies, expo, expo-build-properties, expo-calendar, expo-const
 
 ### Community 11 - "expo"
 Cohesion: 0.05
-Nodes (37): backgroundColor, backgroundImage, foregroundImage, monochromeImage, adaptiveIcon, package, predictiveBackGestureEnabled, usesNonExemptEncryption (+29 more)
+Nodes (38): backgroundColor, backgroundImage, foregroundImage, monochromeImage, adaptiveIcon, googleServicesFile, package, predictiveBackGestureEnabled (+30 more)
 
 ### Community 12 - "transaction/[id].tsx"
-Cohesion: 0.13
-Nodes (38): RulesScreen(), formatDate(), shortDate(), TransactionScreen(), Props, CategoryPicker(), KIND_LABEL, Props (+30 more)
+Cohesion: 0.08
+Nodes (53): RulesScreen(), ActiveChip(), compareByDate(), formatSectionDate(), noMatchMessage(), Open, TransactionsScreen(), formatDate() (+45 more)
 
 ### Community 13 - "revenuecat.ts"
 Cohesion: 0.10
 Nodes (32): Global Constraints, Phase 14c — Purchases Implementation Plan, Review Focus, Task 2: `revenuecat-webhook` and `plan-refresh`, Task 1: `plan-refresh` gets a cooldown, adminSubStore(), endOf(), eventUserIds() (+24 more)
 
-### Community 14 - "lib/accounts.ts"
-Cohesion: 0.08
-Nodes (26): accountGroup, Balanced, GROUP_LABEL, GROUP_ORDER, groupAccounts(), netWorth(), signedBalance(), useNetWorthHistory() (+18 more)
+### Community 14 - "_shared/accounts.ts"
+Cohesion: 0.09
+Nodes (23): useNetWorthHistory(), Handoff — Phase 4 done (2026-09-22), Known, accepted, Not yet verified — pick this up first, Open items carried forward, START HERE NEXT SESSION, Two pre-existing bugs fixed as a side effect, Verified live (Pixel_7 emulator, test user) (+15 more)
 
-### Community 15 - "PasswordSheet"
-Cohesion: 0.38
-Nodes (9): SignUpScreen(), PasswordChecklist(), PasswordSheet(), PASSWORD_MIN, passwordOk(), PasswordRule, passwordRules(), passwordsMatch() (+1 more)
+### Community 15 - "recovery-session.ts"
+Cohesion: 0.16
+Nodes (23): AuthError, paramsOf(), parseRecoveryUrl(), PASSWORD_RESET_REDIRECT, passwordUpdateMessage(), rateLimited(), recoveryExchangeMessage(), RecoveryLink (+15 more)
 
 ### Community 16 - "legacy/package.json"
 Cohesion: 0.09
@@ -325,28 +329,28 @@ Cohesion: 0.08
 Nodes (22): public.transactions, transactions_account_id_idx, transactions_feed_idx, transactions_item_id_idx, transactions_updated_at, transactions_unreviewed_idx, public.monthly_person_totals, ac_transactions_split (+14 more)
 
 ### Community 18 - "rules.ts"
-Cohesion: 0.10
-Nodes (35): Global Constraints, Phase 7c — Merchant Rules and Renaming Implementation Plan, Review Focus, File structure, Global Constraints, Phase 12a: learning from your own fixes — Implementation Plan, Review Focus, Task 2: The resolver returns a source, and sync writes it (+27 more)
+Cohesion: 0.11
+Nodes (34): day(), Review Focus, File structure, Global Constraints, Phase 12a: learning from your own fixes — Implementation Plan, Review Focus, Task 2: The resolver returns a source, and sync writes it, Task 3: `learn.ts` — a category from a merchant's labels (+26 more)
 
 ### Community 19 - "mobile/package.json"
-Cohesion: 0.07
-Nodes (27): eslint, react, react-dom, @types/react, typescript, main, name, private (+19 more)
+Cohesion: 0.06
+Nodes (31): eslint, react, react-dom, @types/react, typescript, main, name, private (+23 more)
 
-### Community 20 - "Amount"
-Cohesion: 0.12
-Nodes (37): RecurringScreen(), Props, RecurringRow(), Props, TransactionRow(), Amount(), AmountProps, groupDigits() (+29 more)
+### Community 20 - "recurring.tsx"
+Cohesion: 0.14
+Nodes (30): RecurringScreen(), Props, RecurringRow(), TransactionRow(), Props, MerchantRule, MerchantRules, streamName() (+22 more)
 
 ### Community 21 - "queries.ts"
 Cohesion: 0.06
-Nodes (60): HerdScreen(), JoinScreen(), formatDate(), RecordPaymentSheet(), SettleScreen(), asText(), Props, SplitSheet() (+52 more)
+Nodes (91): BankScreen(), connectedOn(), HerdScreen(), JoinInviteScreen(), formatDate(), RecordPaymentSheet(), SettleScreen(), greeting() (+83 more)
 
 ### Community 22 - "plaid-exchange-token/index.ts"
-Cohesion: 0.11
-Nodes (28): Task 4: Bank limits and history depth in link-token and exchange-token, What shipped, Phase 14b — Plan Lifecycle and Reconnect Merge Implementation Plan, Review Focus, Task 1: The enforcer's decision (pure), Task 2: The `plan-enforcer` function and its daily cron, Task 4: The merge plan (pure), Task 6: Live verification on dev (+20 more)
+Cohesion: 0.10
+Nodes (31): Global Constraints, Phase 14a — Plans and Limits Implementation Plan, Review Focus, Task 4: Bank limits and history depth in link-token and exchange-token, Task 5: The app explains a plan limit, Phase 14b — Plan Lifecycle and Reconnect Merge Implementation Plan, Review Focus, Task 1: The enforcer's decision (pure) (+23 more)
 
 ### Community 23 - "lib/two-factor.ts"
-Cohesion: 0.16
-Nodes (22): CodeEntry(), Props, confirmLoginCode(), sendLoginCode(), CODE_LENGTH, codeComplete(), codeFailureMessage(), codeFull() (+14 more)
+Cohesion: 0.15
+Nodes (20): confirmLoginCode(), sendLoginCode(), CODE_LENGTH, codeComplete(), codeFailureMessage(), codeFull(), Listener, listeners (+12 more)
 
 ### Community 24 - "legacy/src/App.tsx"
 Cohesion: 0.18
@@ -357,20 +361,20 @@ Cohesion: 0.09
 Nodes (19): Task 1: Migration — `category_source`, `corrected_from`, the trigger, Task 2: `replace_budgets` — swap the herd's budgets in one transaction, Task 2: RLS check covers plans and subscriptions, linked, WIDTHS, adb(), arg, [cmd, ...rest] (+11 more)
 
 ### Community 26 - "lib.ts"
-Cohesion: 0.19
-Nodes (22): Task 3: The sync Edge Function, Task 6: The `apply-learning` Edge Function, and deploy to dev, What shipped, Task 2: `delete-account` on the server, Atomicity, Concurrency, Failure modes, Per-item flow (+14 more)
+Cohesion: 0.14
+Nodes (26): Task 3: The sync Edge Function, Task 6: The `apply-learning` Edge Function, and deploy to dev, What shipped, Task 2: `delete-account` on the server, Atomicity, Concurrency, Failure modes, Per-item flow (+18 more)
 
 ### Community 27 - "sync.ts"
 Cohesion: 0.08
-Nodes (50): Task 3: Categorization through Jev, `category_source = 'ai'`, unchanged., Concurrency, Surface 1: categorization (replaces 12b Haiku), Testing, The single fan-out request, per uncached merchant key, AI_MAX_PER_SYNC, AI_UPDATE_CHUNK (+42 more)
+Nodes (45): Task 3: Categorization through Jev, `category_source = 'ai'`, unchanged., Concurrency, Surface 1: categorization (replaces 12b Haiku), Testing, The single fan-out request, per uncached merchant key, AI_MAX_PER_SYNC, AI_UPDATE_CHUNK (+37 more)
 
-### Community 28 - "Conventions"
-Cohesion: 0.08
-Nodes (32): askedLine(), Deck, DeckMove, deckReducer(), inMyReview(), newDeck(), normalizeNote(), NOTE_MAX (+24 more)
+### Community 28 - "review.tsx"
+Cohesion: 0.14
+Nodes (26): CaughtUp(), DeckEdge(), Fling, Progress(), ReviewScreen(), RoundButton(), Stamp(), SwipeCard() (+18 more)
 
-### Community 29 - "AppText"
-Cohesion: 0.09
-Nodes (41): AcceptTermsScreen(), CategoriesScreen(), CategoryLine(), sheetKey(), Notice(), CaughtUp(), DeckEdge(), Fling (+33 more)
+### Community 29 - "CategorySheet"
+Cohesion: 0.20
+Nodes (18): CategorySheet(), changedFields(), deleteCategoryMessage(), validateCategoryName(), countCategoryTransactions(), useCategoryOverride(), useCreateCategory(), useDeleteCategory() (+10 more)
 
 ### Community 30 - "settle.ts"
 Cohesion: 0.20
@@ -389,20 +393,20 @@ Cohesion: 0.08
 Nodes (23): compilerOptions, allowImportingTsExtensions, allowJs, esModuleInterop, forceConsistentCasingInFileNames, isolatedModules, jsx, lib (+15 more)
 
 ### Community 34 - "app/_layout.tsx"
-Cohesion: 0.14
-Nodes (17): navThemes, queryClient, RootLayout(), RootNavigator(), DialogHost(), getSnapshot(), subscribe(), identifyPurchaser() (+9 more)
+Cohesion: 0.13
+Nodes (19): navThemes, queryClient, RootLayout(), RootNavigator(), DialogHost(), getSnapshot(), subscribe(), identifyPurchaser() (+11 more)
 
 ### Community 35 - "dialog.tsx"
 Cohesion: 0.24
-Nodes (11): emit(), resolve(), DialogButton, DialogOptions, DialogRequest, dismissHead(), enqueue(), layoutFor() (+3 more)
+Nodes (14): DialogCard(), emit(), resolve(), cancelButton(), DialogButton, DialogOptions, DialogRequest, dismissAction() (+6 more)
 
 ### Community 36 - "plaid-webhook/index.ts"
-Cohesion: 0.09
-Nodes (22): Global Constraints, Phase 14a — Plans and Limits Implementation Plan, Review Focus, Task 1: Plans, subscriptions and the resolver (database), Task 5: The app explains a plan limit, Task 6: Docs, handoff and PR, keyCache, missCache (+14 more)
+Cohesion: 0.12
+Nodes (17): Task 1: Plans, subscriptions and the resolver (database), getKey(), keyCache, missCache, ok(), plaid, classifyWebhook(), PlaidJwk (+9 more)
 
 ### Community 37 - "jev.ts"
-Cohesion: 0.08
-Nodes (35): Review Focus, Task 2: The Jev client, Task 4: Triage: review priority and the split hint, Task 6: The app: deck order, the review hint, the split hint, the switch, Task 7: Measurement and docs, Task 8: Dev rollout, end to end, and the PR, askJev(), AskOpts (+27 more)
+Cohesion: 0.09
+Nodes (37): Review Focus, Task 2: The Jev client, Task 4: Triage: review priority and the split hint, Task 7: Measurement and docs, Task 8: Dev rollout, end to end, and the PR, askJev(), AskOpts, asObject() (+29 more)
 
 ### Community 38 - "public.accounts"
 Cohesion: 0.10
@@ -416,9 +420,9 @@ Nodes (14): App(), Endpoint(), Header(), Link(), Items(), Products(), Quickstart
 Cohesion: 0.18
 Nodes (13): Props, Error(), errorPaths, Props, Identity(), Props, Props, Table() (+5 more)
 
-### Community 41 - "aiAllowed"
-Cohesion: 0.06
-Nodes (38): Profile, File structure, Global Constraints, Phase 12b: the AI fallback — Implementation Plan, Review Focus, Task 1: `ai.ts` — the prompt, the cache key, and the reply, Task 2: The migration — the switch and the global cache, Task 3: Sync runs the pass (+30 more)
+### Community 41 - "Conventions"
+Cohesion: 0.05
+Nodes (45): Profile, useSetAiCategorize(), Conventions, File structure, Global Constraints, Phase 12b: the AI fallback — Implementation Plan, Review Focus, Task 1: `ai.ts` — the prompt, the cache key, and the reply (+37 more)
 
 ### Community 42 - "push-events.ts"
 Cohesion: 0.11
@@ -436,13 +440,13 @@ Nodes (13): ae_transactions_crowd_label, community_labels_merchant, consents_for
 Cohesion: 0.19
 Nodes (11): budgets_updated_at, public.budgets, public.monthly_category_totals, public.recurring_streams, recurring_streams_updated_at, recurring_streams_user_next_idx, merchant_rules_updated_at, public.merchant_rules (+3 more)
 
-### Community 46 - "settings.tsx"
-Cohesion: 0.21
-Nodes (9): Backend, pickBackend(), pickRevenueCatKey(), real, sandbox, sessionStorage, expo-secure-store, react-native-url-polyfill (+1 more)
+### Community 46 - "lib/accounts.ts"
+Cohesion: 0.33
+Nodes (7): accountGroup, Balanced, GROUP_LABEL, GROUP_ORDER, groupAccounts(), netWorth(), signedBalance()
 
 ### Community 47 - "transaction-filters.ts"
-Cohesion: 0.14
-Nodes (24): ActiveChip(), compareByDate(), formatSectionDate(), noMatchMessage(), Open, TransactionsScreen(), TransactionSort, Column() (+16 more)
+Cohesion: 0.16
+Nodes (14): ActiveChip, activeChips(), Direction, Filters, GroupOf, isFiltered(), matchesFilters(), matchesSearch() (+6 more)
 
 ### Community 48 - "public.categories"
 Cohesion: 0.18
@@ -453,8 +457,8 @@ Cohesion: 0.12
 Nodes (11): loadExistingRows(), answerGas(), Call, CATEGORY_ROWS, fixAndShare(), gasAnswer(), ITEM, judged() (+3 more)
 
 ### Community 50 - "plaid.ts"
-Cohesion: 0.13
-Nodes (26): readFunctionError(), BANK_DEPENDENT_KEYS, invalidateBankData(), useConnectBank(), useDisconnectBank(), useSandboxTools(), useSyncTransactions(), planLimitMessage() (+18 more)
+Cohesion: 0.16
+Nodes (20): readFunctionError(), BANK_DEPENDENT_KEYS, invalidateBankData(), useConnectBank(), useDisconnectBank(), useSandboxTools(), useSyncTransactions(), planLimitMessage() (+12 more)
 
 ### Community 51 - "compilerOptions"
 Cohesion: 0.11
@@ -465,16 +469,16 @@ Cohesion: 0.11
 Nodes (17): compilerOptions, allowImportingTsExtensions, isolatedModules, lib, module, moduleDetection, moduleResolution, noEmit (+9 more)
 
 ### Community 53 - "connections.ts"
-Cohesion: 0.09
-Nodes (33): Global Constraints, Phase 6 — Connections & Control Implementation Plan, Task 2: Pure decisions — `connections.ts`, archived snapshots, shared claim, Task 3: `disconnectItem` + `plaid-disconnect-item`, Task 4: Duplicate guard in `plaid-exchange-token`, Current data (after this session), Handoff — Phase 6 done, key switch pending (2026-09-24), Known, accepted (+25 more)
+Cohesion: 0.08
+Nodes (36): Global Constraints, Phase 6 — Connections & Control Implementation Plan, Review Focus, Task 1: Storage — status check and closed grants, Task 2: Pure decisions — `connections.ts`, archived snapshots, shared claim, Task 3: `disconnectItem` + `plaid-disconnect-item`, Task 4: Duplicate guard in `plaid-exchange-token`, Task 7: Settings and Home link to the bank screen (+28 more)
 
 ### Community 54 - "paywall.ts"
 Cohesion: 0.14
-Nodes (29): PaywallScreen(), activePeriod(), afterPurchase(), baseOf(), BOUGHT, deleteWarning(), offeringsErrorDetail(), ORDER (+21 more)
+Nodes (22): activePeriod(), baseOf(), BOUGHT, canManage(), deleteWarning(), manageFallbackUrl(), ORDER, ownPaidPlan() (+14 more)
 
 ### Community 55 - "merge.test.ts"
 Cohesion: 0.12
-Nodes (20): Dev state, Fixed after review, Phase 14b handoff — plan lifecycle and reconnect merge, Verified, Waits on Pedro (production), Task 5: Run the merge in every sync, allRows(), fold() (+12 more)
+Nodes (21): Dev state, Fixed after review, Phase 14b handoff — plan lifecycle and reconnect merge, Verified, Waits on Pedro (production), What shipped, Task 5: Run the merge in every sync, allRows() (+13 more)
 
 ### Community 56 - "_shared/two-factor.ts"
 Cohesion: 0.24
@@ -496,9 +500,9 @@ Nodes (15): devDependencies, eslint, @eslint/js, eslint-plugin-react-hooks, esli
 Cohesion: 0.15
 Nodes (8): herds_updated_at, public.herds, accounts_private_by_connector, herd_invites_herd_id_idx, public.herd_invites, public.merge_into_herd(), public.leave_herd(), public.ai_custom_cache
 
-### Community 61 - "loggable"
+### Community 61 - "recordPlaidEvent"
 Cohesion: 0.13
-Nodes (24): Context, File Structure, Global Constraints, Out of scope, Plaid Logging Implementation Plan, Review Focus, Task 0: Branch and plan copy, Task 1: `loggable` carries the request id (+16 more)
+Nodes (21): Context, File Structure, Global Constraints, Out of scope, Plaid Logging Implementation Plan, Review Focus, Task 0: Branch and plan copy, Task 1: `loggable` carries the request id (+13 more)
 
 ### Community 62 - "Test-Driven Development (TDD)"
 Cohesion: 0.06
@@ -514,14 +518,14 @@ Nodes (12): devDependencies, eslint, @eslint/js, eslint-plugin-react-hooks, esli
 
 ### Community 65 - "Phase 14: monetization"
 Cohesion: 0.07
-Nodes (30): CHUNK_SIZE, chunkKey(), createSecureStorage(), KeyValueStore, SecureBackend, split(), bigSession, Bank limits the margin allows (+22 more)
+Nodes (31): CHUNK_SIZE, chunkKey(), createSecureStorage(), KeyValueStore, SecureBackend, split(), bigSession, Bank limits the margin allows (+23 more)
 
 ### Community 66 - "backups/src/components/AppRoutes.tsx"
 Cohesion: 0.29
 Nodes (6): AppRoutes(), PageOne(), configuration, PageThree(), plaidClient, PageTwo()
 
 ### Community 67 - "herd/index.ts"
-Cohesion: 0.36
+Cohesion: 0.33
 Nodes (8): CODE_LENGTH, describeMembershipError(), formatCode(), generateCode(), HerdRequest, MAX_MEMBERS, normalizeCode(), parseHerdRequest()
 
 ### Community 68 - "backups/src/App.tsx"
@@ -553,8 +557,8 @@ Cohesion: 0.25
 Nodes (8): scripts, android, ios, lint, start, test, typecheck, web
 
 ### Community 75 - "ref_node_assert"
-Cohesion: 0.11
-Nodes (15): GUESS_HINTS, guessHint(), SET_BY, setBy(), SOURCE_LINE, sourceLine(), contentWidth(), isWide() (+7 more)
+Cohesion: 0.27
+Nodes (4): linkExitBody, LinkExitLike, shouldClearCache(), Task 6: The app reports Link exits
 
 ### Community 76 - "20260928120000_phase9d_who_paid.sql"
 Cohesion: 0.36
@@ -574,11 +578,11 @@ Nodes (7): dependencies, @clerk/clerk-react, lucide-react, plaid, react, react-d
 
 ### Community 81 - "syncItem"
 Cohesion: 0.09
-Nodes (23): Global Constraints, Phase 5 — Recurring Transactions and Bills Radar Implementation Plan, Account refresh — `_shared/accounts.ts`, Client, Completeness by construction, Decisions, Phase 4 — Net worth history (design), Placement in `syncItem` (+15 more)
+Nodes (29): Global Constraints, Phase 5 — Recurring Transactions and Bills Radar Implementation Plan, What shipped, Task 2: Server — precedence resolver, detailed map in sync, card-payment exception, Task 2: Server — `delete-category`, and per-user transfer ids in sync, Global Constraints, Phase 7c — Merchant Rules and Renaming Implementation Plan, Tasks (+21 more)
 
-### Community 82 - "ref_jsr_std"
-Cohesion: 0.11
-Nodes (15): 9b: Herd foundation (refactor, no visible change), 9c: Herd membership, 9d: Who paid, Context, Later (not planned in detail), Phase 9: names, herds (shared households), who paid, and the production project, Track P: production project (Ouroboros account), Verification (every milestone) (+7 more)
+### Community 82 - "Phase 9: names, herds (shared households), who paid, and the production project"
+Cohesion: 0.22
+Nodes (8): 9a: Display names (small), 9c: Herd membership, 9d: Who paid, Context, Later (not planned in detail), Phase 9: names, herds (shared households), who paid, and the production project, Track P: production project (Ouroboros account), Verification (every milestone)
 
 ### Community 83 - "devDependencies"
 Cohesion: 0.40
@@ -601,8 +605,8 @@ Cohesion: 0.16
 Nodes (24): ALWAYS_ON, askCollapseKey(), budgetCopy(), budgetsOnTrack(), CHOOSE_DAYS, DEFAULT_PREFS, DeliveryPlan, formatMoney() (+16 more)
 
 ### Community 90 - "reports.ts"
-Cohesion: 0.17
-Nodes (20): CategoriesById, groupIdOf(), MonthlyPersonTotal, MonthlyTotal, buildCashFlow(), buildCategorySlices(), buildGroupBreakdown(), buildPersonSpending() (+12 more)
+Cohesion: 0.12
+Nodes (25): CategoriesById, groupIdOf(), MonthlyPersonTotal, MonthlyTotal, buildCashFlow(), buildCategorySlices(), buildGroupBreakdown(), buildPersonSpending() (+17 more)
 
 ### Community 97 - "backups/package.json"
 Cohesion: 0.10
@@ -626,7 +630,7 @@ Nodes (15): markPrompted(), NotificationPrefsRow, useNotificationPrefs(), useNot
 
 ### Community 129 - "Phase 7 — Categories: groups, custom categories, rules, merchant renaming (design)"
 Cohesion: 0.12
-Nodes (17): 7a — server, 7a — storage: `<ts>_phase7a_category_groups.sql`, 7b — server: `delete-category` (new, JWT-verified), 7b — storage: `<ts>_phase7b_custom_categories.sql`, 7c — storage: `<ts>_phase7c_merchant_rules.sql`, Community categorization: groundwork only, Decisions, Deferred (+9 more)
+Nodes (18): 7a — server, 7a — storage: `<ts>_phase7a_category_groups.sql`, 7b — server: `delete-category` (new, JWT-verified), 7b — storage: `<ts>_phase7b_custom_categories.sql`, 7c — server, 7c — storage: `<ts>_phase7c_merchant_rules.sql`, Community categorization: groundwork only, Decisions (+10 more)
 
 ### Community 130 - "push-send.ts"
 Cohesion: 0.17
@@ -644,13 +648,13 @@ Nodes (16): Documentation Variants to Test, Expected Results, Next Steps, NULL (
 Cohesion: 0.12
 Nodes (17): Common Mistakes (Same as TDD), Example: TDD Skill Bulletproofing, GREEN Phase: Write Minimal Skill (Make It Pass), Initial Test (Failed), Iteration 1 - Add Counter, Iteration 2 - Add Foundational Principle, Meta-Testing (When GREEN Isn't Working), Overview (+9 more)
 
-### Community 134 - "loadSyncContext"
-Cohesion: 0.15
-Nodes (15): Handoff — Phase 7a done: category groups (2026-09-24), Things to know, Verified live (Pixel_7 emulator, test user), What shipped, Phase 7a — Category Taxonomy Implementation Plan, Review Focus, Task 1: Migration — category groups, detailed map, backfill, Task 2: Server — precedence resolver, detailed map in sync, card-payment exception (+7 more)
+### Community 134 - "Handoff — Phase 7a done: category groups (2026-09-24)"
+Cohesion: 0.50
+Nodes (3): Handoff — Phase 7a done: category groups (2026-09-24), Things to know, Verified live (Pixel_7 emulator, test user)
 
 ### Community 135 - "purchases.ts"
 Cohesion: 0.21
-Nodes (12): PaidPlan, Period, ensurePurchaser(), PurchaserDeps, apiKey, identified, readyToBuy(), refreshPlan() (+4 more)
+Nodes (8): PaidPlan, Period, ensurePurchaser(), PurchaserDeps, apiKey, identified, readyToBuy(), What shipped
 
 ### Community 136 - "Finishing a Development Branch"
 Cohesion: 0.12
@@ -676,9 +680,9 @@ Nodes (15): 1. Authority, 2. Commitment, 3. Scarcity, 4. Social Proof, 5. Unity,
 Cohesion: 0.12
 Nodes (16): Bulletproofing Against Rationalization, Code Examples, Common Rationalizations for Skipping Testing, Directory Structure, Discovery Workflow, Flowcharts, Match the Form to the Failure, Overview (+8 more)
 
-### Community 142 - "bank/[id].tsx"
-Cohesion: 0.24
-Nodes (14): BankScreen(), connectedOn(), JoinInviteScreen(), AccountRow(), Chips(), EmptyState(), memberChips(), useInvitePreview() (+6 more)
+### Community 142 - "useReplaceBudgets"
+Cohesion: 0.28
+Nodes (8): PresetLine, useReplaceBudgets(), File structure, Global Constraints, Phase 13: preset budgets — Implementation Plan, Review Focus, Task 3: `useReplaceBudgets`, Task 5: The two entry points on Budgets, and the demo
 
 ### Community 143 - "Not in this plan"
 Cohesion: 0.13
@@ -701,28 +705,24 @@ Cohesion: 0.18
 Nodes (12): al_transaction_questions_push, al_transactions_question_answered, notification_log_due_idx, notification_prefs_updated_at, plaid_items_login_required_idx, private.notify_question_answered(), private.notify_question_asked(), public.notification_category_spend() (+4 more)
 
 ### Community 148 - "push.ts"
-Cohesion: 0.22
-Nodes (13): routeForNotification(), deviceTimeZone(), ensureAndroidChannels(), listenForNotificationOpens(), openNotification(), projectId(), registerIfGranted(), registerToken() (+5 more)
+Cohesion: 0.17
+Nodes (29): useDevicePush(), currentUserId(), deviceTimeZone(), disableNotifications(), enableNotifications(), EnableOutcome, ensureAndroidChannels(), fetchExpoToken() (+21 more)
 
 ### Community 149 - "Dispatching Parallel Agents"
 Cohesion: 0.14
 Nodes (13): 1. Identify Independent Domains, 2. Create Focused Agent Tasks, 3. Dispatch in Parallel, 4. Review and Integrate, Agent Prompt Structure, Common Mistakes, Dispatching Parallel Agents, Overview (+5 more)
 
-### Community 150 - "use-crowd-prompt.ts"
-Cohesion: 0.28
-Nodes (10): useCrowdPrompt(), afterFix(), CROWD_PROMPT_AFTER, parsePromptState(), PromptState, useCrowdConsent(), useSetCrowdConsent(), Task 6: The Settings switch (+2 more)
+### Community 150 - "_shared/review.ts"
+Cohesion: 0.36
+Nodes (6): autoReviewIds(), CarriedPayer, ExistingRow, IncomingTxn, partitionAutoReview(), REVIEW_WINDOW_DAYS
 
 ### Community 151 - "writing-skills/SKILL.md"
 Cohesion: 0.15
 Nodes (9): Address "Spirit vs Letter" Arguments, Build Rationalization Table, Bulletproofing Skills Against Rationalization, Bulletproofing Skills Against Rationalization, Close Every Loophole Explicitly, Create Red Flags List, Update SDO for Violation Symptoms, Flowchart Usage (+1 more)
 
 ### Community 152 - "14d-1 — Android launch readiness"
-Cohesion: 0.15
-Nodes (12): 14d-1 — Android launch readiness, 14d-2 — iOS, Decisions for Pedro (answer before Task 1), Global Constraints, Not in this plan, Phase 14d — Launch Readiness (Android, then iOS) Implementation Plan, Task 10: App Store products, an iOS build, and a live sandbox run, Task 11: 14d-2 docs, handoff, PR (+4 more)
-
-### Community 153 - "useSetTransactionCategory"
-Cohesion: 0.17
-Nodes (11): useSetTransactionCategory(), Final verification, Global Constraints, Phase 2 Transaction Sync Implementation Plan, Task 1: Schema and seed data, Task 2: Pure categorization logic + tests, Task 4: App data layer, Task 7: The app — flag guesses, show the source, trigger learning (+3 more)
+Cohesion: 0.14
+Nodes (14): pickBackend(), pickRevenueCatKey(), 14d-1 — Android launch readiness, 14d-2 — iOS, Decisions for Pedro (answer before Task 1), Global Constraints, Not in this plan, Phase 14d — Launch Readiness (Android, then iOS) Implementation Plan (+6 more)
 
 ### Community 154 - "Brainstorming"
 Cohesion: 0.17
@@ -757,12 +757,12 @@ Cohesion: 0.18
 Nodes (10): Architecture (follows repo conventions), Decision: Managed Payments (Stripe as merchant of record), Edge Function: `stripe-create-checkout-session` (JWT required), Edge Function: `stripe-webhook` (`verify_jwt = false`), Manage or cancel, Sandbox resources (Ouroboros Studios sandbox, `acct_1UIthOPdafp3yx2H`), Source, Stripe subscriptions: design (ready to build, not scheduled) (+2 more)
 
 ### Community 162 - "calendar.ts"
-Cohesion: 0.29
-Nodes (8): CalendarEventDraft, eventFor(), nextOnOrAfter(), parse(), Stream, day(), today, label()
+Cohesion: 0.39
+Nodes (6): CalendarEventDraft, eventFor(), nextOnOrAfter(), parse(), Stream, today
 
-### Community 163 - "first-run.ts"
-Cohesion: 0.31
-Nodes (8): Gate, gateFor(), nextStep(), ONBOARDING_STEPS, OnboardingStep, previousStep(), stepLabel(), needsSecondStep()
+### Community 163 - "onboarding.tsx"
+Cohesion: 0.16
+Nodes (23): BankStep(), BudgetStep(), Heading(), NameStep(), NotificationsStep(), OnboardingScreen(), PlansStep(), Point() (+15 more)
 
 ### Community 164 - "issue.md"
 Cohesion: 0.20
@@ -776,9 +776,9 @@ Nodes (9): Common Failures, Key Patterns, Overview, Rationalization Prevention, 
 Cohesion: 0.20
 Nodes (10): Avoid deeply nested references, Naming conventions, Pattern 1: High-level guide with references, Pattern 2: Domain-specific organization, Pattern 3: Conditional details, Progressive disclosure patterns, Skill structure, Structure longer reference files with table of contents (+2 more)
 
-### Community 167 - "README.md"
-Cohesion: 0.20
-Nodes (4): 11a: spending by person and the payer filter, 11b: splits and settle-up, Phase 11: shared money, What we decided with Pedro (2026-09-26)
+### Community 167 - "carryForward"
+Cohesion: 0.13
+Nodes (13): Handoff: Phase 8 done, transaction review (2026-09-25), Things to know, Verified live (emulator), What shipped, Handoff: Phase 9d done, who paid (2026-09-28), Things to know, Verified on dev, What shipped (+5 more)
 
 ### Community 168 - "Phase 2.5 (second half) — Plaid webhooks"
 Cohesion: 0.20
@@ -792,9 +792,9 @@ Nodes (10): 12a: learning from your own fixes, 12b: the AI fallback, 12c: crowd 
 Cohesion: 0.31
 Nodes (9): balances(), benefitShares(), equalShares(), fundingShares(), SettleMember, Settlement, SharedLine, Shares (+1 more)
 
-### Community 171 - "PlanScreen"
-Cohesion: 0.31
-Nodes (9): PlanScreen(), bankUsage(), canManage(), manageFallbackUrl(), manageSubscriptionsUrl(), useHerdPayer(), Task 6: The Plan screen, and the ways into the paywall, Task 5: Delete account in the app (+1 more)
+### Community 171 - "paywall.tsx"
+Cohesion: 0.21
+Nodes (24): Notice(), PaywallScreen(), PlanScreen(), afterPurchase(), bankUsage(), offeringsErrorDetail(), paywallTiers(), PLAN_NAMES (+16 more)
 
 ### Community 172 - "Tusky — agent notes"
 Cohesion: 0.22
@@ -825,8 +825,8 @@ Cohesion: 0.25
 Nodes (7): Additional Gemini CLI tools, Gemini CLI Tool Mapping, Instructions file, Parallel dispatch, Personal skills directory, Prompt filling, Subagent support
 
 ### Community 179 - "Handoff — state at end of 2026-09-22, and what to do next"
-Cohesion: 0.25
-Nodes (7): Gotcha: Plaid Link OAuth does not survive the emulator, Handoff — state at end of 2026-09-22, and what to do next, Next feature: Phase 3, Open items, small, Testing notes, Verified live today (test user, Pixel_7 emulator unless noted), Where the project is
+Cohesion: 0.29
+Nodes (6): Gotcha: Plaid Link OAuth does not survive the emulator, Handoff — state at end of 2026-09-22, and what to do next, Next feature: Phase 3, Testing notes, Verified live today (test user, Pixel_7 emulator unless noted), Where the project is
 
 ### Community 180 - "Welcome to your Expo app 👋"
 Cohesion: 0.29
@@ -912,8 +912,8 @@ Nodes (5): Building and uploading, EAS environment variables, Plans on a store b
 Cohesion: 0.33
 Nodes (5): Groups / households, Related, Subscription impact (undecided), Transaction review: a core feature, Transaction review & groups (planned, unscheduled)
 
-### Community 201 - "Tusky"
-Cohesion: 0.33
+### Community 201 - "README.md"
+Cohesion: 0.18
 Nodes (6): Architecture, Backend deploy, Getting started, Repo conventions, Status, Tusky
 
 ### Community 203 - "The Task Loop"
@@ -1004,24 +1004,40 @@ Nodes (3): Handoff — Phase 7c done: merchant rules and renaming (2026-09-25), 
 Cohesion: 0.50
 Nodes (3): Handoff: Phase 9b done, the herd foundation (2026-09-26), Things to know, Verified on dev
 
+### Community 251 - "category-source.ts"
+Cohesion: 0.36
+Nodes (6): GUESS_HINTS, guessHint(), SET_BY, setBy(), SOURCE_LINE, sourceLine()
+
+### Community 252 - "layout.ts"
+Cohesion: 0.43
+Nodes (5): contentWidth(), isWide(), TABLET_MIN_WIDTH, TWO_COLUMN_MIN_WIDTH, twoColumns()
+
+### Community 253 - "Phase 8: transaction review"
+Cohesion: 0.29
+Nodes (6): Data, Decisions, Goal, Phase 8: transaction review, Sync: carry user data from pending to posted, Verification
+
+### Community 254 - "planCategoryDelete"
+Cohesion: 0.47
+Nodes (4): 9b: Herd foundation (refactor, no visible change), CategoryRow, planCategoryDelete(), readCategoryId()
+
 ## Knowledge Gaps
 - **53 isolated node(s):** `RFC-6455`, `@expo/ui`, `expo`, `expo-build-properties`, `expo-dev-client` (+48 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1570 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **64 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1577 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **67 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Conventions` connect `Conventions` to `Button`, `Phase 7 — Categories: groups, custom categories, rules, merchant renaming (design)`, `useTheme`, `loadSyncContext`, `File structure`, `transaction/[id].tsx`, `revenuecat.ts`, `PasswordSheet`, `rules.ts`, `Amount`, `lib/two-factor.ts`, `lib.ts`, `sync.ts`, `AppText`, `calendar.ts`, `first-run.ts`, `app/_layout.tsx`, `jev.ts`, `plaid-webhook/index.ts`, `aiAllowed`, `Tusky — agent notes`, `plaid.ts`, `connections.ts`, `paywall.ts`, `merge.test.ts`, `loggable`, `Phase 14: monetization`, `ref_node_assert`, `plan-banner.test.ts`, `syncItem`, `reports.ts`?**
-  _High betweenness centrality (0.100) - this node is a cross-community bridge._
+- **Why does `Conventions` connect `Conventions` to `useTheme`, `Phase 7 — Categories: groups, custom categories, rules, merchant renaming (design)`, `AppText`, `File structure`, `transaction/[id].tsx`, `revenuecat.ts`, `rules.ts`, `recurring.tsx`, `queries.ts`, `_shared/review.ts`, `lib/two-factor.ts`, `lib.ts`, `sync.ts`, `review.tsx`, `calendar.ts`, `onboarding.tsx`, `app/_layout.tsx`, `jev.ts`, `plaid-webhook/index.ts`, `carryForward`, `Tusky — agent notes`, `plaid.ts`, `connections.ts`, `paywall.ts`, `merge.test.ts`, `recordPlaidEvent`, `Phase 14: monetization`, `plan-banner.test.ts`, `syncItem`, `reports.ts`, `layout.ts`?**
+  _High betweenness centrality (0.105) - this node is a cross-community bridge._
 - **Are the 16 inferred relationships involving `AppText()` (e.g. with `Conventions` and `Global Constraints`) actually correct?**
   _`AppText()` has 16 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `RFC-6455`, `@expo/ui`, `expo` to the rest of the system?**
   _53 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `Button` be split into smaller, more focused modules?**
-  _Cohesion score 0.09890710382513661 - nodes in this community are weakly interconnected._
-- **Why does `AppText()` connect `AppText` to `Button`, `ref_react`, `useTheme`, `lib/categories.ts`, `transaction/[id].tsx`, `revenuecat.ts`, `bank/[id].tsx`, `PasswordSheet`, `Amount`, `queries.ts`, `lib/two-factor.ts`, `useSetTransactionCategory`, `Conventions`, `PlanScreen`, `transaction-filters.ts`, `connections.ts`, `paywall.ts`, `loggable`, `syncItem`?**
-  _High betweenness centrality (0.051) - this node is a cross-community bridge._
+- **Should `useTheme` be split into smaller, more focused modules?**
+  _Cohesion score 0.09335038363171355 - nodes in this community are weakly interconnected._
+- **Why does `AppText()` connect `AppText` to `useTheme`, `onboarding.tsx`, `ref_react`, `dialog.tsx`, `presets.ts`, `Conventions`, `paywall.tsx`, `transaction/[id].tsx`, `revenuecat.ts`, `useReplaceBudgets`, `syncItem`, `recordPlaidEvent`, `recurring.tsx`, `queries.ts`, `connections.ts`, `review.tsx`, `CategorySheet`?**
+  _High betweenness centrality (0.054) - this node is a cross-community bridge._
 - **Are the 5 inferred relationships involving `Button()` (e.g. with `Conventions` and `Task 6: Budgets by group or category`) actually correct?**
   _`Button()` has 5 INFERRED edges - model-reasoned connections that need verification._
 - **Should `server.cjs` be split into smaller, more focused modules?**

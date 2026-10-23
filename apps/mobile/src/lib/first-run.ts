@@ -14,17 +14,20 @@ export type FirstRunState = {
   /** my_second_step_done(): has the server verified THIS session? Read only when twoFactor is on. */
   secondStepDone?: boolean | null;
 };
-export type Gate = 'verify' | 'terms' | 'onboarding' | 'app';
+export type Gate = 'recovery' | 'verify' | 'terms' | 'onboarding' | 'app';
 
 /**
  * `state` is null while loading or when the read failed. A failed read opens
  * the app rather than locking someone out of their money while offline; the
  * gate asks again on the next launch.
  *
- * With two-step on and this session not verified by the server
- * (`secondStepDone`), the answer is `verify`, before anything else.
+ * A password-recovery session is set before two-step, terms, or the app: the
+ * person has to choose a new password before anything else. With two-step on
+ * and this session not verified by the server (`secondStepDone`), the answer
+ * is `verify`, before the rest.
  */
-export function gateFor(state: FirstRunState | null, currentTerms: string): Gate {
+export function gateFor(state: FirstRunState | null, currentTerms: string, recovering = false): Gate {
+  if (recovering) return 'recovery';
   if (!state) return 'app';
   if (needsSecondStep({ two_factor: state.twoFactor ?? null }, state.secondStepDone)) return 'verify';
   if (state.termsVersion !== currentTerms) return 'terms';

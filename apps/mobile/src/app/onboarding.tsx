@@ -272,7 +272,13 @@ function NotificationsStep({
     if (!userId) return;
     setBusy(turnOn ? 'on' : 'later');
     try {
-      if (turnOn) await enableNotifications();
+      if (turnOn) {
+        const result = await enableNotifications();
+        if (result.status === 'error') {
+          dialog.alert('Could not turn on notifications', result.message);
+          return;
+        }
+      }
       await markPrompted(userId);
       onDone();
     } catch (err) {
