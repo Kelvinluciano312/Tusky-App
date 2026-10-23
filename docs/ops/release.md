@@ -38,8 +38,18 @@ npx eas-cli env:set --environment production --name EXPO_PUBLIC_PROD_SUPABASE_UR
 npx eas-cli env:set --environment production --name EXPO_PUBLIC_PROD_SUPABASE_KEY --value <prod publishable key> --visibility plaintext
 npx eas-cli env:set --environment production --name EXPO_PUBLIC_PROD_REVENUECAT_KEY --value <goog_ key> --visibility plaintext
 npx eas-cli env:set --environment production --name EXPO_PUBLIC_PROD_REVENUECAT_IOS_KEY --value <appl_ key> --visibility plaintext
+npx eas-cli env:set --environment production --name EXPO_PUBLIC_SENTRY_DSN --value <dsn> --visibility plaintext
 npx eas-cli env:list --environment production   # check before building
 ```
+
+Leave `EXPO_PUBLIC_SENTRY_DSN` unset and crash reporting stays off. Source maps also need
+`SENTRY_AUTH_TOKEN` (sensitive; never commit it), `SENTRY_ORG` and `SENTRY_PROJECT`. See CLAUDE.md,
+"Crash reporting".
+
+`expo.version` in `app.json` is the user-facing version (1.0.0). `appVersionSource: remote` owns only
+the integer `versionCode` and `buildNumber`. Reseed those, if a store build number has drifted, with
+`npx eas-cli build:version:set` from `apps/mobile` (pick the platform, enter the last store build
+number). That command does not set 1.0.0.
 
 A dev client does not read the EAS `production` environment. On iOS it uses `EXPO_PUBLIC_REVENUECAT_IOS_KEY`
 from `apps/mobile/.env` while the backend is Sandbox (the same public App Store key, when a dev build should

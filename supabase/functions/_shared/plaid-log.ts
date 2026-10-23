@@ -17,10 +17,30 @@ export type PlaidEventName =
   | 'sync_failed'
   | 'login_required'
   | 'remove_failed'
-  | 'link_exit';
+  | 'link_exit'
+  | 'link_open'
+  | 'link_select_institution'
+  | 'link_error';
+
+/** Rows the phone writes through plaid-link-event. The hourly ceiling counts these together. */
+export const CLIENT_LINK_EVENTS: readonly PlaidEventName[] = [
+  'link_exit',
+  'link_open',
+  'link_select_institution',
+  'link_error',
+];
+
+const LINK_EVENT_FROM_CLIENT: Record<string, PlaidEventName> = {
+  EXIT: 'link_exit',
+  OPEN: 'link_open',
+  SELECT_INSTITUTION: 'link_select_institution',
+  ERROR: 'link_error',
+};
 
 export type PlaidEvent = {
   event: PlaidEventName;
+  /** ios or android, when the phone named itself. Server-side rows leave it null. */
+  platform?: 'ios' | 'android' | null;
   user_id?: string | null;
   /** Our plaid_items.id. */
   item_id?: string | null;
@@ -41,6 +61,11 @@ const MESSAGE_MAX = 500;
 export const LINK_EXITS_PER_HOUR = 30;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** ios or android. Anything else, including a missing field, is null. */
+export function plaidPlatform(value: unknown): 'ios' | 'android' | null {
+  return value === 'ios' || value === 'android' ? value : null;
+}
 
 /** A text field as stored: a trimmed, non-empty string cut to max. Anything else is null. */
 export function clip(value: unknown, max: number): string | null {
@@ -71,6 +96,7 @@ export function plaidErrorFields(
 export function eventRow(event: PlaidEvent): Required<PlaidEvent> {
   return {
     event: event.event,
+    platform: plaidPlatform(event.platform),
     user_id: event.user_id ?? null,
     item_id: event.item_id ?? null,
     plaid_item_id: clip(event.plaid_item_id, ID_MAX),
@@ -92,8 +118,14 @@ export function eventRow(event: PlaidEvent): Required<PlaidEvent> {
 export function linkExitEvent(body: unknown, userId: string): PlaidEvent | null {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
   const b = body as Record<string, unknown>;
+  let event: PlaidEventName = 'link_exit';
+  if (b.event !== undefined) {
+    if (typeof b.event !== 'string' || !Object.prototype.hasOwnProperty.call(LINK_EVENT_FROM_CLIENT, b.event)) return null;
+    event = LINK_EVENT_FROM_CLIENT[b.event];
+  }
   return {
-    event: 'link_exit',
+    event,
+    platform: plaidPlatform(b.platform),
     user_id: userId,
     item_id: typeof b.item_id === 'string' && UUID.test(b.item_id) ? b.item_id : null,
     link_session_id: clip(b.link_session_id, ID_MAX),

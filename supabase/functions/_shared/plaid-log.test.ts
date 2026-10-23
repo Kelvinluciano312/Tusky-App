@@ -1,7 +1,7 @@
 import { assertEquals } from 'jsr:@std/assert';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
-import { clip, eventRow, linkExitEvent, plaidErrorFields, recordPlaidEvent } from './plaid-log.ts';
+import { clip, eventRow, linkExitEvent, plaidErrorFields, plaidPlatform, recordPlaidEvent } from './plaid-log.ts';
 
 /** Shaped like what the Plaid SDK throws: the request rides along. */
 function plaidError(data?: Record<string, unknown>) {
@@ -89,10 +89,22 @@ Deno.test('linkExitEvent: reads the app body', () => {
       error_type: 'ITEM_ERROR', error_code: 'INVALID_CREDENTIALS', error_message: 'wrong password', item_id: item,
     }, 'u1'),
     {
-      event: 'link_exit', user_id: 'u1', item_id: item, link_session_id: 'ls1', request_id: 'rq1', institution_id: 'ins_1',
+      event: 'link_exit', platform: null, user_id: 'u1', item_id: item, link_session_id: 'ls1', request_id: 'rq1', institution_id: 'ins_1',
       link_status: 'requires_credentials', error_type: 'ITEM_ERROR', error_code: 'INVALID_CREDENTIALS', error_message: 'wrong password',
     },
   );
+});
+
+Deno.test('linkExitEvent: OPEN, SELECT_INSTITUTION and ERROR keep the phone platform', () => {
+  assertEquals(linkExitEvent({ event: 'OPEN', link_session_id: 'ls1', platform: 'ios' }, 'u1')!.event, 'link_open');
+  assertEquals(linkExitEvent({ event: 'SELECT_INSTITUTION', platform: 'android' }, 'u1')!.event, 'link_select_institution');
+  const error = linkExitEvent({ event: 'ERROR', platform: 'ios', error_code: 'INSTITUTION_ERROR' }, 'u1')!;
+  assertEquals(error.event, 'link_error');
+  assertEquals(error.platform, 'ios');
+  assertEquals(error.error_code, 'INSTITUTION_ERROR');
+  assertEquals(linkExitEvent({ event: 'SEARCH_INSTITUTION' }, 'u1'), null);
+  assertEquals(plaidPlatform('web'), null);
+  assertEquals(eventRow({ event: 'link_open', platform: 'ios' }).platform, 'ios');
 });
 
 Deno.test('linkExitEvent: a broken or hostile body never throws', () => {

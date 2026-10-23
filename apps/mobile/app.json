@@ -3,7 +3,7 @@
     "name": "Tusky",
     "slug": "tusky",
     "owner": "ouroborosstudioss-team",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "tusky",
@@ -11,12 +11,19 @@
     "ios": {
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.ouroborosstudios.tusky",
+      "associatedDomains": ["applinks:studiosouroboros.com"],
       "config": {
         "usesNonExemptEncryption": false
       }
     },
     "android": {
       "package": "com.ouroborosstudios.tusky",
+      "blockedPermissions": [
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#256F4C",
@@ -40,7 +47,19 @@
           "imageWidth": 180
         }
       ],
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": false,
+          "remindersPermission": false
+        }
+      ],
       "expo-font",
       [
         "expo-build-properties",
@@ -63,7 +82,8 @@
           "defaultChannel": "default",
           "mode": "production"
         }
-      ]
+      ],
+      "@sentry/react-native"
     ],
     "experiments": {
       "typedRoutes": true,

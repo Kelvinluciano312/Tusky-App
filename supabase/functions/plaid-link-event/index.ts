@@ -4,7 +4,7 @@
 // JWT-verified by default. The body is the client's word: see linkExitEvent.
 
 import { corsHeaders, getAdminClient, getAuthedUser, jsonResponse, requireSecondStep } from '../_shared/lib.ts';
-import { LINK_EXITS_PER_HOUR, linkExitEvent, recordPlaidEvent } from '../_shared/plaid-log.ts';
+import { CLIENT_LINK_EVENTS, LINK_EXITS_PER_HOUR, linkExitEvent, recordPlaidEvent } from '../_shared/plaid-log.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     .from('plaid_events')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', user.id)
-    .eq('event', 'link_exit')
+    .in('event', [...CLIENT_LINK_EVENTS])
     .gte('created_at', since);
   if (countError) {
     console.error('link-event count failed', countError);
