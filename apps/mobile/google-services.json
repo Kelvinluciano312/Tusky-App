@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "917268696218",
+    "project_id": "tusky-510117",
+    "storage_bucket": "tusky-510117.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:917268696218:android:33b26d50d2a42c6b85a323",
+        "android_client_info": {
+          "package_name": "com.ouroborosstudios.tusky"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDXfsMNfWr7TOo-b7f5O5tbYAiM2u_y-5U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
