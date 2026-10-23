@@ -2481,14 +2481,14 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1792723348.3451798,
-    "seen": 1792727112.167366,
-    "ast_hash": "7396462b057e6a5a4b26211a3e6f633c",
+    "mtime": 1792735252.769551,
+    "seen": 1792735282.793525,
+    "ast_hash": "65ed5cbdffaf9c88bf5e3e7befd4a577",
     "semantic_hash": ""
   },
   "COORDINATION.md": {
-    "mtime": 1792726927.0943878,
-    "seen": 1792727112.167367,
+    "mtime": 1792735271.0794008,
+    "seen": 1792735282.793526,
     "ast_hash": "17e9b10f7f138b42f92e864801aa01c6",
     "semantic_hash": ""
   },
@@ -3018,6 +3018,18 @@
     "mtime": 1792723348.3491783,
     "seen": 1792727112.1674223,
     "ast_hash": "7f49028d0d393db66f72354b09d81b47",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20261023160000_explicit_data_api_grants.sql": {
+    "mtime": 1792735252.769551,
+    "seen": 1792735282.793452,
+    "ast_hash": "1b455a3e797157a5eb21d6a0db0996df",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20261023160100_lock_rls_auto_enable.sql": {
+    "mtime": 1792735252.769551,
+    "seen": 1792735282.793454,
+    "ast_hash": "c404f850685a721ed6593fd2a27bcecf",
     "semantic_hash": ""
   }
 }

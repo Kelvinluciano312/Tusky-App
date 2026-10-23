@@ -1,17 +1,17 @@
 # Graph Report - workspace  (2026-10-23)
 
 ## Corpus Check
-- 481 files · ~435,123 words
+- 483 files · ~435,947 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 27 file(s) not represented in the graph (top: (none) 9, .scss 7, .css 5)
 
 ## Summary
-- 3594 nodes · 8676 edges · 255 communities (190 shown, 65 thin omitted)
+- 3596 nodes · 8676 edges · 257 communities (190 shown, 67 thin omitted)
 - Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 896 edges (avg confidence: 0.95)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a84c4328`
+- Built from commit: `55456030`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -258,7 +258,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (255 total, 65 thin omitted)
+## Communities (257 total, 67 thin omitted)
 
 ### Community 0 - "useTheme"
 Cohesion: 0.09
@@ -1022,14 +1022,14 @@ Nodes (4): 9b: Herd foundation (refactor, no visible change), CategoryRow, planC
 
 ## Knowledge Gaps
 - **53 isolated node(s):** `RFC-6455`, `@expo/ui`, `expo`, `expo-build-properties`, `expo-dev-client` (+48 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1575 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **65 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1577 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **67 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `Conventions` connect `Conventions` to `useTheme`, `Phase 7 — Categories: groups, custom categories, rules, merchant renaming (design)`, `AppText`, `File structure`, `transaction/[id].tsx`, `revenuecat.ts`, `rules.ts`, `recurring.tsx`, `queries.ts`, `_shared/review.ts`, `lib/two-factor.ts`, `lib.ts`, `sync.ts`, `review.tsx`, `calendar.ts`, `onboarding.tsx`, `app/_layout.tsx`, `jev.ts`, `plaid-webhook/index.ts`, `carryForward`, `Tusky — agent notes`, `plaid.ts`, `connections.ts`, `paywall.ts`, `merge.test.ts`, `recordPlaidEvent`, `Phase 14: monetization`, `plan-banner.test.ts`, `syncItem`, `reports.ts`, `layout.ts`?**
-  _High betweenness centrality (0.111) - this node is a cross-community bridge._
+  _High betweenness centrality (0.105) - this node is a cross-community bridge._
 - **Are the 16 inferred relationships involving `AppText()` (e.g. with `Conventions` and `Global Constraints`) actually correct?**
   _`AppText()` has 16 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `RFC-6455`, `@expo/ui`, `expo` to the rest of the system?**
@@ -1037,7 +1037,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `useTheme` be split into smaller, more focused modules?**
   _Cohesion score 0.09335038363171355 - nodes in this community are weakly interconnected._
 - **Why does `AppText()` connect `AppText` to `useTheme`, `onboarding.tsx`, `ref_react`, `dialog.tsx`, `presets.ts`, `Conventions`, `paywall.tsx`, `transaction/[id].tsx`, `revenuecat.ts`, `useReplaceBudgets`, `syncItem`, `recordPlaidEvent`, `recurring.tsx`, `queries.ts`, `connections.ts`, `review.tsx`, `CategorySheet`?**
-  _High betweenness centrality (0.055) - this node is a cross-community bridge._
+  _High betweenness centrality (0.054) - this node is a cross-community bridge._
 - **Are the 5 inferred relationships involving `Button()` (e.g. with `Conventions` and `Task 6: Budgets by group or category`) actually correct?**
   _`Button()` has 5 INFERRED edges - model-reasoned connections that need verification._
 - **Should `server.cjs` be split into smaller, more focused modules?**

@@ -1,0 +1,16 @@
+-- Security advisor 0028/0029: public.rls_auto_enable() is SECURITY DEFINER and
+-- executable by anon and authenticated via /rest/v1/rpc/rls_auto_enable.
+--
+-- It is the handler for the `ensure_rls` event trigger (ddl_command_end on
+-- CREATE TABLE / CREATE TABLE AS / SELECT INTO), which turns on RLS for every new
+-- table in public. It was inert over RPC (it only reads
+-- pg_event_trigger_ddl_commands(), which is empty outside a DDL event; see
+-- docs/ops/security-review-2026-09-27.md #7), but nothing outside the trigger
+-- should be able to call it.
+--
+-- Postgres does not check EXECUTE when an event trigger fires its function, so
+-- revoking from client roles leaves `ensure_rls` working. The owner (postgres)
+-- keeps EXECUTE, and so does service_role (already bypasses RLS; harmless).
+-- Left in public: moving it is possible (the trigger references it by OID) but
+-- not needed once clients cannot execute it.
+revoke execute on function public.rls_auto_enable() from public, anon, authenticated;
