@@ -30,12 +30,13 @@ export function NotificationPrompt({ userId }: { userId: string | undefined }) {
         loading={enable.isPending}
         onPress={() => enable.mutate(undefined, {
           onSuccess: (result) => {
-            if (result === 'denied') {
+            if (result.status === 'denied') {
               dialog.alert('Notifications are off', 'You can allow them in your phone’s settings, then turn them on in Settings.');
-            } else if (result === 'unsupported') {
+            } else if (result.status === 'unsupported') {
               dialog.alert('Not on this device', 'Push notifications need a physical phone. You can turn them on from Settings later.');
             }
           },
+          onError: (err) => dialog.alert('Could not turn on notifications', err.message),
         })}
       />
       <Button title="Not now" variant="ghost" disabled={dismiss.isPending} onPress={() => dismiss.mutate()} />

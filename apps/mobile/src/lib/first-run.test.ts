@@ -34,6 +34,15 @@ test('an unknown state opens the app', () => {
   assert.equal(gateFor(null, V), 'app');
 });
 
+test('a password recovery session is set before two-step, terms, or the app', () => {
+  assert.equal(gateFor(null, V, true), 'recovery');
+  assert.equal(
+    gateFor({ termsVersion: V, onboarded: true, twoFactor: true, secondStepDone: false }, V, true),
+    'recovery',
+  );
+  assert.equal(gateFor({ termsVersion: V, onboarded: true }, V, false), 'app');
+});
+
 test('steps walk forward and back, and say where you are', () => {
   assert.equal(nextStep('welcome'), 'name');
   assert.equal(nextStep('plans'), 'notifications');

@@ -1,12 +1,11 @@
 import { router } from 'expo-router';
-import { ChevronRight, CreditCard, Landmark, ShieldCheck, Store, Tags, UserRound, Users } from 'lucide-react-native';
+import { Bell, ChevronRight, CreditCard, Landmark, ShieldCheck, Store, Tags, UserRound, Users } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NameSheet } from '@/components/name-sheet';
-import { NotificationSettings } from '@/components/notification-settings';
 import { PlanBanner } from '@/components/plan-banner';
 import { Chips } from '@/components/ui/chips';
 import { AppText } from '@/components/ui/app-text';
@@ -17,6 +16,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { bankUsage, PLAN_NAMES } from '@/lib/paywall';
 import { useConnectBank } from '@/lib/plaid';
 import { type PlaidItem, useHerd, usePlaidItems, usePlan, useProfile, useSetDisplayName } from '@/lib/queries';
+import { useDevicePush } from '@/lib/device-push';
+import { pushStatusLabel } from '@/lib/push-status';
 import { useSession } from '@/lib/session';
 import { type Backend, backendLabel } from '@/lib/environment';
 import { backend, realConfigured, switchBackend } from '@/lib/supabase';
@@ -32,6 +33,8 @@ export default function SettingsScreen() {
   const { data: items = [] } = usePlaidItems();
   const { connectBank, isConnecting, error, planLimited } = useConnectBank();
   const { data: plan } = usePlan(session?.user.id);
+  const devicePush = useDevicePush(session?.user.id);
+  const notificationStatus = devicePush.loading ? 'Checking…' : pushStatusLabel(devicePush.state);
 
   const live = items.filter((item) => item.status !== 'archived');
   const archived = items.filter((item) => item.status === 'archived');
@@ -236,7 +239,26 @@ export default function SettingsScreen() {
         </Pressable>
       </Card>
 
-      <NotificationSettings userId={session?.user.id} />
+      <Card>
+        <Pressable
+          onPress={() => router.push('/notifications')}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: Spacing.sm,
+            paddingVertical: Spacing.xs,
+            backgroundColor: pressed ? colors.elevated : 'transparent',
+          })}>
+          <Bell size={20} color={colors.brand} strokeWidth={1.75} />
+          <View style={{ flex: 1 }}>
+            <AppText variant="label">Notifications</AppText>
+            <AppText variant="caption" tone="dim">
+              {notificationStatus}
+            </AppText>
+          </View>
+          <ChevronRight size={18} color={colors.textDim} strokeWidth={1.75} />
+        </Pressable>
+      </Card>
 
       {/* Phase 15f: sign-in, privacy, legal and account deletion live one level down. */}
       <Card>
