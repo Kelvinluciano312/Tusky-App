@@ -19,8 +19,6 @@
     "android": {
       "package": "com.ouroborosstudios.tusky",
       "blockedPermissions": [
-        "android.permission.READ_CALENDAR",
-        "android.permission.WRITE_CALENDAR",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
@@ -56,8 +54,8 @@
       [
         "expo-calendar",
         {
-          "calendarPermission": false,
-          "remindersPermission": false
+          "calendarPermission": "Tusky adds your recurring bills to your calendar when you ask it to.",
+          "remindersPermission": "Tusky doesn't use your reminders. This message is required because an included library references them."
         }
       ],
       "expo-font",
