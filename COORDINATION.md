@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | iOS legal links: privacy and terms open in the in-app browser (Sentry TUSKY-1, App Review 3.1.2) | `pedro/fix-legal-links` | `apps/mobile/src/lib/open-link.ts`, `src/lib/links.ts`, paywall, account, sign-up, accept-terms, plan, delete-account-sheet |
+| Pedro | iOS legal links: privacy and terms open in the in-app browser (Sentry TUSKY-1, App Review 3.1.2) | `pedro/fix-legal-links`, [#71](https://github.com/Kelvinluciano312/Tusky-App/pull/71) | `apps/mobile/src/lib/open-link.ts`, `src/lib/links.ts`, paywall, account, sign-up, accept-terms, plan, delete-account-sheet |
