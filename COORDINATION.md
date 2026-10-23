@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | Keyboard-aware sheets: category search results and every other sheet input stay above the keyboard | `pedro/keyboard-aware-sheets` | `apps/mobile/src/components/ui/sheet.tsx`, `src/lib/sheet-keyboard.ts`, sheet callers |
+| Pedro | Keyboard-aware sheets: category search results and every other sheet input stay above the keyboard | `pedro/keyboard-aware-sheets`, [#70](https://github.com/Kelvinluciano312/Tusky-App/pull/70) | `apps/mobile/src/components/ui/sheet.tsx`, `src/lib/sheet-keyboard.ts`, sheet callers |
