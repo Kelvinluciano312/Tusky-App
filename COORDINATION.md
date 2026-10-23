@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | Android FCM client config and notification icon so expo-notifications works on Android builds | `pedro/android-fcm-config`, [#59](https://github.com/Kelvinluciano312/Tusky-App/issues/59) | `apps/mobile/google-services.json`; `apps/mobile/app.json`; `apps/mobile/assets/images/notification-icon.png`; `CLAUDE.md` |
+| Pedro | Android FCM client config and notification icon so expo-notifications works on Android builds | `pedro/android-fcm-config`, [#62](https://github.com/Kelvinluciano312/Tusky-App/pull/62), [#59](https://github.com/Kelvinluciano312/Tusky-App/issues/59) | `apps/mobile/google-services.json`; `apps/mobile/app.json`; `apps/mobile/assets/images/notification-icon.png`; `CLAUDE.md` |
