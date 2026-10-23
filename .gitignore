@@ -43,6 +43,13 @@ apps/mobile/ios/
 supabase/.temp/
 supabase/.branches/
 
+# Graphify generated knowledge graph. Rebuild locally with `graphify .`.
+# A snapshot was committed in #51; it is no longer tracked.
+/graphify-out/
+
+# fablize multi-story ledger (local agent state)
+/.fablize/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
