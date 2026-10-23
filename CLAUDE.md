@@ -416,9 +416,12 @@ npx supabase link --project-ref ifibrsgqdibcomzxencf
   phone's own new-event screen through `createEventInCalendarAsync` from `expo-calendar/legacy`
   (SDK 57 made the root export throw). It needs no calendar permission. Expo still auto-applies the
   expo-calendar config plugin, which would write generic calendar and reminders purpose strings and
-  `READ_CALENDAR` / `WRITE_CALENDAR`. `app.json` lists the plugin with `calendarPermission: false` and
-  `remindersPermission: false` so that first run wins and the strings are omitted, and
-  `android.blockedPermissions` strips those two plus `READ_EXTERNAL_STORAGE` and
+  `READ_CALENDAR` / `WRITE_CALENDAR`. The plugin's `calendarPermission: false` deletes
+  `NSCalendarsUsageDescription` and `NSCalendarsFullAccessUsageDescription` during prebuild, which is
+  what App Store Connect rejects (ITMS-90683): the linked pod still references `EKEventStore`.
+  `ios.infoPlist` keeps an honest string for both keys, and the plugin must not set
+  `calendarPermission` to false. `remindersPermission: false` still omits the reminders strings.
+  `android.blockedPermissions` strips the two calendar permissions plus `READ_EXTERNAL_STORAGE` and
   `WRITE_EXTERNAL_STORAGE` (template / image / file-system; the app never reads storage).
   `expo-secure-store` is listed with `faceIDPermission: false`: the app does not use biometrics, and
   the default Face ID string is vague enough for Apple to reject. `lib/calendar.ts` (`eventFor`)
