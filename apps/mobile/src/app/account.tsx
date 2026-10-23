@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, KeyRound, LogOut } from 'lucide-react-native';
 import { type ReactNode, useState } from 'react';
-import { Linking, Pressable, ScrollView } from 'react-native';
+import { Pressable, ScrollView } from 'react-native';
 import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/card';
 import { DELETE_URL, PRIVACY_URL, TERMS_URL } from '@/constants/legal';
 import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { openLink } from '@/lib/links';
 import { releasePushToken } from '@/lib/push';
 import { deleteWarning } from '@/lib/paywall';
 import { useDeleteAccount, usePlan } from '@/lib/queries';
@@ -104,7 +105,7 @@ export default function AccountScreen() {
           { label: 'Privacy Policy', url: PRIVACY_URL },
           { label: 'How deletion works', url: DELETE_URL },
         ].map((l) => (
-          <Pressable key={l.label} accessibilityRole="link" onPress={() => void Linking.openURL(l.url)} style={{ paddingVertical: Spacing.xs }}>
+          <Pressable key={l.label} accessibilityRole="link" onPress={() => void openLink(l.url)} style={{ paddingVertical: Spacing.xs }}>
             <AppText tone="brand">{l.label}</AppText>
           </Pressable>
         ))}

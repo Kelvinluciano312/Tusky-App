@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Linking, Platform, ScrollView } from 'react-native';
+import { Platform, ScrollView } from 'react-native';
 import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { bankUsage, canManage, ownPaidPlan, PLAN_NAMES, planSummary, storeName } from '@/lib/paywall';
+import { openLink } from '@/lib/links';
 import { manageSubscriptionsUrl, purchasesEnabled, useRestore } from '@/lib/purchases';
 import { useHerd, useHerdPayer, usePlan } from '@/lib/queries';
 import { useSession } from '@/lib/session';
@@ -72,7 +73,7 @@ export default function PlanScreen() {
         <Button
           title="Manage subscription"
           variant="secondary"
-          onPress={async () => Linking.openURL(await manageSubscriptionsUrl())}
+          onPress={() => void openLink(manageSubscriptionsUrl(), 'system')}
         />
       ) : null}
       {purchasesEnabled ? (

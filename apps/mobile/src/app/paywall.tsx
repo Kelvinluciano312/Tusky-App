@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { type ReactNode, useState } from 'react';
-import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, View } from 'react-native';
 import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -26,6 +26,7 @@ import {
   subscribedElsewhere,
   tierAction,
 } from '@/lib/paywall';
+import { openLink } from '@/lib/links';
 import { manageSubscriptionsUrl, purchasesEnabled, useActiveProducts, useBuy, useOfferings, useRestore } from '@/lib/purchases';
 import { useHerd, useHerdPayer, usePlan, usePlanLimits } from '@/lib/queries';
 import { useSession } from '@/lib/session';
@@ -124,7 +125,7 @@ export default function PaywallScreen() {
           <Button
             title="Manage"
             variant="secondary"
-            onPress={async () => Linking.openURL(await manageSubscriptionsUrl())}
+            onPress={() => void openLink(manageSubscriptionsUrl(), 'system')}
           />
         </Card>
       ) : null}
@@ -202,12 +203,12 @@ export default function PaywallScreen() {
         Subscriptions renew until you cancel them in the {storeName(Platform.OS === 'ios' ? 'app_store' : 'play')}.
       </AppText>
       <View style={{ flexDirection: 'row', gap: Spacing.md }}>
-        <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(PRIVACY_URL)}>
+        <Pressable accessibilityRole="link" onPress={() => void openLink(PRIVACY_URL)}>
           <AppText variant="caption" tone="brand">
             Privacy policy
           </AppText>
         </Pressable>
-        <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(TERMS_URL)}>
+        <Pressable accessibilityRole="link" onPress={() => void openLink(TERMS_URL)}>
           <AppText variant="caption" tone="brand">
             Terms of use
           </AppText>
