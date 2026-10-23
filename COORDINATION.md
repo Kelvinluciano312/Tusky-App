@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | iOS App Store Connect app id on the production submit profile so `eas submit` is non-interactive | `pedro/eas-ios-submit` | `apps/mobile/eas.json` |
+| Pedro | iOS App Store Connect app id on the production submit profile so `eas submit` is non-interactive | `pedro/eas-ios-submit`, [#63](https://github.com/Kelvinluciano312/Tusky-App/pull/63) | `apps/mobile/eas.json` |
