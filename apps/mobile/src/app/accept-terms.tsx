@@ -1,4 +1,4 @@
-import { Linking, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { PRIVACY_URL, TERMS_URL, TERMS_VERSION } from '@/constants/legal';
 import { Layout, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { openLink } from '@/lib/links';
 import { releasePushToken } from '@/lib/push';
 import { useAcceptTerms } from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
@@ -39,8 +40,8 @@ export default function AcceptTermsScreen() {
         Tusky.
       </AppText>
       <View style={{ gap: Spacing.sm }}>
-        <Button title="Read the Terms of Service" variant="secondary" onPress={() => void Linking.openURL(TERMS_URL)} />
-        <Button title="Read the Privacy Policy" variant="secondary" onPress={() => void Linking.openURL(PRIVACY_URL)} />
+        <Button title="Read the Terms of Service" variant="secondary" onPress={() => void openLink(TERMS_URL)} />
+        <Button title="Read the Privacy Policy" variant="secondary" onPress={() => void openLink(PRIVACY_URL)} />
       </View>
       <Button
         title="I accept"

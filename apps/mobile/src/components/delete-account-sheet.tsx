@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Linking, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { Sheet, SheetScroll } from '@/components/ui/sheet';
 import { TextField } from '@/components/ui/text-field';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { openLink } from '@/lib/links';
 import { manageSubscriptionsUrl } from '@/lib/purchases';
 
 /** What the person must type, exactly (case-sensitive). */
@@ -62,7 +63,7 @@ export function DeleteAccountSheet({ visible, warning, isDeleting, error, onDele
                 <AppText variant="caption">{warning}</AppText>
                 <Pressable
                   accessibilityRole="link"
-                  onPress={async () => Linking.openURL(await manageSubscriptionsUrl())}
+                  onPress={() => void openLink(manageSubscriptionsUrl(), 'system')}
                   style={{ paddingVertical: Spacing.xs }}>
                   <AppText tone="brand" variant="label">
                     Manage subscription

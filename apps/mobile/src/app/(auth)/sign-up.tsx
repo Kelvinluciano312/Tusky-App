@@ -1,7 +1,7 @@
 import { Link, router } from 'expo-router';
 import { Check, LockKeyhole } from 'lucide-react-native';
 import { useState } from 'react';
-import { Linking, Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PasswordChecklist } from '@/components/password-checklist';
@@ -12,6 +12,7 @@ import { TextField } from '@/components/ui/text-field';
 import { PRIVACY_URL, TERMS_URL, TERMS_VERSION } from '@/constants/legal';
 import { Layout, Radius, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { openLink } from '@/lib/links';
 import { PASSWORD_MIN, passwordOk, passwordsMatch } from '@/lib/password';
 import { NAME_MAX, validatePersonName } from '@/lib/profile';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
@@ -140,11 +141,11 @@ export default function SignUpScreen() {
               </Pressable>
               <AppText tone="dim" style={{ flex: 1 }}>
                 I agree to the{' '}
-                <AppText tone="brand" onPress={() => void Linking.openURL(TERMS_URL)}>
+                <AppText tone="brand" onPress={() => void openLink(TERMS_URL)}>
                   Terms of Service
                 </AppText>{' '}
                 and the{' '}
-                <AppText tone="brand" onPress={() => void Linking.openURL(PRIVACY_URL)}>
+                <AppText tone="brand" onPress={() => void openLink(PRIVACY_URL)}>
                   Privacy Policy
                 </AppText>
                 .
