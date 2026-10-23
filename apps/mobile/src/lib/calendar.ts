@@ -1,7 +1,6 @@
 // A recurring bill or deposit as a calendar event (Phase 15g). Pure: the
-// screen hands this to the phone's own "new event" screen (expo-calendar's
-// system dialog, which needs no calendar permission), so the user picks the
-// calendar — Google on Android, Apple's on iOS — and can edit before saving.
+// screen asks for calendar access, then hands the draft to the phone's own
+// "new event" screen so the user can edit it before saving.
 
 type Stream = {
   name: string;
@@ -42,6 +41,24 @@ export function nextOnOrAfter(nextDate: string, frequency: Stream['frequency'], 
     }
   }
   return d;
+}
+
+/**
+ * Calendar access is asked for here, and nowhere else: the recurring screen
+ * calls this only after the user taps "Add to calendar". A denial does not
+ * open the editor. Reminders are not part of this.
+ */
+export async function addToPhoneCalendar<T>(
+  draft: CalendarEventDraft,
+  actions: {
+    requestAccess: () => Promise<boolean>;
+    openEditor: (draft: CalendarEventDraft) => Promise<T>;
+  },
+): Promise<T> {
+  if (!(await actions.requestAccess())) {
+    throw new Error('Calendar access is needed to add this.');
+  }
+  return actions.openEditor(draft);
 }
 
 export function eventFor(stream: Stream, displayName: string, today = new Date()): CalendarEventDraft {
