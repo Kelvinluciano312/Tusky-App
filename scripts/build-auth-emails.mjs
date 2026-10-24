@@ -7,7 +7,8 @@
 // - The sign-in code email shows {{ .Token }} and no link. No subject or
 //   preheader carries a code: both show on a lock screen.
 // - Gmail strips custom-scheme links (tusky://), so a button only ever points
-//   at an https address.
+//   at an https address. The recovery button is the studio reset page; the
+//   emailed code stays underneath it.
 // - Table layout and inline styles only; Gmail drops <style> in some clients.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -167,12 +168,16 @@ export const templates = {
     subject: 'Reset your Tusky password',
     html: layout({
       title: 'Reset your Tusky password',
-      preheader: 'Use the code inside to choose a new password in Tusky.',
+      preheader: 'Choose a new password in the Tusky app. It expires in 1 hour.',
       heading: 'Reset your password',
       body: [
-        p('Go back to Tusky, enter this code on the screen where you asked for the reset, then choose a new password.'),
+        p('Open Tusky and choose a new password. The link expires in 1 hour and works once.'),
+        button(
+          'https://studiosouroboros.com/tusky/reset?token_hash={{ .TokenHash }}&type=recovery',
+          'Reset your password',
+        ),
+        p('Or enter this code in the app.'),
         code('{{ .Token }}'),
-        p('It expires in 1 hour and works once.'),
       ].join('\n'),
       why: `${sentTo} because someone asked to reset the Tusky password for it. If that wasn't you, you can ignore this email. Your password stays the same.`,
     }),
@@ -250,6 +255,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       if (!allowed.has(v)) throw new Error(`${name}: unknown template variable ${v}`);
     }
     if (name === 'magic_link' && /ConfirmationURL/.test(t.html)) throw new Error('magic_link shows the code, never a link');
+    if (name === 'recovery') {
+      const resetHref = 'https://studiosouroboros.com/tusky/reset?token_hash={{ .TokenHash }}&type=recovery';
+      if (!t.html.includes(`href="${resetHref}"`)) throw new Error('recovery: the button must open the https reset page');
+      if (!t.html.includes('{{ .Token }}')) throw new Error('recovery: the emailed code stays as the fallback');
+      if (/tusky:\/\//.test(t.html)) throw new Error('recovery: Gmail strips tusky:// links');
+    }
     writeFileSync(join(OUT, `${name}.html`), t.html);
     console.log(`supabase/templates/${name}.html  subject: ${t.subject}`);
   }

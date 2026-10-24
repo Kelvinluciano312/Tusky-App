@@ -3,7 +3,8 @@
 // on the implicit flow (the default), because two-step sign-in emails a code
 // with signInWithOtp and a global switch to PKCE would attach a code challenge
 // to that request. iOS often drops the fragment on an implicit redirect, so the
-// recovery email should also carry a token_hash deep link (see the PR notes).
+// recovery email carries an https link (the studio site copies the token into
+// tusky://) and the app also accepts that https URL directly as a universal link.
 
 /** Where `resetPasswordForEmail` sends the person. Allow-list this exactly. */
 export const PASSWORD_RESET_REDIRECT = 'tusky://reset-password';
@@ -24,7 +25,31 @@ function paramsOf(url: URL): URLSearchParams {
   return merged;
 }
 
-/** A tusky://reset-password link, or null when the URL is some other deep link. */
+/** https://studiosouroboros.com/tusky/reset, with a trailing slash or `.html`. */
+function isStudioResetUrl(url: URL): boolean {
+  if (url.protocol !== 'https:') return false;
+  if (url.hostname.toLowerCase() !== 'studiosouroboros.com') return false;
+  const path = url.pathname.replace(/\/+$/, '') || '/';
+  return path === '/tusky/reset' || path === '/tusky/reset.html';
+}
+
+/**
+ * Expo Router's `redirectSystemPath` for an incoming URL.
+ * A studio reset link is not a screen: null keeps the router off `/tusky/reset`,
+ * and `listenForRecovery` applies the original URL. Every other URL is unchanged,
+ * including `https://studiosouroboros.com/tusky/plaid-oauth`, which the Plaid SDK
+ * consumes itself.
+ */
+export function nativeIntentPath(path: string): string | null {
+  try {
+    if (isStudioResetUrl(new URL(path))) return null;
+  } catch {
+    // Not a URL. Leave Expo Router's own handling alone.
+  }
+  return path;
+}
+
+/** A reset link, or null when the URL is some other deep link. */
 export function parseRecoveryUrl(raw: string): RecoveryLink | null {
   let url: URL;
   try {
@@ -32,8 +57,11 @@ export function parseRecoveryUrl(raw: string): RecoveryLink | null {
   } catch {
     return null;
   }
-  if (url.protocol !== 'tusky:') return null;
-  const route = `${url.hostname}${url.pathname}`.replace(/^\/+|\/+$/g, '');
+  const studioReset = isStudioResetUrl(url);
+  if (!studioReset && url.protocol !== 'tusky:') return null;
+  const route = studioReset
+    ? 'reset-password'
+    : `${url.hostname}${url.pathname}`.replace(/^\/+|\/+$/g, '');
   const params = paramsOf(url);
   const type = params.get('type');
   if (type && type !== 'recovery') return null;
