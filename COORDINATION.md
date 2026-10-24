@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | Password reset: https universal link / App Link, and the recovery email button | `pedro/reset-app-links`, [#75](https://github.com/Kelvinluciano312/Tusky-App/pull/75), issue [#74](https://github.com/Kelvinluciano312/Tusky-App/issues/74) | `apps/mobile/src/lib/recovery.ts`, `apps/mobile/src/app/+native-intent.tsx`, `apps/mobile/app.json`, `scripts/build-auth-emails.mjs`, `supabase/templates/recovery.html`, `docs/ops/production.md` |
+| Pedro | iOS freeze when changing a transaction's category: dialogs wait for a closing sheet | `pedro/fix-category-freeze`, issue [#76](https://github.com/Kelvinluciano312/Tusky-App/issues/76) | `apps/mobile/src/components/ui/sheet.tsx`, `apps/mobile/src/components/ui/dialog.tsx`, `apps/mobile/src/lib/modal-gate.ts`, `apps/mobile/src/hooks/use-category-choice.ts` |
