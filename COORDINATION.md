@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | Polish the Supabase auth emails and drop the broken `tusky://` reset button (templates already live on dev and production) | `pedro/polish-auth-emails`, issue [#72](https://github.com/Kelvinluciano312/Tusky-App/issues/72) | `scripts/build-auth-emails.mjs`, `supabase/templates/`, `supabase/config.toml`, `docs/ops/production.md` |
+| Pedro | Password reset: https universal link / App Link, and the recovery email button | `pedro/reset-app-links`, [#75](https://github.com/Kelvinluciano312/Tusky-App/pull/75), issue [#74](https://github.com/Kelvinluciano312/Tusky-App/issues/74) | `apps/mobile/src/lib/recovery.ts`, `apps/mobile/src/app/+native-intent.tsx`, `apps/mobile/app.json`, `scripts/build-auth-emails.mjs`, `supabase/templates/recovery.html`, `docs/ops/production.md` |
