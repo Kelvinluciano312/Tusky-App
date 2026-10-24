@@ -11,10 +11,13 @@ import {
   sheetLiftStyle,
   sheetListStyle,
 } from '@/lib/sheet-keyboard';
+import { modalGate } from '@/lib/modal-gate';
 
 type SheetProps = {
   visible: boolean;
   onClose: () => void;
+  /** Runs once the close animation ends and the sheet's Modal has unmounted. */
+  onClosed?: () => void;
   /**
    * Lift the sheet above the keyboard. On by default: a Modal does not resize
    * for the keyboard on edge-to-edge Android, and a content-sized sheet would
@@ -41,7 +44,7 @@ const OFFSCREEN = 600;
  * height is capped to the band above it, so a short list sits on the keyboard
  * and a long one scrolls.
  */
-export function Sheet({ visible, onClose, avoidKeyboard = true, style, children }: SheetProps) {
+export function Sheet({ visible, onClose, onClosed, avoidKeyboard = true, style, children }: SheetProps) {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -80,10 +83,20 @@ export function Sheet({ visible, onClose, avoidKeyboard = true, style, children 
         easing: Easing.in(Easing.cubic),
         useNativeDriver: true,
       }).start(({ finished }) => {
-        if (finished) setMounted(false);
+        if (finished) {
+          setMounted(false);
+          onClosed?.();
+        }
       });
     }
+    // onClosed is read when the close ends; a new function each render must not restart the animation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, mounted, progress]);
+
+  // From the moment the sheet starts closing until its Modal is gone (plus a
+  // settle), hold app dialogs back: on iOS a dialog's Modal presented over a
+  // closing sheet's never shows and blocks every touch (#76).
+  useEffect(() => (mounted && !visible ? modalGate.hold() : undefined), [mounted, visible]);
 
   if (!mounted) return null;
 

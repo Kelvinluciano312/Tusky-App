@@ -17,7 +17,11 @@ export function useCategoryChoice() {
   return (t: Target, name: string, next: Category) => {
     if (next.id === t.category_id) return;
     const once = () =>
-      setCategory.mutate({ transactionId: t.id, categoryId: next.id }, { onSuccess: noteFix });
+      setCategory.mutate(
+        { transactionId: t.id, categoryId: next.id },
+        // The optimistic change rolls back on failure; say so instead of leaving it silent.
+        { onSuccess: noteFix, onError: (err) => dialog.alert('Could not save', err.message) },
+      );
     // A name with no letters has an empty key and can take no rule.
     const merchantKey = t.merchant_key || null;
     if (!merchantKey) {

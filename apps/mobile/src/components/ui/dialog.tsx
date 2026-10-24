@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
@@ -17,6 +17,7 @@ import {
   type DialogOptions,
   type DialogRequest,
 } from '@/lib/dialog-queue';
+import { modalGate } from '@/lib/modal-gate';
 
 /**
  * App-styled dialogs (Phase 16f). `dialog.alert` has the signature and
@@ -66,10 +67,27 @@ function resolve(request: DialogRequest, button?: DialogButton) {
   button?.onPress?.();
 }
 
+/**
+ * The head of the queue shows only once no Sheet is closing (`modalGate`). A
+ * screen that closes a sheet and raises a dialog in the same tap would
+ * otherwise stack the two Modals, which freezes iOS (#76). The check waits a
+ * tick, so the closing sheet's effect has held the gate by then.
+ */
 export function DialogHost() {
   const requests = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const clear = useSyncExternalStore(modalGate.subscribe, modalGate.isClear, modalGate.isClear);
+  const [shownId, setShownId] = useState<number | null>(null);
   const current = requests[0];
-  if (!current) return null;
+
+  useEffect(() => {
+    if (!current || current.id === shownId || !clear) return;
+    const timer = setTimeout(() => {
+      if (modalGate.isClear()) setShownId(current.id);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [current, shownId, clear]);
+
+  if (!current || current.id !== shownId) return null;
   return <DialogCard key={current.id} request={current} />;
 }
 
