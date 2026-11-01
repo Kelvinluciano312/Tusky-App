@@ -427,6 +427,11 @@ verify_jwt = false
 [functions.notifications-cron]
 verify_jwt = false
 
+# Investment Guy MCP connector. Auth is a hashed bearer token in
+# mcp_connector_tokens, not a Supabase JWT.
+[functions.mcp-finance]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
