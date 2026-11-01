@@ -81,8 +81,31 @@ export type ProfileRow = { user_id: string; display_name: string };
 export type HerdMemberRow = { user_id: string; role: string };
 
 /** Minimal store the Edge Function fills with the service-role client. */
+/** Row returned by a successful token lookup (revoked rows never returned). */
+export type ConnectorTokenRow = {
+  id: string;
+  user_id: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+};
+
+/** Outcome of public.take_mcp_connector_request. */
+export type RateLimitDecision =
+  | { allowed: true; usageId: number; retryAfterSeconds: 0 }
+  | { allowed: false; usageId: number | null; retryAfterSeconds: number };
+
 export type FinanceStore = {
-  lookupToken(tokenHash: string): Promise<{ user_id: string } | null>;
+  lookupToken(tokenHash: string): Promise<ConnectorTokenRow | null>;
+  /** Atomic DB rate limit; must be implemented with take_mcp_connector_request. */
+  takeRequest(
+    tokenId: string,
+    maxPerMinute?: number,
+    maxPerDay?: number,
+  ): Promise<RateLimitDecision>;
+  /** Fire-and-forget safe: failures must not reject. */
+  touchLastUsed(tokenId: string): Promise<void>;
+  /** Attach tools/call name + final status to the reserved usage row. */
+  recordToolUsage(usageId: number, tool: string, status: 'ok' | 'error'): Promise<void>;
   getHerd(userId: string): Promise<{ herd_id: string; role: string } | null>;
   listHerdMembers(herdId: string): Promise<HerdMemberRow[]>;
   listProfiles(userIds: string[]): Promise<ProfileRow[]>;
@@ -114,12 +137,98 @@ export type Scope = {
 };
 
 const HEX64 = /^[0-9a-f]{64}$/;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Pull the bearer token; null when missing or empty. */
+/** Max calendar span for monthly_category_totals (inclusive). */
+export const MAX_MONTHLY_RANGE_DAYS = 366;
+
+/** Per-token request budgets (enforced in Postgres so Edge isolates share them). */
+export const MCP_RATE_LIMIT_PER_MINUTE = 60;
+export const MCP_RATE_LIMIT_PER_DAY = 2000;
+
+/** How often last_used_at may be rewritten (ms). */
+export const MCP_LAST_USED_THROTTLE_MS = 60_000;
+
+/** True when expires_at is set and not after `now`. Null expires_at = never expires. */
+export function isTokenExpired(expiresAt: string | null | undefined, now = new Date()): boolean {
+  if (!expiresAt) return false;
+  const t = Date.parse(expiresAt);
+  if (!Number.isFinite(t)) return true; // fail closed on garbage timestamps
+  return t <= now.getTime();
+}
+
+/** Whether last_used_at is missing or older than the throttle window. */
+export function shouldTouchLastUsed(
+  lastUsedAt: string | null | undefined,
+  now = new Date(),
+  throttleMs = MCP_LAST_USED_THROTTLE_MS,
+): boolean {
+  if (!lastUsedAt) return true;
+  const t = Date.parse(lastUsedAt);
+  if (!Number.isFinite(t)) return true;
+  return now.getTime() - t >= throttleMs;
+}
+
+/**
+ * Normalize the row(s) returned by take_mcp_connector_request via PostgREST.
+ * Fail closed (deny) when the shape is unexpected.
+ */
+export function parseTakeRequestResult(data: unknown): RateLimitDecision {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== 'object') {
+    return { allowed: false, usageId: null, retryAfterSeconds: 60 };
+  }
+  const r = row as Record<string, unknown>;
+  const allowed = r.allowed === true;
+  const retry = typeof r.retry_after_seconds === 'number' && Number.isFinite(r.retry_after_seconds)
+    ? Math.max(1, Math.floor(r.retry_after_seconds))
+    : 60;
+  const usageId = typeof r.usage_id === 'number' && Number.isFinite(r.usage_id)
+    ? Math.floor(r.usage_id)
+    : typeof r.usage_id === 'string' && /^\d+$/.test(r.usage_id)
+    ? Number(r.usage_id)
+    : null;
+  if (allowed && usageId != null) {
+    return { allowed: true, usageId, retryAfterSeconds: 0 };
+  }
+  if (allowed && usageId == null) {
+    // Allowed without an id: still let the request through; usage update is best-effort.
+    return { allowed: true, usageId: 0, retryAfterSeconds: 0 };
+  }
+  return { allowed: false, usageId, retryAfterSeconds: retry };
+}
+
+/** Pull the bearer token; null when missing, empty, or absurdly long (DoS). */
 export function bearerToken(authorization: string | null): string | null {
   if (!authorization?.startsWith('Bearer ')) return null;
   const token = authorization.slice('Bearer '.length).trim();
-  return token.length > 0 ? token : null;
+  // Expected tokens are 64 hex chars; allow some slack, reject multi-KB headers.
+  if (token.length === 0 || token.length > 256) return null;
+  return token;
+}
+
+/** Strict YYYY-MM-DD (no time, no PostgREST metacharacters). */
+export function isIsoDate(value: string | undefined): value is string {
+  if (!value || !ISO_DATE.test(value)) return false;
+  const t = Date.parse(value + 'T00:00:00Z');
+  if (!Number.isFinite(t)) return false;
+  // Reject JS-normalized impossibles like 2026-02-31 → Mar 3.
+  return new Date(t).toISOString().slice(0, 10) === value;
+}
+
+export function isUuid(value: string | undefined): value is string {
+  return !!value && UUID.test(value);
+}
+
+/** Inclusive day count between two YYYY-MM-DD strings; null if invalid. */
+export function inclusiveDaySpan(from: string, to: string): number | null {
+  if (!isIsoDate(from) || !isIsoDate(to)) return null;
+  const a = Date.parse(from + 'T00:00:00Z');
+  const b = Date.parse(to + 'T00:00:00Z');
+  if (b < a) return null;
+  return Math.floor((b - a) / 86_400_000) + 1;
 }
 
 /** Lowercase hex SHA-256 of the raw token. Never log the input. */
@@ -315,6 +424,21 @@ function asLimit(v: unknown, fallback: number): number {
   return Math.min(200, Math.max(1, Math.floor(v)));
 }
 
+/** Optional ISO date filter; returns error message when present but invalid. */
+function optionalIsoDate(v: unknown, field: string): { ok: true; value?: string } | { ok: false; error: string } {
+  const s = asString(v);
+  if (s === undefined) return { ok: true };
+  if (!isIsoDate(s)) return { ok: false, error: `${field} must be YYYY-MM-DD` };
+  return { ok: true, value: s };
+}
+
+function optionalUuid(v: unknown, field: string): { ok: true; value?: string } | { ok: false; error: string } {
+  const s = asString(v);
+  if (s === undefined) return { ok: true };
+  if (!isUuid(s)) return { ok: false, error: `${field} must be a uuid` };
+  return { ok: true, value: s };
+}
+
 function monthKey(date: string): string {
   return date.slice(0, 7) + '-01';
 }
@@ -386,10 +510,16 @@ export async function callTool(
         return toolResult({ accounts: rows });
       }
       case 'list_balance_history': {
-        const accountId = asString(params.account_id);
+        const accountIdRes = optionalUuid(params.account_id, 'account_id');
+        if (!accountIdRes.ok) return toolError(accountIdRes.error);
+        const fromRes = optionalIsoDate(params.from, 'from');
+        if (!fromRes.ok) return toolError(fromRes.error);
+        const toRes = optionalIsoDate(params.to, 'to');
+        if (!toRes.ok) return toolError(toRes.error);
+        const accountId = accountIdRes.value;
         if (accountId && !byId.has(accountId)) return toolError('account_id is not visible to this token');
         const ids = accountId ? [accountId] : scope.visibleAccountIds;
-        const snaps = await store.listSnapshots(ids, asString(params.from), asString(params.to));
+        const snaps = await store.listSnapshots(ids, fromRes.value, toRes.value);
         const rows = snaps.map((s) =>
           withMember(
             { id: s.id, account_id: s.account_id, date: s.date, balance: s.balance },
@@ -400,18 +530,30 @@ export async function callTool(
         return toolResult({ snapshots: rows });
       }
       case 'list_transactions': {
-        const accountId = asString(params.account_id);
+        const accountIdRes = optionalUuid(params.account_id, 'account_id');
+        if (!accountIdRes.ok) return toolError(accountIdRes.error);
+        const categoryIdRes = optionalUuid(params.category_id, 'category_id');
+        if (!categoryIdRes.ok) return toolError(categoryIdRes.error);
+        const fromRes = optionalIsoDate(params.from, 'from');
+        if (!fromRes.ok) return toolError(fromRes.error);
+        const toRes = optionalIsoDate(params.to, 'to');
+        if (!toRes.ok) return toolError(toRes.error);
+        const cursorDateRes = optionalIsoDate(params.cursor_date, 'cursor_date');
+        if (!cursorDateRes.ok) return toolError(cursorDateRes.error);
+        const cursorIdRes = optionalUuid(params.cursor_id, 'cursor_id');
+        if (!cursorIdRes.ok) return toolError(cursorIdRes.error);
+        const accountId = accountIdRes.value;
         if (accountId && !byId.has(accountId)) return toolError('account_id is not visible to this token');
         const limit = asLimit(params.limit, 50);
         const txs = await store.listTransactions({
           accountIds: scope.visibleAccountIds,
-          from: asString(params.from),
-          to: asString(params.to),
+          from: fromRes.value,
+          to: toRes.value,
           accountId,
-          categoryId: asString(params.category_id),
+          categoryId: categoryIdRes.value,
           limit,
-          cursorDate: asString(params.cursor_date),
-          cursorId: asString(params.cursor_id),
+          cursorDate: cursorDateRes.value,
+          cursorId: cursorIdRes.value,
         });
         // Drop anything on a hidden account unless explicitly requested by account_id.
         const rows = txs
@@ -448,6 +590,12 @@ export async function callTool(
         const from = asString(params.from);
         const to = asString(params.to);
         if (!from || !to) return toolError('from and to are required (YYYY-MM-DD)');
+        if (!isIsoDate(from) || !isIsoDate(to)) return toolError('from and to must be YYYY-MM-DD');
+        const span = inclusiveDaySpan(from, to);
+        if (span === null) return toolError('from must be on or before to');
+        if (span > MAX_MONTHLY_RANGE_DAYS) {
+          return toolError(`date range must be at most ${MAX_MONTHLY_RANGE_DAYS} days`);
+        }
         const visibleNonHidden = scope.visibleAccounts.filter((a) => !a.hidden).map((a) => a.id);
         const txs = await store.listTransactions({
           accountIds: visibleNonHidden,
@@ -516,6 +664,10 @@ export async function callTool(
         return toolResult({ recurring: rows });
       }
       case 'list_income': {
+        const fromRes = optionalIsoDate(params.from, 'from');
+        if (!fromRes.ok) return toolError(fromRes.error);
+        const toRes = optionalIsoDate(params.to, 'to');
+        if (!toRes.ok) return toolError(toRes.error);
         const cats = await store.listCategories(scope.herdId);
         const incomeIds = cats.filter((c) => c.kind === 'income').map((c) => c.id);
         const limit = asLimit(params.limit, 50);
@@ -525,8 +677,8 @@ export async function callTool(
         }
         const incomeTxs = await store.listTransactions({
           accountIds: visibleNonHidden,
-          from: asString(params.from),
-          to: asString(params.to),
+          from: fromRes.value,
+          to: toRes.value,
           categoryIds: incomeIds,
           limit,
         });
@@ -594,8 +746,9 @@ export async function callTool(
         return toolError(`Unknown tool: ${name}`);
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'tool_failed';
-    return toolError(message);
+    // Never echo DB / PostgREST / stack details to the MCP client.
+    console.error('mcp-finance tool failed', err instanceof Error ? err.message : 'tool_failed');
+    return toolError('tool_failed');
   }
 }
 
@@ -607,14 +760,21 @@ export function initializeResult(): Record<string, unknown> {
   };
 }
 
+export type HandleJsonRpcOptions = {
+  /** Reserved mcp_connector_usage.id from take_mcp_connector_request; tool name filled in for tools/call. */
+  usageId?: number | null;
+};
+
 /**
  * Handle one JSON-RPC MCP message after auth. Returns the JSON body and HTTP status.
  * Notifications (no id) get 202 with null body.
+ * tools/call outcomes are recorded on usageId when provided; logging failures are swallowed.
  */
 export async function handleJsonRpc(
   body: JsonRpcRequest,
   scope: Scope,
   store: FinanceStore,
+  options: HandleJsonRpcOptions = {},
 ): Promise<{ status: number; body: unknown | null }> {
   const method = typeof body.method === 'string' ? body.method : '';
   const id = body.id;
@@ -654,6 +814,17 @@ export async function handleJsonRpc(
       };
     }
     const result = await callTool(name, params.arguments ?? {}, scope, store);
+    const usageId = options.usageId;
+    if (usageId != null && usageId > 0) {
+      const status = result.isError ? 'error' : 'ok';
+      // Never block the MCP response on audit logging.
+      void store.recordToolUsage(usageId, name, status).catch((err) => {
+        console.error(
+          'mcp-finance usage log failed',
+          err instanceof Error ? err.message : 'usage_log_failed',
+        );
+      });
+    }
     return { status: 200, body: { jsonrpc: '2.0', id, result } };
   }
 
