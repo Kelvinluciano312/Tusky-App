@@ -32,4 +32,5 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | Read-only MCP finance connector for Investment Guy | `pedro/readonly-mcp-connector`, issue [#78](https://github.com/Kelvinluciano312/Tusky-App/issues/78) | `supabase/functions/mcp-finance/`, `supabase/functions/_shared/mcp-finance.ts`, `supabase/migrations/20261102120000_mcp_connector_tokens.sql`, `supabase/config.toml` |
+| Pedro | MCP finance security hardening (expiry, usage log, DB rate limits) | `pedro/mcp-finance-hardening`, issue [#80](https://github.com/Kelvinluciano312/Tusky-App/issues/80) — patch only, not pushed | `supabase/functions/mcp-finance/`, `supabase/functions/_shared/mcp-finance.ts`, `supabase/migrations/20261102130000_mcp_connector_hardening.sql` |
+| Pedro | Read-only MCP finance connector for Investment Guy | merged [#79](https://github.com/Kelvinluciano312/Tusky-App/pull/79) from [#78](https://github.com/Kelvinluciano312/Tusky-App/issues/78) | `supabase/functions/mcp-finance/`, `supabase/migrations/20261102120000_mcp_connector_tokens.sql` |

@@ -7,9 +7,19 @@ import {
   filterVisibleAccounts,
   handleJsonRpc,
   hashToken,
+  inclusiveDaySpan,
+  isIsoDate,
+  isTokenExpired,
   isTokenHash,
+  isUuid,
+  MAX_MONTHLY_RANGE_DAYS,
+  MCP_LAST_USED_THROTTLE_MS,
+  MCP_RATE_LIMIT_PER_DAY,
+  MCP_RATE_LIMIT_PER_MINUTE,
   memberTag,
+  parseTakeRequestResult,
   resolveScope,
+  shouldTouchLastUsed,
   TOOLS,
   transactionMemberId,
   withMember,
@@ -59,6 +69,9 @@ function memScope(accounts: AccountRow[]): Scope {
 function emptyStore(over: Partial<FinanceStore> = {}): FinanceStore {
   return {
     lookupToken: async () => null,
+    takeRequest: async () => ({ allowed: true, usageId: 1, retryAfterSeconds: 0 as const }),
+    touchLastUsed: async () => {},
+    recordToolUsage: async () => {},
     getHerd: async () => ({ herd_id: HERD, role: 'owner' }),
     listHerdMembers: async () => [
       { user_id: PEDRO, role: 'owner' },
@@ -167,10 +180,11 @@ Deno.test('list_accounts: tags connector and skips hidden by default', async () 
 });
 
 Deno.test('list_transactions: refuses an account outside the visible set', async () => {
+  const foreign = '99999999-9999-9999-9999-999999999999';
   const result = await callTool(
     'list_transactions',
-    { account_id: 'not-visible' },
-    memScope([account({ id: 'a1', user_id: PEDRO })]),
+    { account_id: foreign },
+    memScope([account({ id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', user_id: PEDRO })]),
     emptyStore(),
   );
   assertEquals(result.isError, true);
@@ -308,13 +322,195 @@ Deno.test('handleJsonRpc: tools/call list_herd_members', async () => {
 Deno.test('list_balance_history: rejects foreign account ids', async () => {
   const result = await callTool(
     'list_balance_history',
-    { account_id: 'x' },
-    memScope([account({ id: 'a1', user_id: PEDRO })]),
+    { account_id: '99999999-9999-9999-9999-999999999999' },
+    memScope([account({ id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', user_id: PEDRO })]),
     emptyStore(),
   );
   assertEquals(result.isError, true);
+  assertEquals(result.content[0].text.includes('not visible'), true);
 });
 
 Deno.test('hashToken: empty string still hashes', async () => {
   assertEquals((await hashToken('')).length, 64);
+});
+
+Deno.test('bearerToken: rejects absurdly long values', () => {
+  assertEquals(bearerToken('Bearer ' + 'a'.repeat(257)), null);
+  assertEquals(bearerToken('Bearer ' + 'a'.repeat(64))?.length, 64);
+});
+
+Deno.test('isIsoDate / isUuid / inclusiveDaySpan', () => {
+  assertEquals(isIsoDate('2026-10-01'), true);
+  assertEquals(isIsoDate('2026-02-31'), false);
+  assertEquals(isIsoDate("2026-10-01' OR 1=1"), false);
+  assertEquals(isIsoDate('2026-10-01T00:00:00Z'), false);
+  assertEquals(isUuid(PEDRO), true);
+  assertEquals(isUuid('not-a-uuid'), false);
+  assertEquals(isUuid("aaaa),or(id.neq.bbbb"), false);
+  assertEquals(inclusiveDaySpan('2026-01-01', '2026-01-01'), 1);
+  assertEquals(inclusiveDaySpan('2026-01-01', '2026-12-31'), 365);
+  assertEquals(inclusiveDaySpan('2026-01-02', '2026-01-01'), null);
+});
+
+Deno.test('list_transactions: rejects PostgREST-ish cursor injection', async () => {
+  const scope = memScope([account({ id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', user_id: PEDRO })]);
+  const bad = await callTool(
+    'list_transactions',
+    {
+      limit: 5,
+      cursor_date: '2024-01-01',
+      cursor_id: '00000000-0000-0000-0000-000000000000),or(id.neq.00000000-0000-0000-0000-000000000000',
+    },
+    scope,
+    emptyStore(),
+  );
+  assertEquals(bad.isError, true);
+  assertEquals(bad.content[0].text.includes('cursor_id must be a uuid'), true);
+
+  const badDate = await callTool(
+    'list_transactions',
+    { limit: 5, cursor_date: '2024-01-01)', cursor_id: PEDRO },
+    scope,
+    emptyStore(),
+  );
+  assertEquals(badDate.isError, true);
+  assertEquals(badDate.content[0].text.includes('cursor_date must be YYYY-MM-DD'), true);
+});
+
+Deno.test('monthly_category_totals: caps the date range', async () => {
+  const scope = memScope([account({ id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', user_id: PEDRO })]);
+  const wide = await callTool(
+    'monthly_category_totals',
+    { from: '2000-01-01', to: '2026-12-31' },
+    scope,
+    emptyStore(),
+  );
+  assertEquals(wide.isError, true);
+  assertEquals(wide.content[0].text.includes(String(MAX_MONTHLY_RANGE_DAYS)), true);
+});
+
+Deno.test('callTool: never returns raw Error.message from the store', async () => {
+  const scope = memScope([account({ id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', user_id: PEDRO })]);
+  const result = await callTool(
+    'list_transactions',
+    { limit: 5 },
+    scope,
+    emptyStore({
+      listTransactions: async () => {
+        throw new Error('permission denied for table transactions hint=secret');
+      },
+    }),
+  );
+  assertEquals(result.isError, true);
+  assertEquals(result.content[0].text, 'tool_failed');
+  assertEquals(result.content[0].text.includes('permission denied'), false);
+});
+
+Deno.test('rate limit constants are the documented budgets', () => {
+  assertEquals(MCP_RATE_LIMIT_PER_MINUTE, 60);
+  assertEquals(MCP_RATE_LIMIT_PER_DAY, 2000);
+  assertEquals(MCP_LAST_USED_THROTTLE_MS, 60_000);
+});
+
+Deno.test('isTokenExpired: null never expires; past/garbage fail closed', () => {
+  const now = new Date('2026-11-01T12:00:00Z');
+  assertEquals(isTokenExpired(null, now), false);
+  assertEquals(isTokenExpired(undefined, now), false);
+  assertEquals(isTokenExpired('2026-11-02T00:00:00.000Z', now), false);
+  assertEquals(isTokenExpired('2026-11-01T11:59:59.000Z', now), true);
+  assertEquals(isTokenExpired('2026-11-01T12:00:00.000Z', now), true);
+  assertEquals(isTokenExpired('not-a-date', now), true);
+});
+
+Deno.test('shouldTouchLastUsed: missing or older than throttle', () => {
+  const now = new Date('2026-11-01T12:00:00Z');
+  assertEquals(shouldTouchLastUsed(null, now), true);
+  assertEquals(shouldTouchLastUsed(undefined, now), true);
+  assertEquals(shouldTouchLastUsed('2026-11-01T11:58:00.000Z', now), true);
+  assertEquals(shouldTouchLastUsed('2026-11-01T11:59:30.000Z', now), false);
+  assertEquals(shouldTouchLastUsed('garbage', now), true);
+});
+
+Deno.test('parseTakeRequestResult: allow, deny, and fail closed', () => {
+  assertEquals(parseTakeRequestResult([{ allowed: true, retry_after_seconds: 0, usage_id: 42 }]), {
+    allowed: true,
+    usageId: 42,
+    retryAfterSeconds: 0,
+  });
+  assertEquals(parseTakeRequestResult({ allowed: false, retry_after_seconds: 17, usage_id: 9 }), {
+    allowed: false,
+    usageId: 9,
+    retryAfterSeconds: 17,
+  });
+  // string ids from some PostgREST shapes
+  assertEquals(parseTakeRequestResult({ allowed: true, retry_after_seconds: 0, usage_id: '7' }).usageId, 7);
+  assertEquals(parseTakeRequestResult(null).allowed, false);
+  assertEquals(parseTakeRequestResult({}).allowed, false);
+  assertEquals(parseTakeRequestResult({ allowed: false, retry_after_seconds: 0 }).retryAfterSeconds, 1);
+});
+
+Deno.test('handleJsonRpc: records tools/call usage without blocking', async () => {
+  const calls: { usageId: number; tool: string; status: string }[] = [];
+  const scope = memScope([]);
+  const store = emptyStore({
+    recordToolUsage: async (usageId, tool, status) => {
+      calls.push({ usageId, tool, status });
+    },
+  });
+
+  const ok = await handleJsonRpc(
+    { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'list_herd_members', arguments: {} } },
+    scope,
+    store,
+    { usageId: 99 },
+  );
+  assertEquals(ok.status, 200);
+  // microtask / promise may still be settling
+  await Promise.resolve();
+  await Promise.resolve();
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0], { usageId: 99, tool: 'list_herd_members', status: 'ok' });
+
+  calls.length = 0;
+  const bad = await handleJsonRpc(
+    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'no_such_tool', arguments: {} } },
+    scope,
+    store,
+    { usageId: 100 },
+  );
+  assertEquals(bad.status, 200);
+  await Promise.resolve();
+  await Promise.resolve();
+  assertEquals(calls[0]?.status, 'error');
+  assertEquals(calls[0]?.tool, 'no_such_tool');
+
+  calls.length = 0;
+  await handleJsonRpc(
+    { jsonrpc: '2.0', id: 3, method: 'tools/list' },
+    scope,
+    store,
+    { usageId: 101 },
+  );
+  await Promise.resolve();
+  assertEquals(calls.length, 0);
+});
+
+Deno.test('handleJsonRpc: usage log failure does not fail the RPC', async () => {
+  const scope = memScope([]);
+  const store = emptyStore({
+    recordToolUsage: async () => {
+      throw new Error('disk full hint=secret');
+    },
+  });
+  const res = await handleJsonRpc(
+    { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'list_herd_members', arguments: {} } },
+    scope,
+    store,
+    { usageId: 5 },
+  );
+  await new Promise((r) => setTimeout(r, 0));
+  assertEquals(res.status, 200);
+  const text = (res.body as { result: { content: { text: string }[] } }).result.content[0].text;
+  assertEquals(text.includes('herd_id'), true);
+  assertEquals(text.includes('disk full'), false);
 });
