@@ -32,4 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | iOS freeze when changing a transaction's category: dialogs wait for a closing sheet | `pedro/fix-category-freeze`, issue [#76](https://github.com/Kelvinluciano312/Tusky-App/issues/76) | `apps/mobile/src/components/ui/sheet.tsx`, `apps/mobile/src/components/ui/dialog.tsx`, `apps/mobile/src/lib/modal-gate.ts`, `apps/mobile/src/hooks/use-category-choice.ts` |
+| Pedro | Read-only MCP finance connector for Investment Guy | `pedro/readonly-mcp-connector`, issue [#78](https://github.com/Kelvinluciano312/Tusky-App/issues/78) | `supabase/functions/mcp-finance/`, `supabase/functions/_shared/mcp-finance.ts`, `supabase/migrations/20261102120000_mcp_connector_tokens.sql`, `supabase/config.toml` |
