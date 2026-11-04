@@ -219,6 +219,8 @@ export type Transaction = {
   account_id: string;
   name: string;
   merchant_name: string | null;
+  /** Plaid's stable merchant id when known; preferred key for transaction alerts. */
+  merchant_entity_id: string | null;
   /** normalizeMerchant(merchant_name ?? name), generated in SQL; '' for a name with no letters. Merchant rules key on it. */
   merchant_key: string | null;
   logo_url: string | null;
@@ -257,7 +259,7 @@ const PAGE_SIZE = 50;
 type PageCursor = { date: string; id: string } | null;
 
 const TRANSACTION_COLUMNS =
-  'id, account_id, name, merchant_name, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, category_source, notes, paid_by, paid_by_is_manual, split, reviewed_at, review_assignee, answered_by, review_priority, split_suggested';
+  'id, account_id, name, merchant_name, merchant_entity_id, merchant_key, logo_url, amount, iso_currency_code, date, pending, category_id, category_is_manual, category_source, notes, paid_by, paid_by_is_manual, split, reviewed_at, review_assignee, answered_by, review_priority, split_suggested';
 
 /**
  * Keyset pagination on (date, id), NOT offset. Sync inserts rows while the user

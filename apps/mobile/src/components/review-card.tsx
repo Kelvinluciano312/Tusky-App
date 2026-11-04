@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { ChevronDown, Pencil } from 'lucide-react-native';
+import { Bell, ChevronDown, Pencil } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { dialog } from '@/components/ui/dialog';
@@ -8,6 +8,7 @@ import { CategoryPicker } from '@/components/category-picker';
 import { CategorySheet, type SheetTarget } from '@/components/category-sheet';
 import { DetailLine } from '@/components/detail-line';
 import { NoteSheet } from '@/components/note-sheet';
+import { AlertSheet, type AlertSheetSeed } from '@/components/alert-sheet';
 import { RenameSheet } from '@/components/rename-sheet';
 import { Amount } from '@/components/ui/amount';
 import { AppText } from '@/components/ui/app-text';
@@ -28,6 +29,9 @@ import {
   useSetTransactionNotes,
   useTransaction,
 } from '@/lib/queries';
+import { useSession } from '@/lib/session';
+import { useTransactionAlerts } from '@/lib/transaction-alert-queries';
+import { hasAlertForTransaction } from '@/lib/transaction-alerts';
 
 function formatDate(iso: string): string {
   return new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
@@ -57,6 +61,9 @@ export function ReviewCard({ id, onAsked }: { id: string; onAsked?: () => void }
   const [addTarget, setAddTarget] = useState<SheetTarget | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [noting, setNoting] = useState(false);
+  const [alerting, setAlerting] = useState(false);
+  const { session } = useSession();
+  const { data: alerts = [] } = useTransactionAlerts(session?.user.id);
   const category = useMemo(() => categories.find((c) => c.id === t?.category_id), [categories, t?.category_id]);
 
   if (!t) return <View style={{ height: 420 }} />;
@@ -68,6 +75,18 @@ export function ReviewCard({ id, onAsked }: { id: string; onAsked?: () => void }
   const rule = merchantKey ? rules.get(merchantKey) : undefined;
   const accent = category?.color ?? colors.brand;
   const failed = (err: Error) => dialog.alert('Could not save', err.message);
+  const alertOn = hasAlertForTransaction(alerts, {
+    merchantEntityId: t.merchant_entity_id,
+    merchantKey,
+    categoryId: t.category_id,
+  });
+  const alertSeed: AlertSheetSeed = {
+    merchantEntityId: t.merchant_entity_id,
+    merchantKey,
+    merchantLabel: name,
+    categoryId: t.category_id,
+    categoryLabel: category?.name ?? null,
+  };
 
   return (
     <View
@@ -110,6 +129,20 @@ export function ReviewCard({ id, onAsked }: { id: string; onAsked?: () => void }
             {name}
           </AppText>
           {merchantKey ? <Pencil size={14} color={colors.textDim} strokeWidth={2} /> : null}
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={alertOn ? 'Manage transaction alert' : 'Set transaction alert'}
+          onPress={() => setAlerting(true)}
+          hitSlop={8}
+          style={({ pressed }) => ({
+            position: 'absolute',
+            top: Spacing.md,
+            right: Spacing.md,
+            padding: Spacing.xs,
+            opacity: pressed ? 0.7 : 1,
+          })}>
+          <Bell size={20} color={alertOn ? colors.brand : colors.textDim} strokeWidth={alertOn ? 2.25 : 1.75} fill={alertOn ? colors.brand : 'transparent'} />
         </Pressable>
         <Amount value={t.amount} size={38} signColor showPlus />
         <AppText variant="caption" tone="dim">
@@ -215,6 +248,7 @@ export function ReviewCard({ id, onAsked }: { id: string; onAsked?: () => void }
           onClose={() => setRenaming(false)}
         />
       ) : null}
+      <AlertSheet visible={alerting} seed={alertSeed} onClose={() => setAlerting(false)} />
     </View>
   );
 }

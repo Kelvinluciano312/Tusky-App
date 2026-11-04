@@ -1,6 +1,7 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
+import { Bell } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { dialog } from '@/components/ui/dialog';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,6 +10,7 @@ import { CategorySheet, type SheetTarget } from '@/components/category-sheet';
 import { DetailLine as Line } from '@/components/detail-line';
 import { NoteSheet } from '@/components/note-sheet';
 import { AskButton, QuestionBanner } from '@/components/questions';
+import { AlertSheet, type AlertSheetSeed } from '@/components/alert-sheet';
 import { RenameSheet } from '@/components/rename-sheet';
 import { WhoPaid } from '@/components/who-paid';
 import { Amount } from '@/components/ui/amount';
@@ -30,6 +32,9 @@ import {
   useSetTransactionNotes,
   useTransaction,
 } from '@/lib/queries';
+import { useSession } from '@/lib/session';
+import { useTransactionAlerts } from '@/lib/transaction-alert-queries';
+import { hasAlertForTransaction } from '@/lib/transaction-alerts';
 
 function formatDate(iso: string): string {
   return new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, {
@@ -62,6 +67,9 @@ export default function TransactionScreen() {
   const [addTarget, setAddTarget] = useState<SheetTarget | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [noting, setNoting] = useState(false);
+  const [alerting, setAlerting] = useState(false);
+  const { session } = useSession();
+  const { data: alerts = [] } = useTransactionAlerts(session?.user.id);
   const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
   if (!t) {
@@ -85,10 +93,36 @@ export default function TransactionScreen() {
     setPicking(false);
     chooseCategory(t, name, next);
   };
+  const alertOn = hasAlertForTransaction(alerts, {
+    merchantEntityId: t.merchant_entity_id,
+    merchantKey,
+    categoryId: t.category_id,
+  });
+  const alertSeed: AlertSheetSeed = {
+    merchantEntityId: t.merchant_entity_id,
+    merchantKey,
+    merchantLabel: name,
+    categoryId: t.category_id,
+    categoryLabel: category?.name ?? null,
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Stack.Title>{name}</Stack.Title>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={alertOn ? 'Manage transaction alert' : 'Set transaction alert'}
+              onPress={() => setAlerting(true)}
+              hitSlop={8}
+              style={{ paddingHorizontal: Spacing.sm }}>
+              <Bell size={22} color={alertOn ? colors.brand : colors.text} strokeWidth={alertOn ? 2.25 : 1.75} fill={alertOn ? colors.brand : 'transparent'} />
+            </Pressable>
+          ),
+        }}
+      />
       <ScrollView
         contentContainerStyle={{ ...Layout.column, padding: Spacing.md, paddingBottom: insets.bottom + Spacing.xl, gap: Spacing.md }}>
         <QuestionBanner transactionId={t.id} />
@@ -180,6 +214,7 @@ export default function TransactionScreen() {
           onClose={() => setRenaming(false)}
         />
       ) : null}
+      <AlertSheet visible={alerting} seed={alertSeed} onClose={() => setAlerting(false)} />
     </View>
   );
 }

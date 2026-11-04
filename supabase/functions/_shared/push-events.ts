@@ -29,6 +29,12 @@ import {
   type SpendLine,
 } from './notify.ts';
 import { deliver, type Outbound } from './push-send.ts';
+import {
+  alertCopy,
+  alertDedupeKey,
+  matchesForUser,
+  type AlertRule,
+} from './transaction-alerts.ts';
 
 type AccountView = { isPrivate: boolean; connectorId: string };
 
@@ -290,6 +296,7 @@ export async function onSyncNotifications(admin: SupabaseClient, input: SyncInpu
   const prefs = await prefsFor(admin, members);
   const items: Outbound[] = [];
   items.push(...await largeItems(admin, input, members, prefs));
+  items.push(...await transactionAlertItems(admin, input, members));
   items.push(...await budgetItems(admin, input, members, prefs));
   if (input.notifyPrices) items.push(...await priceItems(admin, input, members));
   if (items.length > 0) await deliver(admin, items, input.now);
@@ -361,6 +368,101 @@ async function largeItems(
         urgent: false,
         channel: 'alerts',
       });
+    }
+  }
+  return out;
+}
+
+async function transactionAlertItems(
+  admin: SupabaseClient,
+  input: SyncInput,
+  members: string[],
+): Promise<Outbound[]> {
+  if (input.addedPlaidIds.length === 0 || members.length === 0) return [];
+  const data: {
+    id: string;
+    amount: number | string;
+    pending: boolean | null;
+    merchant_name: string | null;
+    name: string | null;
+    merchant_entity_id: string | null;
+    merchant_key: string | null;
+    account_id: string;
+    category_id: string | null;
+  }[] = [];
+  for (let i = 0; i < input.addedPlaidIds.length; i += 200) {
+    const slice = input.addedPlaidIds.slice(i, i + 200);
+    const { data: page, error } = await admin
+      .from('transactions')
+      .select(
+        'id, amount, pending, merchant_name, name, merchant_entity_id, merchant_key, account_id, category_id, plaid_transaction_id',
+      )
+      .in('plaid_transaction_id', slice);
+    if (error) return [];
+    data.push(...(page ?? []));
+  }
+  const posted = data.filter((row) => row.pending !== true);
+  if (posted.length === 0) return [];
+
+  const accountIds = [...new Set(posted.map((row) => row.account_id as string))];
+  const categoryIds = [...new Set(posted.map((row) => row.category_id as string).filter(Boolean))];
+  const [{ data: accounts }, { data: categories }, { data: alertRows }] = await Promise.all([
+    admin.from('accounts').select('id, is_private, user_id').in('id', accountIds),
+    categoryIds.length > 0
+      ? admin.from('categories').select('id, name').in('id', categoryIds)
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    admin
+      .from('transaction_alerts')
+      .select('id, user_id, merchant_entity_id, merchant_key, category_id, min_cents, enabled')
+      .in('user_id', members)
+      .eq('enabled', true),
+  ]);
+  if (!alertRows || alertRows.length === 0) return [];
+
+  const accountById = new Map((accounts ?? []).map((row) => [row.id as string, asAccount(row)]));
+  const categoryById = new Map((categories ?? []).map((row) => [row.id as string, row.name as string]));
+  const rules: AlertRule[] = alertRows.map((row) => ({
+    id: row.id as string,
+    userId: row.user_id as string,
+    merchantEntityId: (row.merchant_entity_id as string | null) ?? null,
+    merchantKey: (row.merchant_key as string | null) ?? null,
+    categoryId: (row.category_id as string | null) ?? null,
+    minCents: row.min_cents === null || row.min_cents === undefined ? null : Number(row.min_cents),
+    enabled: row.enabled === true,
+  }));
+
+  const out: Outbound[] = [];
+  for (const tx of posted) {
+    const account = accountById.get(tx.account_id as string);
+    if (!account) continue;
+    const merchantLabel = ((tx.merchant_name as string | null) || (tx.name as string | null) || 'A purchase').trim();
+    const categoryLabel = tx.category_id ? categoryById.get(tx.category_id as string) ?? null : null;
+    const alertTx = {
+      id: tx.id as string,
+      pending: false,
+      amount: Number(tx.amount),
+      merchantEntityId: (tx.merchant_entity_id as string | null) ?? null,
+      merchantKey: (tx.merchant_key as string | null) ?? null,
+      categoryId: (tx.category_id as string | null) ?? null,
+      merchantLabel,
+      categoryLabel,
+    };
+    for (const userId of members) {
+      if (!canSeeAccount(userId, account)) continue;
+      for (const rule of matchesForUser(rules, alertTx, userId)) {
+        const copy = alertCopy(rule, alertTx);
+        out.push({
+          userId,
+          type: 'transaction_alert',
+          dedupeKey: alertDedupeKey(rule.id, alertTx.id),
+          title: copy.title,
+          body: copy.body,
+          url: `/transaction/${alertTx.id}`,
+          sound: true,
+          urgent: false,
+          channel: 'alerts',
+        });
+      }
     }
   }
   return out;

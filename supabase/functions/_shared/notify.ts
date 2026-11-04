@@ -24,6 +24,7 @@ export const NOTIFY_TYPES = [
   'pending_expiration',
   'trial_ending',
   'billing_issue',
+  'transaction_alert',
 ] as const;
 export type NotifyType = (typeof NOTIFY_TYPES)[number];
 
@@ -89,7 +90,7 @@ export const CHOOSE_DAYS = 7;
 const ASK_WINDOW_MS = 10 * 60 * 1000;
 const DAY_MS = 86_400_000;
 
-const ALWAYS_ON = new Set<NotifyType>(['reconnect', 'pending_expiration']);
+const ALWAYS_ON = new Set<NotifyType>(['reconnect', 'pending_expiration', 'transaction_alert']);
 
 export function prefsFrom(row: Partial<Prefs> | null | undefined): Prefs {
   if (!row) return { ...DEFAULT_PREFS };
