@@ -32,5 +32,4 @@ Update this table when you pick up or finish work. Leave a row blank when nothin
 
 | Who | What | Branch / PR | Area / files |
 | --- | --- | --- | --- |
-| Pedro | MCP finance security hardening (expiry, usage log, DB rate limits) | `pedro/mcp-finance-hardening`, issue [#80](https://github.com/Kelvinluciano312/Tusky-App/issues/80) — patch only, not pushed | `supabase/functions/mcp-finance/`, `supabase/functions/_shared/mcp-finance.ts`, `supabase/migrations/20261102130000_mcp_connector_hardening.sql` |
-| Pedro | Read-only MCP finance connector for Investment Guy | merged [#79](https://github.com/Kelvinluciano312/Tusky-App/pull/79) from [#78](https://github.com/Kelvinluciano312/Tusky-App/issues/78) | `supabase/functions/mcp-finance/`, `supabase/migrations/20261102120000_mcp_connector_tokens.sql` |
+| Pedro | Notification tap deep-link + green splash hang | `pedro/notification-deeplink-fix`, issue [#82](https://github.com/Kelvinluciano312/Tusky-App/issues/82) | `apps/mobile/src/app/_layout.tsx`, `apps/mobile/src/lib/push.ts`, `apps/mobile/src/lib/notifications.ts`, `apps/mobile/src/lib/session.tsx`, `apps/mobile/src/components/boot-loading.tsx` |

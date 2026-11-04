@@ -24,6 +24,10 @@ export function SessionProvider({ children }: PropsWithChildren) {
       lastUserId.current = data.session?.user.id ?? null;
       setSession(data.session);
       setIsLoading(false);
+    }).catch(() => {
+      // A hung or failed restore must not leave the green splash up forever.
+      setSession(null);
+      setIsLoading(false);
     });
 
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, next) => {

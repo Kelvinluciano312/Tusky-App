@@ -3,10 +3,15 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  BOOT_BACKGROUND,
   DEFAULT_NOTIFICATION_PREFS,
+  SPLASH_GATE_TIMEOUT_MS,
+  canOpenNotificationRoute,
   formatHour,
   formatThreshold,
+  notificationResponseKey,
   routeForNotification,
+  shouldForceBoot,
   showNotificationPrompt,
 } from './notifications.ts';
 
@@ -62,4 +67,29 @@ test('defaults match the product: digest on at 7 PM, large purchases and settle-
   assert.equal(DEFAULT_NOTIFICATION_PREFS.quiet_start, 22);
   assert.equal(DEFAULT_NOTIFICATION_PREFS.quiet_end, 8);
   assert.equal(DEFAULT_NOTIFICATION_PREFS.hide_amounts, false);
+});
+
+test('a notification route opens only once the app gate is ready', () => {
+  assert.equal(canOpenNotificationRoute('app'), true);
+  assert.equal(canOpenNotificationRoute('onboarding'), false);
+  assert.equal(canOpenNotificationRoute('terms'), false);
+  assert.equal(canOpenNotificationRoute('verify'), false);
+  assert.equal(canOpenNotificationRoute('recovery'), false);
+  assert.equal(canOpenNotificationRoute(null), false);
+  assert.equal(canOpenNotificationRoute(undefined), false);
+});
+
+test('notification response keys dedupe the cold-start and live listeners', () => {
+  assert.equal(
+    notificationResponseKey('abc', 'expo.modules.notifications.actions.DEFAULT'),
+    'abc:expo.modules.notifications.actions.DEFAULT',
+  );
+});
+
+test('the boot gate forces open after the splash timeout', () => {
+  assert.equal(shouldForceBoot(0), false);
+  assert.equal(shouldForceBoot(SPLASH_GATE_TIMEOUT_MS - 1), false);
+  assert.equal(shouldForceBoot(SPLASH_GATE_TIMEOUT_MS), true);
+  assert.equal(shouldForceBoot(10_000), true);
+  assert.equal(BOOT_BACKGROUND, '#256F4C');
 });

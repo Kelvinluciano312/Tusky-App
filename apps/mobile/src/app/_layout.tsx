@@ -3,19 +3,24 @@ import { Fraunces_500Medium, Fraunces_600SemiBold } from '@expo-google-fonts/fra
 import { IBMPlexMono_500Medium, IBMPlexMono_600SemiBold } from '@expo-google-fonts/ibm-plex-mono';
 import { focusManager, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider, type Href, router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppState, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { BootLoading } from '@/components/boot-loading';
 import { RootErrorBoundary } from '@/components/root-error-boundary';
 import { RealDataBanner } from '@/components/real-data-banner';
 import { DialogHost } from '@/components/ui/dialog';
 import { Palette } from '@/constants/theme';
 import { TERMS_VERSION } from '@/constants/legal';
 import { gateFor } from '@/lib/first-run';
+import {
+  SPLASH_GATE_TIMEOUT_MS,
+  canOpenNotificationRoute,
+} from '@/lib/notifications';
 import { ensureAndroidChannels, listenForNotificationOpens, registerIfGranted } from '@/lib/push';
 import { listenForRecovery, useRecovering } from '@/lib/recovery-session';
 import { identifyPurchaser } from '@/lib/purchases';
@@ -103,7 +108,14 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   // Since 16e the first gate is the emailed code, for users with two-step on whose session the server has not verified.
   const { recovering } = useRecovering();
   const gate = session || recovering ? gateFor(session ? (firstRun.data ?? null) : null, TERMS_VERSION, recovering) : null;
-  const ready = fontsLoaded && !isLoading && !(session && firstRun.isLoading && !recovering);
+  const dataReady = !isLoading && !(session && firstRun.isLoading && !recovering);
+  const ready = fontsLoaded && dataReady;
+  // If fonts, SecureStore, or the first-run query hang, stop blocking forever.
+  const [bootTimedOut, setBootTimedOut] = useState(false);
+  // Ref + bump: taps arrive from Expo before the Stack is up; we open once gate is app.
+  const pendingNotificationRoute = useRef<string | null>(null);
+  const [pendingNotificationVersion, setPendingNotificationVersion] = useState(0);
+  const showNavigator = ready || bootTimedOut;
 
   // A function answering 403 two_factor_required means the gate's answer is stale: ask again.
   const queryClient = useQueryClient();
@@ -114,26 +126,40 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
     void identifyPurchaser(userId);
   }, [userId]);
 
-  // Channels once, and a tap opens the screen the push named. Registering a
-  // token happens only when permission was already granted — the prompt itself
-  // waits for Turn on.
+  // Channels once. Taps queue a route; we open it only after the app gate is up
+  // so a cold start from a notification cannot race an unmounted Stack.
   useEffect(() => {
     void ensureAndroidChannels();
-    return listenForNotificationOpens();
+    return listenForNotificationOpens((route) => {
+      pendingNotificationRoute.current = route;
+      setPendingNotificationVersion((n) => n + 1);
+    });
   }, []);
+  useEffect(() => {
+    const route = pendingNotificationRoute.current;
+    if (!route || !canOpenNotificationRoute(gate)) return;
+    pendingNotificationRoute.current = null;
+    router.push(route as Href);
+  }, [pendingNotificationVersion, gate]);
   useEffect(() => {
     if (userId) void registerIfGranted();
   }, [userId]);
   useEffect(() => listenForRecovery(), []);
 
   useEffect(() => {
-    if (ready) {
-      SplashScreen.hideAsync();
-    }
-  }, [ready]);
+    const timer = setTimeout(() => setBootTimedOut(true), SPLASH_GATE_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
-  if (!ready) {
-    return null; // splash stays up until fonts and the persisted session are restored
+  useEffect(() => {
+    if (!fontsLoaded && !bootTimedOut) return;
+    // Hide as soon as our branded boot UI (or the navigator) can take over.
+    // catch: hideAsync can reject if preventAutoHide never resolved; still paint.
+    void SplashScreen.hideAsync().catch(() => undefined);
+  }, [fontsLoaded, bootTimedOut, ready]);
+
+  if (!showNavigator) {
+    return <BootLoading />;
   }
 
   return (
