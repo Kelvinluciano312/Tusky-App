@@ -72,3 +72,27 @@ export const DEFAULT_NOTIFICATION_PREFS = {
   quiet_end: 8,
   hide_amounts: false,
 };
+
+/** How long the boot gate may block before we open the app anyway. */
+export const SPLASH_GATE_TIMEOUT_MS = 8_000;
+
+/** Splash / adaptive-icon green — the boot screen matches so a hand-off looks continuous. */
+export const BOOT_BACKGROUND = '#256F4C';
+
+/**
+ * Only the signed-in app stack can open a notification path. Opening earlier
+ * races the root Stack (cold start) or lands on a gate screen that unmounts it.
+ */
+export function canOpenNotificationRoute(gate: string | null | undefined): boolean {
+  return gate === 'app';
+}
+
+/** Stable id for a tap so cold-start getLast + the live listener do not double-open. */
+export function notificationResponseKey(identifier: string, actionIdentifier: string): string {
+  return `${identifier}:${actionIdentifier}`;
+}
+
+/** True once the boot gate has waited long enough to stop blocking on fonts/session/first-run. */
+export function shouldForceBoot(elapsedMs: number, timeoutMs = SPLASH_GATE_TIMEOUT_MS): boolean {
+  return elapsedMs >= timeoutMs;
+}

@@ -7,10 +7,9 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Localization from 'expo-localization';
 import * as Notifications from 'expo-notifications';
-import { type Href, router } from 'expo-router';
 import { Platform } from 'react-native';
 
-import { routeForNotification } from '@/lib/notifications';
+import { notificationResponseKey, routeForNotification } from '@/lib/notifications';
 import {
   permissionFromSettings,
   pushFailureMessage,
@@ -235,18 +234,30 @@ export async function releasePushToken(): Promise<void> {
   }
 }
 
-function openNotification(data: unknown) {
-  const route = routeForNotification(data);
-  if (route) router.push(route as Href);
-}
+/**
+ * Collects a tap's route. The root layout opens it once the app gate is ready;
+ * pushing here races a cold start where the Stack is not mounted yet.
+ */
+export function listenForNotificationOpens(onRoute: (route: string) => void): () => void {
+  const seen = new Set<string>();
 
-/** Taps, including the one that cold-started the app. */
-export function listenForNotificationOpens(): () => void {
-  const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-    openNotification(response.notification.request.content.data);
-  });
-  void Notifications.getLastNotificationResponseAsync().then((response) => {
-    if (response) openNotification(response.notification.request.content.data);
-  }).catch(() => undefined);
+  const handle = (response: Notifications.NotificationResponse | null | undefined) => {
+    if (!response) return;
+    const key = notificationResponseKey(
+      response.notification.request.identifier,
+      response.actionIdentifier,
+    );
+    if (seen.has(key)) return;
+    const route = routeForNotification(response.notification.request.content.data);
+    if (!route) return;
+    seen.add(key);
+    onRoute(route);
+    void Notifications.clearLastNotificationResponseAsync().catch(() => undefined);
+  };
+
+  const subscription = Notifications.addNotificationResponseReceivedListener(handle);
+  void Notifications.getLastNotificationResponseAsync()
+    .then(handle)
+    .catch(() => undefined);
   return () => subscription.remove();
 }
