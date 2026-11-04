@@ -19,6 +19,7 @@ import {
   REVIEW_THRESHOLDS,
 } from '@/lib/notifications';
 import { settingsAction } from '@/lib/push-status';
+import { TransactionAlertsList } from '@/components/transaction-alerts-list';
 
 type BoolKey =
   | 'question_asked'
@@ -210,6 +211,8 @@ export function NotificationSettings({ userId }: { userId: string | undefined })
           selected={prefs.quiet_end as (typeof QUIET_ENDS)[number]}
           onSelect={(value) => save({ quiet_end: value })}
         />
+
+        <TransactionAlertsList userId={userId} />
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.xs }}>
           <View style={{ flex: 1 }}>
